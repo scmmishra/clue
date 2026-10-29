@@ -13,6 +13,7 @@ const ENV_CACHE = join(CLUE_HOME, "shell-env.json");
 const STARTUP_FILES = [".zshenv", ".zprofile", ".zshrc", ".bash_profile", ".bashrc", ".profile"].map((name) => join(homedir(), name));
 const DEFAULT_WAIT_MS = 120_000;
 const MAX_BUFFER = 2_000_000;
+const DRAIN_MAX_TURNS = 40;
 
 let shellEnv: Promise<Record<string, string>> | null = null;
 
@@ -54,6 +55,9 @@ type Running = {
   id: string;
   command: string;
   proc: Bun.Subprocess;
+  terminal: Bun.Terminal;
+  // True when background children outlived the shell, so its process group is still alive.
+  orphaned: boolean;
   output: string;
   read: number;
   exitCode: number | null;
@@ -76,10 +80,14 @@ function plain(chunk: string) {
 
 // Commands run in a real pseudo-terminal, so interactive programs and tools
 // that check for a TTY behave as they do in the user's own shell.
+//
+// The Terminal is built here and passed in as an object. Bun's inline
+// `terminal: { ... }` option makes every spawn wait about 16 ms for the PTY to
+// close; a Terminal object costs 0.4 ms to build and spawns as fast as pipes.
 async function start(command: string, cwd: string): Promise<Running> {
   const env = { ...(await warmShellEnv()), AI_AGENT: "clue", PAGER: "cat", GIT_PAGER: "cat", NO_COLOR: "1", FORCE_COLOR: "0" };
   const decoder = new TextDecoder();
-  const running = { id: String(nextId++), command, output: "", read: 0, exitCode: null, startedAt: Date.now() } as Running;
+  const running = { id: String(nextId++), command, output: "", read: 0, exitCode: null, orphaned: false, startedAt: Date.now() } as Running;
   const append = (text: string) => {
     running.output += text;
     if (running.output.length > MAX_BUFFER) {
@@ -88,41 +96,62 @@ async function start(command: string, cwd: string): Promise<Running> {
       running.read = Math.max(0, running.read - cut);
     }
   };
+  const terminal = new Bun.Terminal({
+    cols: 160,
+    rows: 48,
+    data: (_terminal, data) => append(plain(decoder.decode(data, { stream: true }))),
+  });
+  running.terminal = terminal;
   try {
-    running.proc = Bun.spawn([SHELL, "-c", command], {
-      cwd,
-      env,
-      terminal: {
-        cols: 160,
-        rows: 48,
-        data: (_terminal, data) => append(plain(decoder.decode(data, { stream: true }))),
-      },
-    });
+    // detached makes the command lead its own process group. Without it a PTY command
+    // stays in clue's group, so stop could only kill the wrapper shell, not its children.
+    running.proc = Bun.spawn([SHELL, "-c", command], { cwd, env, terminal, detached: true });
   } catch (error) {
+    terminal.close();
     running.output = (error as Error).message;
     running.exitCode = 127;
     running.exited = Promise.resolve();
     return running;
   }
-  running.exited = running.proc.exited.then((code) => {
+  running.exited = running.proc.exited.then(async (code) => {
     running.exitCode = code ?? 1;
-    // Let the last terminal output arrive before reporting.
-    return Bun.sleep(20);
+    // Output written just before exit can land a moment later. Wait until it stops
+    // growing, up to a cap, since a background child may keep writing forever.
+    let seen = -1;
+    for (let turn = 0; turn < DRAIN_MAX_TURNS && running.output.length !== seen; turn++) {
+      seen = running.output.length;
+      await Bun.sleep(1);
+    }
+    // A child that outlives the shell, such as `server &`, keeps the PTY open until stopAllProcesses.
+    running.orphaned = groupAlive(running.proc.pid);
+    if (!running.orphaned) running.terminal.close();
   });
   processes.set(running.id, running);
   return running;
 }
 
+// True while any process of the command's group, including its background children, is alive.
+function groupAlive(pid: number) {
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 function kill(running: Running) {
-  if (running.exitCode !== null) return;
-  // The PTY makes the command a session leader, so its pid is the group id.
+  // A finished command has nothing to stop, unless background children outlived its shell.
+  // Only then is the pid still ours: a group's id can't be reused while the group exists.
+  if (running.exitCode !== null && !(running.orphaned && groupAlive(running.proc.pid))) return;
+  // The command leads its own group (detached), so its pid is the group id.
   try {
     process.kill(-running.proc.pid, "SIGTERM");
   } catch {
     running.proc.kill("SIGTERM");
   }
   setTimeout(() => {
-    if (running.exitCode !== null) return;
+    if (running.exitCode !== null && !groupAlive(running.proc.pid)) return;
     try {
       process.kill(-running.proc.pid, "SIGKILL");
     } catch {
@@ -132,17 +161,41 @@ function kill(running: Running) {
 }
 
 export function stopAllProcesses() {
-  for (const running of processes.values()) kill(running);
+  for (const running of processes.values()) {
+    kill(running);
+    if (!running.terminal.closed) running.terminal.close();
+  }
 }
 
-const wait = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
+// Resolves after `ms` or when the signal aborts. Call cancel() when done, so a
+// finished command doesn't leave a long timer behind.
+function waitFor(ms: number, signal: AbortSignal) {
+  let timer: ReturnType<typeof setTimeout>;
+  let onAbort = () => {};
+  const promise = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
+    onAbort = () => {
       clearTimeout(timer);
       resolve();
-    });
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
   });
+  return {
+    promise,
+    cancel: () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+    },
+  };
+}
+
+// Waits for the process to exit, or for the timeout. True when it exited.
+async function exitedWithin(running: Running, ms: number, signal: AbortSignal) {
+  const timeout = waitFor(ms, signal);
+  const exited = await Promise.race([running.exited.then(() => true), timeout.promise.then(() => false)]);
+  timeout.cancel();
+  return exited;
+}
 
 function takeOutput(running: Running) {
   const fresh = running.output.slice(running.read);
@@ -199,7 +252,7 @@ export const shell: Tool<ShellInput> = {
     if (action === "run") {
       const running = await start(input.command!, context.cwd);
       const limit = Math.max(500, input.wait_ms ?? DEFAULT_WAIT_MS);
-      const done = await Promise.race([running.exited.then(() => true), wait(limit, context.signal).then(() => false)]);
+      const done = await exitedWithin(running, limit, context.signal);
       if (context.signal.aborted && !done) kill(running);
       const fresh = takeOutput(running);
       const failed = running.exitCode !== null && running.exitCode !== 0;
@@ -214,11 +267,11 @@ export const shell: Tool<ShellInput> = {
     if (!running) return { content: `No process with id ${input.id}.`, isError: true };
     if (action === "stop") {
       kill(running);
-      await Promise.race([running.exited, wait(3000, context.signal)]);
+      await exitedWithin(running, 3000, context.signal);
       return { content: report(running, takeOutput(running)) };
     }
-    if (input.input && running.exitCode === null) running.proc.terminal?.write(input.input);
-    await Promise.race([running.exited, wait(Math.max(100, input.wait_ms ?? 1500), context.signal)]);
+    if (input.input && running.exitCode === null) running.terminal.write(input.input);
+    await exitedWithin(running, Math.max(100, input.wait_ms ?? 1500), context.signal);
     return { content: report(running, takeOutput(running)) };
   },
 };
