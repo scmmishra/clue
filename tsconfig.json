@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["bun"],
+    "lib": ["ESNext"],
+    "noUnusedLocals": true,
+    "verbatimModuleSyntax": false
+  },
+  "include": ["src", "benchmarks", "scripts", "test"]
+}
