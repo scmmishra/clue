@@ -1,0 +1,246 @@
+import { columns, term, truncate } from "./ansi";
+
+// Output model: finished lines are printed once and become normal scrollback.
+// Only the "live" lines at the bottom (input, running tools, a spinner) are
+// redrawn in place. That keeps the terminal's own scrolling, search and copy.
+
+export type LiveFrame = { lines: string[]; cursor?: { row: number; col: number } };
+
+const FRAME_MS = 16;
+
+export class Screen {
+  private live: LiveFrame = { lines: [] };
+  private drawnRows = 0;
+  private cursorRowFromTop = 0;
+  private scheduled: ReturnType<typeof setTimeout> | null = null;
+  private ticker: ReturnType<typeof setInterval> | null = null;
+  private suspended = false;
+  private held: string[] = [];
+  private render: () => LiveFrame = () => ({ lines: [] });
+
+  constructor(private out: NodeJS.WriteStream = process.stdout) {}
+
+  // The function that produces the live lines. Called on every redraw.
+  setRenderer(render: () => LiveFrame) {
+    this.render = render;
+    this.refresh();
+  }
+
+  // Redraws on a timer while something animates, such as a spinner.
+  animate(on: boolean) {
+    if (on && !this.ticker) this.ticker = setInterval(() => this.refresh(), 80);
+    if (!on && this.ticker) {
+      clearInterval(this.ticker);
+      this.ticker = null;
+    }
+  }
+
+  // Prints finished lines above the live area.
+  commit(lines: string[]) {
+    if (lines.length === 0) return;
+    if (this.suspended) {
+      this.held.push(...lines);
+      return;
+    }
+    this.out.write(this.erase() + lines.map((line) => `${line}\x1b[0m`).join("\n") + "\n" + this.draw());
+  }
+
+  refresh() {
+    if (this.scheduled || this.suspended) return;
+    this.scheduled = setTimeout(() => {
+      this.scheduled = null;
+      this.flush();
+    }, FRAME_MS);
+  }
+
+  flush() {
+    if (this.suspended) return;
+    this.out.write(this.erase() + this.draw());
+  }
+
+  // Stops drawing while a full-screen view owns the terminal.
+  suspend() {
+    this.out.write(this.erase());
+    this.suspended = true;
+  }
+
+  resume() {
+    this.suspended = false;
+    const held = this.held;
+    this.held = [];
+    this.drawnRows = 0;
+    this.cursorRowFromTop = 0;
+    if (held.length) this.commit(held);
+    else this.flush();
+  }
+
+  // Clears the live area and leaves the cursor at its first column.
+  clearLive() {
+    this.out.write(this.erase());
+    this.drawnRows = 0;
+  }
+
+  private erase() {
+    if (this.drawnRows === 0) return "\r";
+    return `${term.up(this.cursorRowFromTop)}\r${term.clearDown}`;
+  }
+
+  private draw() {
+    this.live = this.render();
+    const max = columns() - 1;
+    const lines = this.live.lines.map((line) => truncate(line, max));
+    this.drawnRows = lines.length;
+    if (lines.length === 0) {
+      this.cursorRowFromTop = 0;
+      return term.hideCursor;
+    }
+    let text = lines.map((line) => `${line}\x1b[0m`).join("\n");
+    const cursor = this.live.cursor;
+    if (cursor) {
+      const fromBottom = lines.length - 1 - cursor.row;
+      text += term.up(fromBottom) + term.column(cursor.col) + term.showCursor;
+      this.cursorRowFromTop = cursor.row;
+    } else {
+      text += term.hideCursor;
+      this.cursorRowFromTop = lines.length - 1;
+    }
+    return text;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Keys
+
+export type Key = {
+  name: string;
+  ctrl?: boolean;
+  meta?: boolean;
+  shift?: boolean;
+  text?: string;
+};
+
+const SEQUENCES: Record<string, Key> = {
+  "\r": { name: "enter" },
+  "\n": { name: "newline" },
+  "\x1b\r": { name: "newline" },
+  "\x1b[13;2u": { name: "newline" },
+  "\x1b[13;2~": { name: "newline" },
+  "\x7f": { name: "backspace" },
+  "\b": { name: "backspace" },
+  "\x1b\x7f": { name: "backspace", meta: true },
+  "\x17": { name: "backspace", meta: true },
+  "\x1b[3~": { name: "delete" },
+  "\x1b[A": { name: "up" },
+  "\x1b[B": { name: "down" },
+  "\x1b[C": { name: "right" },
+  "\x1b[D": { name: "left" },
+  "\x1bOA": { name: "up" },
+  "\x1bOB": { name: "down" },
+  "\x1bOC": { name: "right" },
+  "\x1bOD": { name: "left" },
+  "\x1b[1;3C": { name: "right", meta: true },
+  "\x1b[1;3D": { name: "left", meta: true },
+  "\x1b[1;5C": { name: "right", meta: true },
+  "\x1b[1;5D": { name: "left", meta: true },
+  "\x1bf": { name: "right", meta: true },
+  "\x1bb": { name: "left", meta: true },
+  "\x1b[H": { name: "home" },
+  "\x1b[F": { name: "end" },
+  "\x1bOH": { name: "home" },
+  "\x1bOF": { name: "end" },
+  "\x1b[1~": { name: "home" },
+  "\x1b[4~": { name: "end" },
+  "\x1b[5~": { name: "pageup" },
+  "\x1b[6~": { name: "pagedown" },
+  "\x1b[Z": { name: "tab", shift: true },
+  "\t": { name: "tab" },
+  "\x1b": { name: "escape" },
+};
+
+const PASTE_START = "\x1b[200~";
+const PASTE_END = "\x1b[201~";
+
+export function parseKeys(data: string): Key[] {
+  const keys: Key[] = [];
+  let index = 0;
+  while (index < data.length) {
+    if (data.startsWith(PASTE_START, index)) {
+      const end = data.indexOf(PASTE_END, index);
+      const text = data.slice(index + PASTE_START.length, end === -1 ? undefined : end);
+      keys.push({ name: "paste", text: text.replace(/\r\n?/g, "\n") });
+      index = end === -1 ? data.length : end + PASTE_END.length;
+      continue;
+    }
+    let matched = false;
+    for (const length of [7, 6, 5, 4, 3, 2]) {
+      const chunk = data.slice(index, index + length);
+      if (chunk.length === length && SEQUENCES[chunk]) {
+        keys.push(SEQUENCES[chunk]);
+        index += length;
+        matched = true;
+        break;
+      }
+    }
+    if (matched) continue;
+    const char = data[index];
+    if (char === "\x1b" && index + 1 < data.length) {
+      // Unknown escape sequence: skip it whole.
+      const rest = data.slice(index).match(/^\x1b\[[0-9;?]*[ -/]*[@-~]/);
+      if (rest) {
+        index += rest[0].length;
+        continue;
+      }
+      keys.push({ name: data[index + 1], meta: true });
+      index += 2;
+      continue;
+    }
+    if (SEQUENCES[char]) {
+      keys.push(SEQUENCES[char]);
+      index += 1;
+      continue;
+    }
+    const code = char.charCodeAt(0);
+    if (code < 32) {
+      keys.push({ name: String.fromCharCode(code + 96), ctrl: true });
+      index += 1;
+      continue;
+    }
+    const point = String.fromCodePoint(data.codePointAt(index)!);
+    keys.push({ name: "char", text: point });
+    index += point.length;
+  }
+  return keys;
+}
+
+export type KeyHandler = (key: Key) => void;
+
+// Owns raw stdin. The app swaps the handler as focus moves between the editor,
+// a running turn, a permission prompt or a picker.
+export class Keyboard {
+  private handler: KeyHandler = () => {};
+  private started = false;
+
+  start() {
+    if (this.started || !process.stdin.isTTY) return;
+    this.started = true;
+    process.stdin.setRawMode(true);
+    process.stdin.setEncoding("utf8");
+    process.stdout.write(term.bracketedPasteOn);
+    process.stdin.on("data", (data: string) => {
+      for (const key of parseKeys(data)) this.handler(key);
+    });
+    process.stdin.resume();
+  }
+
+  stop() {
+    if (!this.started) return;
+    this.started = false;
+    process.stdout.write(term.bracketedPasteOff + term.showCursor);
+    process.stdin.setRawMode(false);
+    process.stdin.pause();
+  }
+
+  set(handler: KeyHandler) {
+    this.handler = handler;
+  }
+}
