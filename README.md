@@ -136,7 +136,7 @@ Changing the model mid-session starts a fresh cache for the rest of that session
 | `read_file` | Reads text files and images. Images larger than 1568 px are resized before they are sent. |
 | `write_file` | Creates files. |
 | `edit_file` | Changes existing files. It refuses to write if the file changed since the model last read it. |
-| `shell` | Runs commands in your shell, inside a pseudo-terminal, so interactive programs work. `run` starts a command, `interact` reads its output or sends input, and `stop` ends it. Dev servers and watchers keep running across prompts. |
+| `shell` | Runs commands in your shell, inside a pseudo-terminal, so interactive programs work. `run` starts a command, `interact` reads its output or sends input, and `stop` ends it. Dev servers and watchers keep running across prompts. `stop`, and exiting clue, also end the command's child processes. |
 | `web_search` | Searches the web, through Claude's server-side tool. |
 | `web_fetch` | Reads a public URL, through Claude's server-side tool. |
 | `subagent` | Hands a task to another agent with its own context. |
@@ -303,6 +303,7 @@ bun run dev          # run from source
 bun test             # tests, against a local stand-in for the API
 bun run build        # dist/clue for this machine; --all for every platform
 bun run bench        # start, resume and first-token benchmarks
+bun run bench:tools  # each tool on its own, outside the agent loop
 ```
 
 The system prompt is in `prompts/system.md` and the reviewer's prompt is in `prompts/review.yaml`. Bun embeds both in the binary at build time. Tool descriptions stay in the code, next to each tool's parameters.

@@ -11,6 +11,7 @@
     "dev": "bun src/main.ts",
     "build": "bun scripts/build.ts",
     "bench": "bun benchmarks/run.ts",
+    "bench:tools": "bun benchmarks/tools.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
