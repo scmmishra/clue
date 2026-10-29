@@ -1,15 +1,20 @@
+import { prefetchGitStatus } from "../agent/context";
 import { Agent, type AgentEvents } from "../agent/loop";
+import { getClient } from "../agent/provider";
 import type { Settings } from "../config";
 import { McpManager } from "../mcp/manager";
 import { Permissions } from "../permissions";
 import type { Session } from "../session";
 import { stopAllProcesses } from "../tools/shell";
 import { discoverSkills } from "../tools/skills";
-import { describeError } from "../app";
+import { describeError } from "../errors";
 
 // One request without the interactive shell. The answer goes to stdout;
 // progress and diagnostics go to stderr. Exits nonzero when the request fails.
 export async function runAsk(prompt: string, settings: Settings, session: Session, json: boolean) {
+  // Overlap the two slow startup steps: git status, and loading the SDK and credentials.
+  if (session.isEmpty) prefetchGitStatus(session.cwd);
+  void getClient().catch(() => {});
   const mcp = new McpManager(session.cwd);
   mcp.startAll();
   const progress = (text: string) => {

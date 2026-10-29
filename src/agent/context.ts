@@ -35,6 +35,22 @@ export function gitRoot(cwd: string): string | null {
   }
 }
 
+// git status takes about 15 ms, and a new session can't send its first request
+// without it. App start and `/new` run it while the user is still typing, and the
+// first turn takes the result. It is used once, and only if it is fresh.
+const PREFETCH_MAX_AGE_MS = 60_000;
+let prefetched: { cwd: string; at: number; status: Promise<string> } | null = null;
+
+export function prefetchGitStatus(cwd: string) {
+  if (gitBranch(cwd)) prefetched = { cwd, at: Date.now(), status: gitStatus(cwd) };
+}
+
+function takeGitStatus(cwd: string) {
+  const ready = prefetched;
+  prefetched = null;
+  return ready && ready.cwd === cwd && Date.now() - ready.at < PREFETCH_MAX_AGE_MS ? ready.status : gitStatus(cwd);
+}
+
 async function gitStatus(cwd: string) {
   try {
     const proc = Bun.spawn(["git", "status", "--short", "--branch"], { cwd, stdout: "pipe", stderr: "ignore" });
@@ -102,7 +118,7 @@ export function nestedInstructions(cwd: string, target: string, seen: Set<string
 
 export async function buildContext(cwd: string, skills: Skill[], mcpServers: string[], seen: Set<string>) {
   const branch = gitBranch(cwd);
-  const status = branch ? await gitStatus(cwd) : "";
+  const status = branch ? await takeGitStatus(cwd) : "";
   const shell = basename(process.env.SHELL ?? "sh");
   const lines = [
     "<context>",

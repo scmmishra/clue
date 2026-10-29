@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { Agent, type AgentEvents } from "./agent/loop";
 import { msSince, now, uptimeMs } from "./clock";
-import { gitBranch } from "./agent/context";
+import { describeError } from "./errors";
+import { gitBranch, prefetchGitStatus } from "./agent/context";
 import { KNOWN_MODELS, modelLabel, resolveModel } from "./agent/models";
 import { getClient, MissingCredentials, preconnect, warmCache } from "./agent/provider";
 import { mcpCommand } from "./commands/mcp";
@@ -122,6 +123,8 @@ export class App {
     }
 
     // Everything else happens while the user types.
+    prefetchGitStatus(this.cwd);
+    this.skillCache ??= discoverSkills(this.cwd);
     preconnect();
     void warmShellEnv();
     this.mcp.startAll();
@@ -336,6 +339,7 @@ export class App {
       case "new":
         this.load(Session.create(this.cwd));
         this.mcp.startAll();
+        prefetchGitStatus(this.cwd);
         return say(style.muted("New session. Earlier sessions stay in /resume."));
       case "mcp":
         await mcpCommand(args, this.cwd, this.mcp, (lines) => this.print(lines));
@@ -369,13 +373,4 @@ export class App {
     if (!quiet && !this.session.isEmpty) process.stdout.write(`${style.faint(`  Resume this session with: clue -r ${this.session.id}`)}\n`);
     process.exit(code);
   }
-}
-
-export function describeError(error: unknown) {
-  const value = error as { status?: number; message?: string; error?: { error?: { message?: string } } };
-  const message = value?.error?.error?.message ?? value?.message ?? String(error);
-  if (value?.status === 401) return `Claude rejected the credentials (401). Run \`clue login\` or check ANTHROPIC_API_KEY. ${message}`;
-  if (value?.status === 429) return `Rate limited by the API (429). ${message}`;
-  if (value?.status && value.status >= 500) return `The API had an error (${value.status}). ${message}`;
-  return message;
 }
