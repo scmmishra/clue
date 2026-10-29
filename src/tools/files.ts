@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { nestedInstructions } from "../agent/context";
 import { checkFields, type Tool, type ToolContext } from "./types";
 
@@ -16,7 +16,10 @@ const IMAGE_TYPES: Record<string, "image/png" | "image/jpeg" | "image/gif" | "im
   ".gif": "image/gif",
   ".webp": "image/webp",
 };
-const IGNORED_DIRS = ["node_modules", ".git", "dist", "build", ".next", "target", "vendor", ".venv", "__pycache__"];
+const IGNORED_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "target", "vendor", ".venv", "__pycache__"]);
+// Stops collecting matches here. Past this, the answer is "narrow the pattern" either way.
+const MAX_WALK_FILES = 20_000;
+const YIELD_EVERY = 2048;
 
 export const absolute = (cwd: string, path: string) => (isAbsolute(path) ? path : resolve(cwd, path));
 export const display = (cwd: string, path: string) => {
@@ -29,6 +32,30 @@ const mtime = (file: string) => statSync(file).mtimeMs;
 function withNestedInstructions(context: ToolContext, path: string, text: string) {
   const notes = nestedInstructions(context.cwd, path, context.seenInstructions);
   return notes.length ? `${text}\n\n${notes.join("\n\n")}` : text;
+}
+
+const LARGE_FILE_BYTES = 256 * 1024;
+const HEAD_WINDOW_LINES = 5000;
+const FIRST_READ_BYTES = 64 * 1024;
+
+const numberLines = (lines: string[], start: number, end: number) =>
+  lines
+    .slice(start - 1, end)
+    .map((line, index) => `${String(start + index).padStart(6)}\t${line.length > MAX_LINE_CHARS ? `${line.slice(0, MAX_LINE_CHARS)}…` : line}`)
+    .join("\n");
+
+// Reads the start of a file until at least `needed` complete lines are in, doubling the
+// read each time. `complete` is true when the whole file was read.
+async function readHead(file: string, size: number, needed: number) {
+  let bytes = Math.min(size, FIRST_READ_BYTES);
+  while (true) {
+    const lines = (await Bun.file(file).slice(0, bytes).text()).split("\n");
+    if (bytes >= size) return { lines, complete: true };
+    // The last piece may be cut off mid-line or mid-character.
+    lines.pop();
+    if (lines.length > needed) return { lines, complete: false };
+    bytes = Math.min(size, bytes * 2);
+  }
 }
 
 export const readFile: Tool<{ path: string; offset?: number; limit?: number }> = {
@@ -50,8 +77,9 @@ export const readFile: Tool<{ path: string; offset?: number; limit?: number }> =
   validate: (input) => checkFields(input, { path: "string", offset: "number?", limit: "number?" }),
   async run(input, context) {
     const file = absolute(context.cwd, input.path);
-    if (!existsSync(file)) return { content: `No file at ${input.path}.`, isError: true };
-    const stat = statSync(file);
+    // One stat answers "does it exist", "is it a folder" and "how big".
+    const stat = statSync(file, { throwIfNoEntry: false });
+    if (!stat) return { content: `No file at ${input.path}.`, isError: true };
     if (stat.isDirectory()) return { content: `${input.path} is a folder. Use glob_files to list it.`, isError: true };
     const imageType = IMAGE_TYPES[extname(file).toLowerCase()];
     if (imageType) {
@@ -69,15 +97,23 @@ export const readFile: Tool<{ path: string; offset?: number; limit?: number }> =
         note: `${width}×${height}${large ? " → resized" : ""}`,
       };
     }
-    const text = await Bun.file(file).text();
     context.readStamps.set(file, stat.mtimeMs);
-    const lines = text.split("\n");
     const start = Math.max(1, input.offset ?? 1);
-    const end = Math.min(lines.length, start - 1 + (input.limit ?? DEFAULT_READ_LINES));
-    const numbered = lines
-      .slice(start - 1, end)
-      .map((line, index) => `${String(start + index).padStart(6)}\t${line.length > MAX_LINE_CHARS ? `${line.slice(0, MAX_LINE_CHARS)}…` : line}`)
-      .join("\n");
+    const wanted = start - 1 + (input.limit ?? DEFAULT_READ_LINES);
+    // A big file with the window near the top: read the bytes it needs, not all 20 MB.
+    if (stat.size > LARGE_FILE_BYTES && wanted <= HEAD_WINDOW_LINES) {
+      const head = await readHead(file, stat.size, wanted);
+      const last = Math.min(head.lines.length, wanted);
+      const text = numberLines(head.lines, start, last);
+      const more = head.complete
+        ? last < head.lines.length ? `\n\n[${head.lines.length - last} more lines. Continue with offset ${last + 1}.]` : ""
+        : `\n\n[More lines follow. Continue with offset ${last + 1}.]`;
+      return { content: withNestedInstructions(context, file, (text || "(empty file)") + more), note: `${Math.max(0, last - start + 1)} lines` };
+    }
+    const text = await Bun.file(file).text();
+    const lines = text.split("\n");
+    const end = Math.min(lines.length, wanted);
+    const numbered = numberLines(lines, start, end);
     const more = end < lines.length ? `\n\n[${lines.length - end} more lines. Continue with offset ${end + 1}.]` : "";
     return {
       content: withNestedInstructions(context, file, (numbered || "(empty file)") + more),
@@ -103,22 +139,73 @@ export const globFiles: Tool<{ pattern: string; path?: string }> = {
   validate: (input) => checkFields(input, { pattern: "string", path: "string?" }),
   async run(input, context) {
     const root = absolute(context.cwd, input.path ?? ".");
-    const glob = new Bun.Glob(input.pattern);
-    const found: string[] = [];
-    for await (const file of glob.scan({ cwd: root, onlyFiles: true, dot: false })) {
-      if (context.signal.aborted) break;
-      if (IGNORED_DIRS.some((dir) => file.split("/").includes(dir))) continue;
-      found.push(file);
-      if (found.length > MAX_GLOB_RESULTS) break;
-    }
-    found.sort();
-    const shown = found.slice(0, MAX_GLOB_RESULTS);
+    const { files, capped } = await walkGlob(root, input.pattern, context.signal);
+    files.sort();
+    const shown = files.slice(0, MAX_GLOB_RESULTS);
     const prefix = input.path ? `${display(context.cwd, root)}/` : "";
     const body = shown.map((file) => prefix + file).join("\n");
-    const more = found.length > MAX_GLOB_RESULTS ? `\n[More than ${MAX_GLOB_RESULTS} files. Narrow the pattern.]` : "";
-    return { content: body ? body + more : "No files match.", note: `${shown.length}${found.length > MAX_GLOB_RESULTS ? "+" : ""} files` };
+    const total = `${files.length}${capped ? "+" : ""}`;
+    const more = files.length > MAX_GLOB_RESULTS ? `\n[${total} files match. Showing the first ${MAX_GLOB_RESULTS}. Narrow the pattern.]` : "";
+    return { content: body ? body + more : "No files match.", note: `${files.length > MAX_GLOB_RESULTS ? `${MAX_GLOB_RESULTS} of ${total}` : total} files` };
   },
 };
+
+// The leading folders of a pattern that have no wildcards: "src/a" for "src/a/**/*.ts".
+function fixedPrefix(pattern: string) {
+  const fixed: string[] = [];
+  for (const part of pattern.split("/").slice(0, -1)) {
+    if (/[*?[\]{}()!]/.test(part)) break;
+    fixed.push(part);
+  }
+  return fixed.join("/");
+}
+
+// Walks a folder and matches files against a glob. It skips ignored and hidden
+// folders without entering them, starts at the pattern's fixed prefix, and stops
+// at the depth the pattern can reach. Bun.Glob.scan would walk node_modules too.
+async function walkGlob(root: string, pattern: string, signal: AbortSignal) {
+  const glob = new Bun.Glob(pattern);
+  const files: string[] = [];
+  const reachesAnywhere = pattern.includes("**") || pattern.includes("{");
+  const maxDepth = reachesAnywhere ? Infinity : pattern.split("/").length - 1;
+  // Patterns that climb out of the folder, or are absolute, are left to Bun.Glob.
+  if (pattern.startsWith("/") || pattern.split("/").includes("..")) {
+    for await (const file of glob.scan({ cwd: root, onlyFiles: true })) {
+      files.push(file);
+      if (files.length >= MAX_WALK_FILES) return { files, capped: true };
+    }
+    return { files, capped: false };
+  }
+  const start = fixedPrefix(pattern);
+  const stack: [path: string, depth: number][] = [[start, start ? start.split("/").length : 0]];
+  let visited = 0;
+  while (stack.length) {
+    const [folder, depth] = stack.pop()!;
+    let entries: import("node:fs").Dirent[];
+    try {
+      entries = readdirSync(folder ? join(root, folder) : root, { withFileTypes: true });
+    } catch {
+      continue; // Missing or unreadable folder.
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const path = folder ? `${folder}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (!IGNORED_DIRS.has(entry.name) && depth < maxDepth) stack.push([path, depth + 1]);
+      } else if (entry.isFile() && glob.match(path)) {
+        files.push(path);
+        if (files.length >= MAX_WALK_FILES) return { files, capped: true };
+      }
+    }
+    // A large tree must not freeze the spinner.
+    if ((visited += entries.length) >= YIELD_EVERY) {
+      visited = 0;
+      await Bun.sleep(0);
+      if (signal.aborted) break;
+    }
+  }
+  return { files, capped: false };
+}
 
 export const grepFiles: Tool<{ pattern: string; path?: string; glob?: string; regex?: boolean; ignore_case?: boolean; context?: number }> = {
   name: "grep_files",
@@ -143,38 +230,60 @@ export const grepFiles: Tool<{ pattern: string; path?: string; glob?: string; re
   async run(input, context) {
     const rg = Bun.which("rg");
     const target = input.path ? absolute(context.cwd, input.path) : ".";
-    let text: string;
+    let args: string[];
     if (rg) {
-      const args = [rg, "--line-number", "--no-heading", "--color", "never", "--max-columns", "400", "--max-count", "50"];
+      args = [rg, "--no-config", "--line-number", "--no-heading", "--color", "never", "--max-columns", "400", "--max-count", "50"];
       if (!input.regex) args.push("--fixed-strings");
       if (input.ignore_case) args.push("--ignore-case");
       if (input.context) args.push("--context", String(Math.min(input.context, 10)));
       if (input.glob) args.push("--glob", input.glob);
       args.push("--", input.pattern, target);
-      const proc = Bun.spawn(args, { cwd: context.cwd, stdout: "pipe", stderr: "pipe", signal: context.signal });
-      text = await new Response(proc.stdout).text();
-      const code = await proc.exited;
-      if (code === 2) return { content: (await new Response(proc.stderr).text()).trim() || "Search failed.", isError: true };
     } else {
-      const proc = Bun.spawn(["grep", "-rn", input.regex ? "-E" : "-F", ...(input.ignore_case ? ["-i"] : []), "--", input.pattern, target], {
-        cwd: context.cwd,
-        stdout: "pipe",
-        stderr: "ignore",
-        signal: context.signal,
-      });
-      text = await new Response(proc.stdout).text();
-      await proc.exited;
+      args = ["grep", "-rn", input.regex ? "-E" : "-F", ...(input.ignore_case ? ["-i"] : []), "--", input.pattern, target];
     }
-    const lines = text.trim() ? text.trim().split("\n") : [];
+    const proc = Bun.spawn(args, { cwd: context.cwd, stdout: "pipe", stderr: "pipe", signal: context.signal });
+    const { lines, truncated } = await readLines(proc.stdout, MAX_GREP_LINES, () => proc.kill());
+    const code = truncated ? 0 : await proc.exited;
+    // ripgrep exits 2 when it hit an unreadable file, even if it found matches. Only no output is a failure.
+    if (code === 2 && lines.length === 0) return { content: (await new Response(proc.stderr).text()).trim() || "Search failed.", isError: true };
     const files = new Set(lines.map((line) => line.split(":")[0]));
-    const shown = lines.slice(0, MAX_GREP_LINES).join("\n");
-    const more = lines.length > MAX_GREP_LINES ? `\n[${lines.length - MAX_GREP_LINES} more lines. Narrow the search.]` : "";
+    const body = lines.join("\n");
+    const more = truncated ? `\n[More matches than ${MAX_GREP_LINES} lines. Narrow the search.]` : "";
     return {
-      content: shown ? shown + more : "No matches.",
-      note: lines.length ? `${lines.length} matches in ${files.size} files` : "no matches",
+      content: body ? body + more : "No matches.",
+      note: lines.length ? `${lines.length}${truncated ? "+" : ""} matches in ${files.size}${truncated ? "+" : ""} files` : "no matches",
     };
   },
 };
+
+// Reads a process's output until `max` complete lines are in, then stops the process.
+// A common word can match hundreds of thousands of lines, and reading them all
+// costs far more than the search that found them.
+async function readLines(stream: ReadableStream<Uint8Array>, max: number, onEnough?: () => void) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let newlines = 0;
+  let scanned = 0;
+  let truncated = false;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+    for (let at = text.indexOf("\n", scanned); at !== -1; at = text.indexOf("\n", scanned)) {
+      newlines += 1;
+      scanned = at + 1;
+    }
+    if (newlines > max) {
+      truncated = true;
+      onEnough?.();
+      await reader.cancel().catch(() => {});
+      break;
+    }
+  }
+  const all = text.length ? text.replace(/\n$/, "").split("\n") : [];
+  return { lines: truncated ? all.slice(0, max) : all, truncated };
+}
 
 // A unified-style diff of one replacement, with a little context.
 function replacementDiff(before: string, after: string, index: number, oldText: string, newText: string) {
