@@ -305,6 +305,8 @@ bun run build        # dist/clue for this machine; --all for every platform
 bun run bench        # start, resume and first-token benchmarks
 ```
 
+The system prompt is in `prompts/system.md` and the reviewer's prompt is in `prompts/review.yaml`. Bun embeds both in the binary at build time. Tool descriptions stay in the code, next to each tool's parameters.
+
 ## Credits
 
 clue builds on two projects:
