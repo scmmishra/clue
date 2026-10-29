@@ -36,10 +36,12 @@ clue is a single binary. The conversation prints into your terminal's scrollback
 ## Install
 
 ```bash
-curl -fsSL <install-url> | bash
+curl -fsSL https://raw.githubusercontent.com/scmmishra/clue/main/install.sh | bash
 ```
 
-clue runs on macOS and Linux, on arm64 and x86_64. The installer puts the binary in `~/.local/bin`. You don't need Bun installed to run it.
+clue runs on macOS and Linux, on arm64 and x86_64. The installer downloads the binary for your machine from the latest release, checks it against the published SHA-256 checksum, and puts it in `~/.local/bin`. Set `CLUE_INSTALL_DIR` to choose another folder, or `CLUE_VERSION` to install a specific tag. Run the same command again to update. You don't need Bun installed to run clue.
+
+While the repository is private, the installer uses the GitHub CLI when `gh` is logged in with access to it.
 
 ## Quick start
 
