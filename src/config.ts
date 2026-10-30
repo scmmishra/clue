@@ -40,6 +40,7 @@ export type Settings = {
   permission_mode: PermissionMode;
   permission: PermissionRules;
   review_model: string;
+  bell: boolean;
 };
 
 const DEFAULTS: Settings = {
@@ -48,6 +49,7 @@ const DEFAULTS: Settings = {
   permission_mode: "auto",
   permission: {},
   review_model: "typesafe/jev-1.14",
+  bell: true,
 };
 
 export function readJson<T>(path: string, fallback: T): T {

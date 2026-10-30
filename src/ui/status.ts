@@ -15,6 +15,15 @@ const FIELDS: Record<Exclude<ProgramStatus, "clear">, string> = {
   "blocked-question": "state=blocked:kind=question",
 };
 
+// A shorter turn finishes while the user is still watching it.
+const RING_AFTER_MS = 30_000;
+
+// The bell reaches terminals without OSC 7501. Waiting on the user always rings.
+export function shouldRing(status: ProgramStatus, unattendedMs: number) {
+  if (status === "blocked-permission" || status === "blocked-question") return true;
+  return (status === "done" || status === "error") && unattendedMs >= RING_AFTER_MS;
+}
+
 // Each report replaces the terminal's record, so every report repeats `app`.
 export function statusReport(status: ProgramStatus) {
   return `\x1b]7501;${status === "clear" ? "state=clear" : `${FIELDS[status]}:app=clue`}\x1b\\`;

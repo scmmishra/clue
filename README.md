@@ -30,7 +30,7 @@ clue is a single binary. The conversation prints into your terminal's scrollback
 - **Resume without the wait**: `clue -c` prints only the last screen of the conversation. While you type, clue sends the history to Claude ahead of your message, so your message reads cached history instead of processing it again.
 - **A prompt Claude has already seen**: the system prompt and tool list are the same bytes in every session, so Claude caches them across sessions. Details that change, such as the working directory and git state, travel in messages.
 - **A quiet transcript**: each run of tool calls shows as a short tree, one line per call. Command output, diffs and errors wait behind `ctrl+o`. tmux copy mode keeps working.
-- **Your terminal knows the state**: clue reports when it is working, waiting for you, finished or failed through the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status) (OSC 7501). Terminals without support ignore it.
+- **Your terminal knows the state**: clue reports when it is working, waiting for you, finished or failed through the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status) (OSC 7501). Terminals without support ignore it. clue also rings the terminal bell when it needs you, and when a turn ends after 30 seconds or more without input from you.
 - **Every wait on screen**: each reply ends with its total time, cost and tokens. `ctrl+o` shows the first-token time of each turn.
 - **Tools for real work**: clue finds, reads and edits files, runs shell commands and dev servers, searches the web, reads URLs and hands tasks to subagents. See [Tools](#tools).
 - **MCP servers**: local and remote. A server's tools cost nothing until the model needs them.
@@ -301,7 +301,7 @@ Warming the cache on resume costs a cache write even if you then quit without se
 
 | File | Purpose |
 | --- | --- |
-| `~/.clue/settings.json` | Model, effort, permission mode and permission rules. |
+| `~/.clue/settings.json` | Model, effort, permission mode, permission rules and `bell`. Set `"bell": false` to turn the bell off. |
 | `~/.clue/mcp.json` | MCP servers for all projects. |
 | `.mcp.json` | MCP servers for one project. |
 | `~/.clue/AGENTS.md` | Your instructions for every project. |

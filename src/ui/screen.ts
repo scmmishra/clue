@@ -1,5 +1,5 @@
 import { columns, term, truncate } from "./ansi";
-import { statusReport, type ProgramStatus } from "./status";
+import { shouldRing, statusReport, type ProgramStatus } from "./status";
 
 // Output model: finished lines are printed once and become normal scrollback.
 // Only the "live" lines at the bottom (input, running tools, a spinner) are
@@ -18,6 +18,7 @@ export class Screen {
   private suspended = false;
   private held: string[] = [];
   private render: () => LiveFrame = () => ({ lines: [] });
+  bell = false;
 
   constructor(private out: NodeJS.WriteStream = process.stdout) {}
 
@@ -76,8 +77,8 @@ export class Screen {
   }
 
   // Reports clue's state to the terminal. It moves nothing on screen, so it needs no redraw.
-  status(status: ProgramStatus) {
-    this.out.write(statusReport(status));
+  status(status: ProgramStatus, unattendedMs = 0) {
+    this.out.write(statusReport(status) + (this.bell && shouldRing(status, unattendedMs) ? "\x07" : ""));
   }
 
   // Clears the live area and leaves the cursor at its first column.

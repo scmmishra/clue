@@ -130,9 +130,20 @@ export class TurnView implements AgentEvents {
   private startedAt = now();
   private prompt: Prompt | null = null;
   private wroteText = false;
+  private lastAnswerAt = now();
 
   constructor(private screen: Screen) {
     this.markdown = new MarkdownStream((lines) => this.commitText(lines), columns);
+  }
+
+  // Time since the user last touched this turn. Time spent on a prompt doesn't count.
+  get unattendedMs() {
+    return msSince(this.lastAnswerAt);
+  }
+
+  private answered() {
+    this.lastAnswerAt = now();
+    this.screen.status("working");
   }
 
   start() {
@@ -159,7 +170,7 @@ export class TurnView implements AgentEvents {
         key.text === "y" || key.name === "enter" ? "once" : key.text === "a" ? "always" : key.text === "n" || key.name === "escape" ? "no" : null;
       if (!answer) return true;
       this.prompt = null;
-      this.screen.status("working");
+      this.answered();
       prompt.resolve(answer);
       this.screen.refresh();
       return true;
@@ -204,7 +215,7 @@ export class TurnView implements AgentEvents {
       `${style.accent("?")} ${style.bold(prompt.question.question)}`,
       `  ${answer === null ? style.faint("dismissed") : style.green(answer)}`,
     ]);
-    this.screen.status("working");
+    this.answered();
     prompt.resolve(answer);
   }
 

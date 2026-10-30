@@ -4,6 +4,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- clue rings the terminal bell when it needs you, and when a turn ends after 30 seconds or more without input from you. Set `"bell": false` in `settings.json` to turn it off.
 - clue tells the terminal when it is idle, working, waiting for you, finished or failed, through the Program Status Protocol (OSC 7501).
 - The footer after each reply shows tokens in and out. Tokens in include cached input.
 - `clue mcp add <name> -- <command>`, `clue mcp add --project` and `clue mcp approve --all` now work as they do in `/mcp`.

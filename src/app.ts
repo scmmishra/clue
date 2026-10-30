@@ -64,6 +64,7 @@ export class App {
   constructor(private options: AppOptions) {
     this.settings = options.settings;
     this.session = options.session;
+    this.screen.bell = options.settings.bell;
   }
 
   private get cwd() {
@@ -254,7 +255,7 @@ export class App {
       this.screen.setRenderer(() => ({ lines: [] }));
       this.print([""]);
     }
-    this.screen.status(turnStatus(turn));
+    this.screen.status(turnStatus(turn), view.unattendedMs);
     this.view = null;
     this.turn = null;
     this.idle();
