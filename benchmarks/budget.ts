@@ -1,6 +1,6 @@
 // The longest clue may take, in milliseconds, from process start to a ready prompt.
-// Compared with the p90 inside the process, so one slow run on a shared CI machine
-// doesn't fail the build.
+// Compared with the p90 inside the process, so one slow run doesn't fail the check.
+// `bun run bench:check` enforces them locally. CI machines are too slow for these limits.
 export const BUDGETS_MS = { launch: 10, resume: 15 };
 
 // A problem for each wait that isn't under its budget.

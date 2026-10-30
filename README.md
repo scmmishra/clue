@@ -316,10 +316,11 @@ bun run dev          # run from source
 bun test             # tests, against a local stand-in for the API
 bun run build        # dist/clue for this machine; --all for every platform
 bun run bench        # start, resume and first-token benchmarks
+bun run bench:check  # build, then fail if start or resume is over budget
 bun run bench:tools  # each tool on its own, outside the agent loop
 ```
 
-CI runs the type check, the tests and a build on macOS and Linux for every push and pull request. It fails if launch or resume is over its budget in [`benchmarks/budget.ts`](benchmarks/budget.ts). It also installs that build with `install.sh`.
+CI runs the type check, the tests and a build on macOS and Linux for every push and pull request. It also installs that build with `install.sh`.
 
 ### Release
 

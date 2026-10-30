@@ -174,7 +174,7 @@ lines.push(
 console.log(lines.join("\n"));
 rmSync(home, { recursive: true, force: true });
 
-// --check fails the run when a wait is over its budget. CI uses it.
+// --check fails the run when a wait is over its budget. `bun run bench:check` uses it.
 if (process.argv.includes("--check")) {
   const problems = overBudget({ launch: readyBinary.internal?.p90 ?? null, resume: resumeBinary.internal?.p90 ?? null });
   for (const problem of problems) console.error(`Over budget: ${problem}`);

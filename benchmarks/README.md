@@ -48,7 +48,7 @@ A larger session, 610 KB and 120 prompts with long tool results, loads in about 
 
 ## Budgets
 
-CI runs `bun benchmarks/run.ts --check` on macOS and Linux. It fails if the p90 inside the process isn't under these limits, which are set in [`budget.ts`](budget.ts):
+`bun run bench:check` builds clue and fails if the p90 inside the process isn't under these limits, which are set in [`budget.ts`](budget.ts). Run it on your own machine. CI doesn't run it, because CI machines are too slow for these limits.
 
 | Wait | Budget |
 |---|---|
