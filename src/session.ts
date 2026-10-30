@@ -52,9 +52,10 @@ export type SessionRecord =
   | { t: "session"; id: string; cwd: string; created: number; version: string }
   | { t: "message"; message: MessageParam }
   | { t: "tool"; tool: ToolRecord }
-  | { t: "turn"; turn: TurnRecord };
+  | { t: "turn"; turn: TurnRecord }
+  | { t: "name"; name: string };
 
-export type SessionMeta = { id: string; cwd: string; title: string; updated: number; prompts: number };
+export type SessionMeta = { id: string; cwd: string; name: string | null; title: string; updated: number; prompts: number };
 
 // The real path of a folder, so a symlink or /var vs /private/var maps to one project.
 export function realFolder(cwd: string) {
@@ -140,12 +141,16 @@ export class Session {
       if (record.message.role === "user" && typeof record.message.content === "string") {
         this.prompts += 1;
         this.title ||= record.message.content;
+      } else if (record.message.role === "user" && !this.title) {
+        // The first prompt of a session sits in blocks, after the context.
+        const blocks = record.message.content as Anthropic.Beta.Messages.BetaContentBlockParam[];
+        this.title = blocks.flatMap((block) => (block.type === "text" && !block.text.startsWith("<context>") ? [block.text] : [])).join(" ");
       }
     } else if (record.t === "tool") this.tools.set(record.tool.id, record.tool);
     else if (record.t === "turn") {
       this.turns.push(record.turn);
       this.title ||= record.turn.prompt;
-    }
+    } else if (record.t === "name") this.name = record.name;
   }
 
   private sink: Bun.FileSink | null = null;
@@ -178,11 +183,27 @@ export class Session {
   append(record: SessionRecord) {
     this.write(record);
     this.apply(record);
-    if (record.t === "turn" && !this.ephemeral) this.touchIndex();
+    if (record.t === "turn" && !this.ephemeral) this.touchIndex(record.turn.prompt);
+    if (record.t === "name" && !this.ephemeral) this.touchIndex();
+    if (this.heldName && record.t === "message") {
+      this.heldName = false;
+      this.append({ t: "name", name: this.name! });
+    }
   }
 
   appendMessage(message: MessageParam) {
     this.append({ t: "message", message });
+  }
+
+  // A unique alias for the id, within this session's folder.
+  name: string | null = null;
+  private heldName = false;
+
+  // A session with no messages has no file yet, so its name waits for the first one.
+  rename(name: string) {
+    if (this.ephemeral || existsSync(this.file)) return this.append({ t: "name", name });
+    this.name = name;
+    this.heldName = true;
   }
 
   get isEmpty() {
@@ -202,15 +223,15 @@ export class Session {
     if (results.length) this.appendMessage({ role: "user", content: results });
   }
 
-  private touchIndex() {
-    const last = this.turns.at(-1);
+  private touchIndex(prompt = "") {
     indexSession({
       id: this.id,
       cwd: this.cwd,
+      name: this.name,
       title: this.title.replace(/\s+/g, " ").slice(0, 160),
       updated: Date.now(),
       prompts: this.turns.length,
-      prompt: last?.prompt ?? "",
+      prompt,
     });
   }
 }
@@ -228,7 +249,11 @@ function db() {
   database.run("PRAGMA journal_mode = WAL");
   database.run("PRAGMA busy_timeout = 2000");
   database.run(`CREATE TABLE IF NOT EXISTS sessions (
-    id TEXT PRIMARY KEY, cwd TEXT NOT NULL, title TEXT NOT NULL, updated INTEGER NOT NULL, prompts INTEGER NOT NULL)`);
+    id TEXT PRIMARY KEY, cwd TEXT NOT NULL, title TEXT NOT NULL, updated INTEGER NOT NULL, prompts INTEGER NOT NULL, name TEXT)`);
+  // An index from before names has no such column. Adding it to a newer one fails, harmlessly.
+  try {
+    database.run("ALTER TABLE sessions ADD COLUMN name TEXT");
+  } catch {}
   database.run("CREATE VIRTUAL TABLE IF NOT EXISTS prompts USING fts5(session_id UNINDEXED, text)");
   return database;
 }
@@ -237,8 +262,8 @@ function indexSession(meta: SessionMeta & { prompt: string }) {
   try {
     const index = db();
     index
-      .query("INSERT INTO sessions (id, cwd, title, updated, prompts) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated = excluded.updated, prompts = excluded.prompts")
-      .run(meta.id, meta.cwd, meta.title, meta.updated, meta.prompts);
+      .query("INSERT INTO sessions (id, cwd, title, updated, prompts, name) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated = excluded.updated, prompts = excluded.prompts, name = excluded.name")
+      .run(meta.id, meta.cwd, meta.title, meta.updated, meta.prompts, meta.name);
     if (meta.prompt) index.query("INSERT INTO prompts (session_id, text) VALUES (?, ?)").run(meta.id, meta.prompt);
   } catch {
     // The index is a convenience. A locked or broken index never blocks a session.
@@ -247,19 +272,21 @@ function indexSession(meta: SessionMeta & { prompt: string }) {
 
 // Every session ever saved, newest first. With a query, only sessions whose
 // folder, title or prompts match it.
+const META = "id, cwd, name, title, updated, prompts";
+
 export function listSessions(query = ""): SessionMeta[] {
   let rows: SessionMeta[] = [];
   try {
     const words = query.trim().split(/\s+/).filter(Boolean);
     if (words.length === 0) {
-      rows = db().query("SELECT id, cwd, title, updated, prompts FROM sessions ORDER BY updated DESC").all() as SessionMeta[];
+      rows = db().query(`SELECT ${META} FROM sessions ORDER BY updated DESC`).all() as SessionMeta[];
     } else {
       const match = words.map((word) => `"${word.replace(/"/g, "")}"*`).join(" ");
       const like = `%${query.trim()}%`;
       rows = db()
         .query(
-          `SELECT id, cwd, title, updated, prompts FROM sessions
-           WHERE cwd LIKE ?1 OR title LIKE ?1 OR id IN (SELECT session_id FROM prompts WHERE prompts MATCH ?2)
+          `SELECT ${META} FROM sessions
+           WHERE cwd LIKE ?1 OR title LIKE ?1 OR name LIKE ?1 OR id IN (SELECT session_id FROM prompts WHERE prompts MATCH ?2)
            ORDER BY updated DESC`,
         )
         .all(like, match) as SessionMeta[];
@@ -268,6 +295,38 @@ export function listSessions(query = ""): SessionMeta[] {
     return [];
   }
   return rows.filter((meta) => existsSync(sessionFile(meta)));
+}
+
+const VALID_NAME = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,63}$/;
+
+// Sessions with this name, in any folder. Case doesn't matter.
+function sessionsNamed(name: string) {
+  try {
+    const rows = db().query(`SELECT ${META} FROM sessions WHERE name = ?1 COLLATE NOCASE`).all(name) as SessionMeta[];
+    return rows.filter((meta) => existsSync(sessionFile(meta)));
+  } catch {
+    return [];
+  }
+}
+
+// Why a session in this folder can't take this name, or null when it can.
+export function nameProblem(cwd: string, name: string, self?: string) {
+  if (!VALID_NAME.test(name)) return "A session name uses letters, digits, ., _ and -, up to 64 characters.";
+  if (!sessionsNamed(name).some((meta) => meta.cwd === cwd && meta.id !== self)) return null;
+  return `A session named ${name} already exists here. Resume it with clue -r ${name}.`;
+}
+
+// The sessions an id or name points at: an exact id, then a name, here before elsewhere,
+// then an id prefix. More than one result means the name is used in several other folders.
+export function resolveSession(reference: string, cwd: string) {
+  const all = listSessions();
+  const exact = all.find((meta) => meta.id === reference);
+  if (exact) return [exact];
+  const named = sessionsNamed(reference);
+  const here = named.filter((meta) => meta.cwd === cwd);
+  if (here.length) return here;
+  if (named.length) return named;
+  return all.filter((meta) => meta.id.startsWith(reference)).slice(0, 1);
 }
 
 export const sessionFile = (meta: { id: string; cwd: string }) =>

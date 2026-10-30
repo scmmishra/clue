@@ -267,9 +267,13 @@ clue saves each conversation as an append-only file under `~/.clue/sessions/<pro
 | --- | --- |
 | `clue -c` | Continues the latest session in the current folder. |
 | `clue -r` | Lists every past session to pick one. Sessions from the current folder come first. Type to search folders, titles and every prompt. |
-| `clue -r <id>` | Continues one session by its ID. |
+| `clue -r <id or name>` | Continues one session by its ID or name. |
+| `clue --name <name>` | Starts a new session with a name. |
+| `/rename <name>` | Names or renames this session. `/rename` alone shows the name. |
 | `/resume` | Opens the same list from inside a session. |
 | `clue ask --resume <id> ...` | Continues a session from a script. |
+
+Every session has an ID that never changes. A name is an alias for it, with letters, digits, `.`, `_` and `-`, up to 64 characters. A name is unique within a folder, and `Auth` and `auth` count as the same name. `clue -r <name>` looks in the current folder first, then in others. If several other folders use the name, clue lists them and stops. `clue ask --resume` takes only an ID, so a rename can't change what a script resumes.
 
 Each session belongs to the folder it started in. You can resume any session from anywhere, and clue always continues it in its own folder, so file paths and commands point at the same project. If that folder no longer exists, clue doesn't resume the session and tells you which folder is missing.
 

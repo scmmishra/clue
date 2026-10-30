@@ -4,6 +4,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- Sessions can have a name. `clue --name <name>` starts a named session, `/rename` changes the name, and `clue -r <name>` resumes it. The ID stays, and `clue ask --resume` still takes only an ID.
 - In a multiple-choice question, a typed answer now adds to the picked options instead of replacing them.
 - The prompt bar, the tool dot and the spinner are blue, and secondary text is one even grey. Prompts are no longer bold.
 - Copying a sent prompt no longer picks up the `┃` bar or extra line breaks. The bar shows on its first line only, and the terminal wraps the rest.

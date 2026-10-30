@@ -11,7 +11,7 @@ import { mcpCommand } from "./commands/mcp";
 import { EFFORTS, PERMISSION_MODES, type Effort, type PermissionMode, type Settings } from "./config";
 import { McpManager } from "./mcp/manager";
 import { Permissions } from "./permissions";
-import { Session, sessionFile, type PromptImage, type TurnRecord } from "./session";
+import { nameProblem, Session, sessionFile, type PromptImage, type TurnRecord } from "./session";
 import { encodeImage } from "./tools/files";
 import { stopAllProcesses, warmShellEnv } from "./tools/shell";
 import { discoverSkills, type Skill } from "./tools/skills";
@@ -32,6 +32,7 @@ const COMMANDS: Command[] = [
   { name: "effort", description: "low, medium, high, xhigh or max" },
   { name: "permissions", description: "ask, auto or full-access" },
   { name: "resume", description: "pick a past session" },
+  { name: "rename", description: "name this session" },
   { name: "new", description: "start a fresh session" },
   { name: "mcp", description: "manage MCP servers" },
   { name: "paste", description: "attach the image on the clipboard" },
@@ -158,7 +159,7 @@ export class App {
   private printResumed() {
     const { lines, hidden } = replay(this.session, Math.max(6, rows() - 8));
     this.print([
-      `  ${style.faint(`session ${this.session.id} · ${this.session.turns.length} ${this.session.turns.length === 1 ? "prompt" : "prompts"}${hidden ? " · earlier turns hidden, ctrl+o shows all" : ""}`)}`,
+      `  ${style.faint(`session ${this.session.name ?? this.session.id} · ${this.session.turns.length} ${this.session.turns.length === 1 ? "prompt" : "prompts"}${hidden ? " · earlier turns hidden, ctrl+o shows all" : ""}`)}`,
       "",
       ...lines,
     ]);
@@ -378,7 +379,7 @@ export class App {
 
   private openDetail() {
     this.screen.suspend();
-    const pager = new Pager(() => detailLines(this.session), `clue  session ${this.session.id}`, () => {
+    const pager = new Pager(() => detailLines(this.session), `clue  session ${this.session.name ?? this.session.id}`, () => {
       this.pager = null;
       clearInterval(timer);
       this.screen.resume();
@@ -444,6 +445,14 @@ export class App {
         void this.warmResumedCache();
         return;
       }
+      case "rename": {
+        const name = args.join(" ");
+        if (!name) return say(this.session.name ? `This session is ${style.bold(this.session.name)}.` : style.muted("This session has no name. Set one with /rename <name>."));
+        const problem = nameProblem(this.cwd, name, this.session.id);
+        if (problem) return say(style.red(problem));
+        this.session.rename(name);
+        return say(`Session is now ${style.bold(name)}.`);
+      }
       case "new":
         this.load(Session.create(this.cwd));
         this.mcp.startAll();
@@ -484,7 +493,7 @@ export class App {
     this.keyboard.stop();
     stopAllProcesses();
     void this.mcp?.closeAll();
-    if (!quiet && !this.session.isEmpty) process.stdout.write(`${style.faint(`  Resume this session with: clue -r ${this.session.id}`)}\n`);
+    if (!quiet && !this.session.isEmpty) process.stdout.write(`${style.faint(`  Resume this session with: clue -r ${this.session.name ?? this.session.id}`)}\n`);
     process.exit(code);
   }
 }

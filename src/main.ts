@@ -4,14 +4,14 @@
 
 import { existsSync } from "node:fs";
 import { loadSettings, PERMISSION_MODES, VERSION, EFFORTS, type Effort, type PermissionMode, type Settings } from "./config";
-import { Session, findSession, latestSessionFile, sessionFile } from "./session";
+import { Session, findSession, latestSessionFile, nameProblem, realFolder, resolveSession, sessionFile, type SessionMeta } from "./session";
 
 const HELP = `clue ${VERSION}: a coding agent for the terminal
 
 Usage
   clue                       start a session in this folder
   clue -c                    continue the latest session in this folder
-  clue -r [id]               pick any past session, or resume one by id
+  clue -r [id|name]          pick any past session, or resume one by id or name
   clue ask [prompt]          one request; prompt from arguments or stdin
   clue login | logout        save or remove Claude credentials
   clue mcp <command>         manage MCP servers (list, add, remove, login, ...)
@@ -21,6 +21,7 @@ Options
   --effort <level>           low, medium, high, xhigh or max
   --permission-mode <mode>   ask, auto or full-access
   --full-access              shorthand for --permission-mode full-access
+  --name <name>              name a new session, to resume it with clue -r <name>
   --json                     with ask: print a JSON result
   --resume <id>              with ask: continue a saved session
   -v, --version              print the version
@@ -31,7 +32,7 @@ type Parsed = { command: string; positional: string[]; flags: Record<string, str
 function parse(argv: string[]): Parsed {
   const flags: Record<string, string | boolean> = {};
   const positional: string[] = [];
-  const takesValue = new Set(["model", "effort", "permission-mode", "resume"]);
+  const takesValue = new Set(["model", "effort", "permission-mode", "resume", "name"]);
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
     // `clue mcp` has its own arguments, such as `--project` and `--`. They reach it untouched.
@@ -81,10 +82,23 @@ function settingsFrom(flags: Parsed["flags"]): Settings {
   return loadSettings(overrides);
 }
 
-// Loads a session by id from any folder. The session runs in its own folder.
+// Loads a session by id from any folder. Scripts use this: an id never changes.
 function sessionById(id: string): Session {
   const meta = findSession(id);
   if (!meta) fail(`no session with id ${id}. Run clue -r to pick one.`);
+  return openSession(meta);
+}
+
+// Loads a session by id or name, for a person at the prompt.
+function sessionByReference(reference: string): Session {
+  const matches = resolveSession(reference, realFolder(process.cwd()));
+  if (matches.length === 0) fail(`no session named ${reference} or with that id. Run clue -r to pick one.`);
+  if (matches.length > 1) fail(`several sessions are named ${reference}. Resume one by id:\n${matches.map((meta) => `  ${meta.id}  ${meta.cwd}`).join("\n")}`);
+  return openSession(matches[0]);
+}
+
+// A session runs in its own folder, wherever it was resumed from.
+function openSession(meta: SessionMeta): Session {
   if (!existsSync(meta.cwd)) fail(`session ${meta.id} belongs to ${meta.cwd}, which no longer exists.`);
   const session = Session.load(sessionFile(meta));
   if (!session) fail(`session ${meta.id} could not be read.`);
@@ -115,6 +129,14 @@ async function main() {
     process.exit(0);
   }
 
+  if (flags.name !== undefined) {
+    if (command === "ask") fail("--name doesn't work with clue ask.");
+    if (flags.name === true) fail("--name needs a name.");
+    if (flags.continue || flags.pick || flags.resume) fail("--name only works for a new session. Use /rename after resuming.");
+    const problem = nameProblem(realFolder(process.cwd()), String(flags.name));
+    if (problem) fail(problem);
+  }
+
   const settings = settingsFrom(flags);
   const { resolveModel } = await import("./agent/models");
   settings.model = resolveModel(settings.model);
@@ -133,7 +155,7 @@ async function main() {
   let session: Session | null = null;
   let resumed = false;
   if (typeof flags.resume === "string") {
-    session = sessionById(flags.resume);
+    session = sessionByReference(flags.resume);
     resumed = true;
   } else if (flags.continue) {
     const file = latestSessionFile(process.cwd());
@@ -156,6 +178,7 @@ async function main() {
     resumed = true;
   }
   session ??= Session.create(process.cwd());
+  if (typeof flags.name === "string") session.rename(flags.name);
   if (session.cwd !== process.cwd()) process.chdir(session.cwd);
   const app = new App({ settings, session, resumed, benchReady: process.env.CLUE_BENCH_READY === "1" });
   await app.start();

@@ -310,3 +310,44 @@ test("nothing typed means tab queues nothing", async () => {
   expect(clue.screen()).not.toContain("Queued:");
   expect(existsSync(clue.cwd)).toBe(true);
 }, 25_000);
+
+test("/rename names the session, and the exit hint uses the name", async () => {
+  const clue = await startClue();
+  await clue.type(`/rename auth-fix${ENTER}`);
+  await clue.seen("Session is now auth-fix.");
+  await clue.type("hello");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  await clue.type(CTRL_D);
+  await clue.seen("Resume this session with: clue -r auth-fix");
+}, 25_000);
+
+test("/rename with no name shows the current one", async () => {
+  const clue = await startClue();
+  await clue.type(`/rename${ENTER}`);
+  await clue.seen("This session has no name.");
+  await clue.type(`/rename auth-fix${ENTER}`);
+  await clue.seen("Session is now auth-fix.");
+  await clue.type(`/rename${ENTER}`);
+  await clue.seen("This session is auth-fix.");
+}, 25_000);
+
+test("/rename refuses a bad name and keeps the current one", async () => {
+  const clue = await startClue();
+  await clue.type(`/rename good-name${ENTER}`);
+  await clue.seen("Session is now good-name.");
+  await clue.type(`/rename not valid${ENTER}`);
+  await clue.seen("A session name");
+  await clue.type(`/rename${ENTER}`);
+  await clue.seen("This session is good-name.");
+}, 25_000);
+
+test("/new clears the name", async () => {
+  const clue = await startClue();
+  await clue.type(`/rename first-name${ENTER}`);
+  await clue.seen("Session is now first-name.");
+  await clue.type(`/new${ENTER}`);
+  await clue.seen("New session.");
+  await clue.type(`/rename${ENTER}`);
+  await clue.seen("This session has no name.");
+}, 25_000);

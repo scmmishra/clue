@@ -47,7 +47,7 @@ export function pickSession(screen: Screen, keyboard: Keyboard, cwd: string): Pr
         const folder = pad(width(path) > folderWidth ? Bun.sliceAnsi(path, -folderWidth, undefined, "…") : path, folderWidth);
         const right = `${pad(ago(meta.updated), 9)} ${String(meta.prompts).padStart(4)}`;
         const titleWidth = Math.max(10, max - folderWidth - width(right) - 8);
-        const title = pad(truncate(meta.title || "(empty)", titleWidth), titleWidth);
+        const title = pad(truncate(meta.name ? `${meta.name} · ${meta.title}` : meta.title || "(empty)", titleWidth), titleWidth);
         const line = `${active ? style.accent("›") : " "} ${active ? style.bold(folder) : style.muted(folder)}  ${active ? title : style.muted(title)}  ${style.faint(right)}`;
         lines.push(` ${line}`);
       }
