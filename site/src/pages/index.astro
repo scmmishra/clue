@@ -1,16 +1,184 @@
 ---
+import geistMono from '@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?url';
+import { version } from '../../../package.json';
+import '../styles/global.css';
+
+const repo = 'https://github.com/scmmishra/clue';
+const install = 'curl -fsSL https://raw.githubusercontent.com/scmmishra/clue/main/install.sh | bash';
+const title = 'clue, a fast and minimal coding agent for the terminal';
+const description = "A fast and minimal coding agent, for the terminal. clue runs on Claude's API.";
+
+// Medians from benchmarks/README.md.
+const waits = [
+	{ label: 'Start to a ready prompt', time: '7.3 ms' },
+	{ label: 'Resume to your last session', time: '8.7 ms' },
+	{ label: "First token, clue's time", time: '5.2 ms' },
+];
 ---
 
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="theme-color" content="#0e0f12" />
 		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
+		<meta name="color-scheme" content="dark" />
+		<meta name="description" content={description} />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:type" content="website" />
+		<link rel="preload" href={geistMono} as="font" type="font/woff2" crossorigin />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<title>{title}</title>
 	</head>
 	<body>
-		<h1>Astro</h1>
+		<div class="page">
+			<header class="top">
+				<a class="name" href="/">clue</a>
+				<nav aria-label="Main">
+					<a href={`${repo}/blob/main/README.md`}>docs</a>
+					<a href={`${repo}/blob/main/CHANGELOG.md`}>changelog</a>
+					<a href={repo}>source</a>
+				</nav>
+			</header>
+
+			<main>
+				<div class="copy-column">
+					<h1>A fast and minimal coding agent, for the terminal</h1>
+
+					<div class="install">
+						<code tabindex="0" data-command><span class="prompt">$</span> {install}</code>
+					</div>
+					<div class="meta">
+						<p>v{version} (<a href={`${repo}/releases/latest`}>notes</a>), macOS and Linux, status: early</p>
+						<button class="copy" type="button" data-copy={install}>
+							<span aria-live="polite">copy</span>
+							<kbd aria-hidden="true">[c]</kbd>
+						</button>
+					</div>
+
+					<section class="waits">
+						<h2>Three waits, measured</h2>
+						<dl>
+							{
+								waits.map(({ label, time }) => (
+									<div>
+										<dt>{label}</dt>
+										<dd>{time}</dd>
+									</div>
+								))
+							}
+						</dl>
+						<p class="note">
+							Medians on one Apple silicon Mac. The first-token figure uses a local stand-in for the API, so it
+							shows only clue's own time. <a href={`${repo}/blob/main/benchmarks/README.md`}>benchmarks</a>
+						</p>
+					</section>
+
+					<section>
+						<h2>Ready before it's loaded</h2>
+						<p>clue shows the prompt first. The SDK, MCP servers and skills load while you type.</p>
+					</section>
+
+					<section>
+						<h2>Resume without the wait</h2>
+						<p>
+							<code>clue -c</code> prints only the last screen of the conversation. While you type, clue sends the
+							history to Claude ahead of your message.
+						</p>
+					</section>
+
+					<section>
+						<h2>A prompt Claude has already seen</h2>
+						<p>The system prompt and tool list are the same bytes in every session, so Claude caches them across sessions.</p>
+					</section>
+
+					<section>
+						<h2>A quiet transcript</h2>
+						<p>Each run of tool calls shows as a short tree. Output, diffs and errors wait behind <code>ctrl+o</code>.</p>
+					</section>
+
+					<section>
+						<h2>Three permission modes</h2>
+						<p><code>auto</code> runs routine work and has risky actions reviewed first. <code>ask</code> asks before each action. <code>full-access</code> runs every action without checks.</p>
+					</section>
+
+					<section>
+						<h2>Your instructions</h2>
+						<p>clue reads <code>AGENTS.md</code> and <code>CLAUDE.md</code> files. Projects set up for Claude Code work as they are.</p>
+					</section>
+				</div>
+
+				<figure class="window">
+					<figcaption class="bar">
+						<span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+						<span>~/code/app</span>
+					</figcaption>
+					<pre class="terminal" tabindex="0" aria-label="A clue session that fixes a flaky spec"><span class="dim">$</span> clue
+<span class="dim">clue {version} · /help for commands</span>
+
+<span class="mark">┃</span> the conversation spec is flaky, fix it
+
+  I'll run the spec a few times to see how it fails.
+
+<span class="mark">●</span> <span class="soft">3 tool calls · 1 command · 1 read · 1 search</span>
+<span class="dim">├</span> <span class="soft">Ran bundle exec rspec spec/models/conversation_spec.rb</span>
+<span class="dim">├</span> <span class="soft">Read spec/models/conversation_spec.rb  180 lines</span>
+<span class="dim">└</span> <span class="soft">Searched "last_activity_at"  12 matches</span>
+
+  The spec compares `last_activity_at` with `Time.now`. The two
+  timestamps can land in different seconds. I'll freeze time in that
+  example.
+
+<span class="mark">●</span> <span class="soft">2 tool calls · 1 edit · 1 command</span>
+<span class="dim">├</span> <span class="soft">Edited spec/models/conversation_spec.rb</span>  <span class="add">+3</span> <span class="remove">−1</span>
+<span class="dim">└</span> <span class="soft">Ran bundle exec rspec spec/models/conversation_spec.rb</span>
+
+  Fixed. The example now freezes time, and 5 runs in a row pass.
+
+  <span class="dim">41s · $0.21 · 48k in · 1.2k out</span>
+
+<span class="mark">┃</span>
+
+<span class="dim">auto · opus 5.5 · medium                               ~/code/app (main)</span></pre>
+				</figure>
+			</main>
+
+			<footer class="foot">
+				<p>Apache-2.0</p>
+				<p>Builds on <a href="https://pi.dev">pi</a> and <a href="https://github.com/vercel-labs/fx">fx</a>.</p>
+			</footer>
+		</div>
+
+		<script>
+			const COPIED_MS = 1500;
+			const button = document.querySelector<HTMLButtonElement>('[data-copy]')!;
+			const label = button.querySelector('span')!;
+			const command = document.querySelector<HTMLElement>('[data-command]')!;
+			let reset = 0;
+
+			async function copy() {
+				try {
+					await navigator.clipboard.writeText(button.dataset.copy!);
+				} catch {
+					// The browser refused. Select the command so that the reader can copy it by hand.
+					getSelection()?.selectAllChildren(command);
+					return;
+				}
+				label.textContent = 'copied';
+				button.dataset.copied = '';
+				clearTimeout(reset);
+				reset = window.setTimeout(() => {
+					label.textContent = 'copy';
+					delete button.dataset.copied;
+				}, COPIED_MS);
+			}
+
+			button.addEventListener('click', copy);
+			addEventListener('keydown', (event) => {
+				if (event.key !== 'c' || event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+				copy();
+			});
+		</script>
 	</body>
 </html>

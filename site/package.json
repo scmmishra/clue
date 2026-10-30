@@ -12,6 +12,7 @@
     "astro": "astro"
   },
   "dependencies": {
+    "@fontsource-variable/geist-mono": "^5.3.0",
     "astro": "^7.4.4"
   }
 }
