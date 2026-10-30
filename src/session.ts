@@ -8,6 +8,7 @@ import { ensureDir, paths, VERSION } from "./config";
 // messages, so a resume replays them byte for byte.
 
 export type MessageParam = Anthropic.Beta.Messages.BetaMessageParam;
+export type PromptImage = Anthropic.Beta.Messages.BetaImageBlockParam;
 
 export type Usage = {
   input: number;

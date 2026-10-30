@@ -8,14 +8,14 @@ export const requests: Body[] = [];
 // MOCK_DELAY_MS spaces the events out, so tests can watch the live view.
 const DELAY = Number(process.env.MOCK_DELAY_MS ?? 0);
 
-function sse(events: Record<string, unknown>[]) {
+function sse(events: Record<string, unknown>[], delay: number) {
   const encode = (event: Record<string, unknown>) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
-  if (!DELAY) return new Response(events.map(encode).join(""), { headers: { "content-type": "text/event-stream" } });
+  if (!delay) return new Response(events.map(encode).join(""), { headers: { "content-type": "text/event-stream" } });
   const stream = new ReadableStream({
     async start(controller) {
       for (const event of events) {
         controller.enqueue(new TextEncoder().encode(encode(event)));
-        await Bun.sleep(DELAY);
+        await Bun.sleep(delay);
       }
       controller.close();
     },
@@ -38,7 +38,7 @@ function streamText(text: string, index: number) {
   ];
 }
 
-export function startMockApi(port = 0) {
+export function startMockApi(port = 0, delay = DELAY) {
   return Bun.serve({
     port,
     async fetch(request) {
@@ -69,7 +69,7 @@ export function startMockApi(port = 0) {
           { type: "content_block_stop", index: 2 },
           { type: "message_delta", delta: { stop_reason: "tool_use", stop_sequence: null }, usage: { output_tokens: 40 } },
           { type: "message_stop" },
-        ]);
+        ], delay);
       }
       const answer = "## Done\n\nThe package is called **clue**. It uses:\n\n- `@anthropic-ai/sdk`\n- `@modelcontextprotocol/sdk`\n\n| Field | Value |\n|---|---|\n| name | clue |\n| version | 0.1.0 |\n";
       return sse([
@@ -77,7 +77,7 @@ export function startMockApi(port = 0) {
         ...streamText(answer, 0),
         { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 60 } },
         { type: "message_stop" },
-      ]);
+      ], delay);
     },
   });
 }

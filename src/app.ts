@@ -1,4 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 import { Agent, type AgentEvents } from "./agent/loop";
 import { msSince, now, uptimeMs } from "./clock";
 import { describeError } from "./errors";
@@ -9,15 +11,18 @@ import { mcpCommand } from "./commands/mcp";
 import { EFFORTS, PERMISSION_MODES, type Effort, type PermissionMode, type Settings } from "./config";
 import { McpManager } from "./mcp/manager";
 import { Permissions } from "./permissions";
-import { Session, sessionFile, type TurnRecord } from "./session";
+import { Session, sessionFile, type PromptImage, type TurnRecord } from "./session";
+import { encodeImage } from "./tools/files";
 import { stopAllProcesses, warmShellEnv } from "./tools/shell";
 import { discoverSkills, type Skill } from "./tools/skills";
 import type { Question } from "./tools/types";
 import { duration, homePath, money, rows, style } from "./ui/ansi";
 import { Editor, type Command } from "./ui/editor";
+import { clipboardImage, clipboardSupported } from "./ui/clipboard";
+import { findImagePaths } from "./ui/paste";
 import { pickSession } from "./ui/picker";
 import { detailLines, Pager, replay } from "./ui/replay";
-import { Keyboard, Screen, type Key } from "./ui/screen";
+import { Keyboard, Screen, type Key, type LiveFrame } from "./ui/screen";
 import { turnStatus } from "./ui/status";
 import { BAR, header, promptLines, statusLine, TurnView } from "./ui/turn";
 
@@ -29,11 +34,14 @@ const COMMANDS: Command[] = [
   { name: "resume", description: "pick a past session" },
   { name: "new", description: "start a fresh session" },
   { name: "mcp", description: "manage MCP servers" },
+  { name: "paste", description: "attach the image on the clipboard" },
   { name: "cost", description: "tokens and cost of this session" },
   { name: "exit", description: "quit clue" },
 ];
 
 const DOUBLE_PRESS_MS = 1500;
+// A slash command's name has no second slash, so a pasted path like /tmp/a.png is a prompt.
+const SLASH_COMMAND = /^\/[\w-]*(\s|$)/;
 
 export type AppOptions = {
   settings: Settings;
@@ -60,6 +68,8 @@ export class App {
   private warming: AbortController | null = null;
   private settings: Settings;
   private branch: string | null = null;
+  // The message waiting for the turn to end. Only one can wait.
+  private queued: { text: string; images: PromptImage[] } | null = null;
 
   constructor(private options: AppOptions) {
     this.settings = options.settings;
@@ -172,12 +182,76 @@ export class App {
     if (waiting.length) this.print([`  ${style.orange(`This project has MCP servers that need approval: ${waiting.join(", ")}.`)} ${style.muted("Run /mcp approve --all to start them.")}`, ""]);
   }
 
+  // The input, with the queued message above it.
+  private composer = (): LiveFrame => {
+    const frame = this.editor.frame(this.hint ? style.faint(this.hint) : statusLine(this.permissions.mode, this.settings.model, this.settings.effort, this.cwd, this.branch));
+    if (!this.queued) return frame;
+    const preview = this.queued.text.replace(/\s+/g, " ").trim();
+    return {
+      lines: [`  ${style.muted(`Queued: ${preview}`)}  ${style.faint("↑ edit")}`, ...frame.lines],
+      cursor: frame.cursor && { row: frame.cursor.row + 1, col: frame.cursor.col },
+    };
+  };
+
   // Waiting for input.
   private idle() {
-    this.screen.setRenderer(() =>
-      this.editor.frame(this.hint ? style.faint(this.hint) : statusLine(this.permissions.mode, this.settings.model, this.settings.effort, this.cwd, this.branch)),
-    );
+    this.screen.setRenderer(this.composer);
     this.keyboard.set((key) => this.onIdleKey(key));
+  }
+
+  // Pasted text, with image paths that exist turned into attachments. Nothing pasted
+  // means the clipboard held no text, which is how an image can arrive.
+  private async paste(text: string) {
+    if (!text.trim()) return this.pasteClipboard();
+    const found = await Promise.all(
+      findImagePaths(text).map(async (token) => {
+        const block = await this.imageAt(token.path);
+        return block ? [{ start: token.start, end: token.end, image: block }] : [];
+      }),
+    );
+    this.editor.paste(text, found.flat());
+    this.screen.refresh();
+  }
+
+  private async imageAt(path: string) {
+    const file = resolve(this.cwd, path.replace(/^~(?=\/)/, homedir()));
+    try {
+      const stat = statSync(file, { throwIfNoEntry: false });
+      return stat?.isFile() ? (await encodeImage(file, stat.size)).block : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async pasteClipboard() {
+    if (!clipboardSupported) return this.notice("Pasting an image from the clipboard works on macOS. Paste its file path instead.");
+    const image = await clipboardImage();
+    if (!image) return this.notice("No image on the clipboard.");
+    this.editor.attach(image);
+    this.screen.refresh();
+  }
+
+  private notice(text: string) {
+    this.print([`  ${style.muted(text)}`, ""]);
+  }
+
+  private queueDraft() {
+    if (!this.editor.text.trim()) return;
+    if (this.queued) {
+      this.hint = "One message is already queued. Press ↑ to edit it.";
+      return this.screen.refresh();
+    }
+    this.queued = { text: this.editor.text, images: this.editor.images() };
+    this.editor.remember(this.editor.text);
+    this.editor.clear();
+    this.screen.refresh();
+  }
+
+  private unqueue() {
+    if (!this.queued) return;
+    this.editor.restore(this.queued.text, this.queued.images);
+    this.queued = null;
+    this.screen.refresh();
   }
 
   private onIdleKey(key: Key) {
@@ -203,30 +277,33 @@ export class App {
       process.stdout.write("\x1b[2J\x1b[H");
       return this.screen.flush();
     }
+    if (key.name === "paste") return void this.paste(key.text ?? "");
+    if (key.ctrl && key.name === "v") return void this.pasteClipboard();
     const result = this.editor.handle(key);
     if (result === "submit") {
       const text = this.editor.text;
+      const images = this.editor.images();
       this.editor.remember(text);
       this.editor.clear();
-      void this.submit(text);
+      void this.submit(text, images);
       return;
     }
     this.screen.refresh();
   }
 
-  private async submit(text: string) {
+  private async submit(text: string, images: PromptImage[] = []) {
     const trimmed = text.trim();
-    if (trimmed.startsWith("/") && !trimmed.includes("\n")) {
+    if (SLASH_COMMAND.test(trimmed) && !trimmed.includes("\n")) {
       this.screen.setRenderer(() => ({ lines: [] }));
       this.print([`${style.accent(BAR)}${style.muted(trimmed)}`, ""]);
       await this.command(trimmed);
       this.idle();
       return;
     }
-    await this.runTurn(text);
+    await this.runTurn(text, images);
   }
 
-  private async runTurn(prompt: string) {
+  private async runTurn(prompt: string, images: PromptImage[]) {
     this.warming?.abort();
     this.screen.setRenderer(() => ({ lines: [] }));
     this.print([...promptLines(prompt), ""]);
@@ -238,14 +315,14 @@ export class App {
       this.screen.status("error");
       return this.idle();
     }
-    const view = new TurnView(this.screen);
+    const view = new TurnView(this.screen, this.composer);
     this.view = view;
     this.turn = new AbortController();
     this.keyboard.set((key) => this.onTurnKey(key));
     view.start();
     let turn: TurnRecord | null = null;
     try {
-      turn = await this.agent.runTurn(prompt, this.turn.signal);
+      turn = await this.agent.runTurn(prompt, this.turn.signal, images);
     } catch (error) {
       view.notice(describeError(error), "error");
     }
@@ -258,6 +335,13 @@ export class App {
     this.screen.status(turnStatus(turn), view.unattendedMs);
     this.view = null;
     this.turn = null;
+    // A turn that ended early leaves the queued message for the user to decide on.
+    const next = this.queued;
+    if (next && turn && turn.stop !== "interrupted") {
+      this.queued = null;
+      return void this.submit(next.text, next.images);
+    }
+    this.unqueue();
     this.idle();
   }
 
@@ -273,7 +357,15 @@ export class App {
     if (key.name === "escape") {
       if (Date.now() - this.lastEscape < DOUBLE_PRESS_MS) return interrupt();
       this.lastEscape = Date.now();
+      return;
     }
+    this.hint = "";
+    if (key.name === "paste") return void this.paste(key.text ?? "");
+    if (key.ctrl && key.name === "v") return void this.pasteClipboard();
+    if (key.name === "up" && this.queued) return this.unqueue();
+    if (key.name === "tab" && !this.editor.hasCompletions) return this.queueDraft();
+    if (this.editor.handle(key) === "submit") return this.queueDraft();
+    this.screen.refresh();
   }
 
   private openDetail() {
@@ -297,7 +389,8 @@ export class App {
         this.print([
           ...COMMANDS.map((command) => `  ${style.accent(`/${command.name}`.padEnd(14))}${style.muted(command.description)}`),
           "",
-          `  ${style.muted("enter send · alt+enter or \\ newline · ↑↓ history · tab complete")}`,
+          `  ${style.muted("enter send · alt+enter or \\ newline · ↑↓ history · tab complete · ctrl+v paste image")}`,
+          `  ${style.muted("while clue works: tab queue a message · ↑ edit it")}`,
           `  ${style.muted("esc esc or ctrl+c interrupt · ctrl+o detail · ctrl+d exit")}`,
           "",
         ]);
@@ -351,6 +444,8 @@ export class App {
       case "mcp":
         await mcpCommand(args, this.cwd, this.mcp, (lines) => this.print(lines));
         return;
+      case "paste":
+        return this.pasteClipboard();
       case "cost": {
         const total = this.session.turns.reduce(
           (sum, turn) => ({ cost: sum.cost + (turn.cost ?? 0), input: sum.input + turn.usage.input, cacheRead: sum.cacheRead + turn.usage.cacheRead, cacheWrite: sum.cacheWrite + turn.usage.cacheWrite, output: sum.output + turn.usage.output }),

@@ -25,7 +25,7 @@ export function sessionEntries(session: Session): Entry[] {
     if (message.role === "user") {
       let text: string | null = null;
       if (typeof message.content === "string") text = message.content;
-      else if (message.content.every((block) => block.type === "text")) {
+      else if (!message.content.some((block) => block.type === "tool_result")) {
         text = message.content.flatMap((block) => (block.type === "text" && !isContext(block.text) ? [block.text] : [])).join("\n");
       }
       if (text === null) continue; // tool results

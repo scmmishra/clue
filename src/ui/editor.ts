@@ -1,11 +1,13 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { CLUE_HOME, ensureDir, paths } from "../config";
+import type { PromptImage } from "../session";
 import { columns, style, width } from "./ansi";
 import type { Key, LiveFrame } from "./screen";
 
 const PROMPT = "┃ ";
 const HISTORY_LIMIT = 500;
 const PASTE_FOLD_LINES = 12;
+const IMAGE_PLACEHOLDER = /\[Image #(\d+)\]/g;
 
 export type Command = { name: string; description: string };
 
@@ -17,6 +19,10 @@ export class Editor {
   private historyIndex = -1;
   private draft = "";
   private completionIndex = 0;
+  // Images by the number in their placeholder. Numbers never repeat, so a draft that
+  // comes back from the queue can't clash with what was typed since.
+  private attached = new Map<number, PromptImage>();
+  private nextImage = 1;
 
   constructor(private commands: Command[]) {
     try {
@@ -46,6 +52,59 @@ export class Editor {
     this.cursor = 0;
     this.historyIndex = -1;
     this.completionIndex = 0;
+    this.attached.clear();
+  }
+
+  get hasCompletions() {
+    return this.matches().length > 0;
+  }
+
+  // Adds an image at the cursor, shown as a placeholder.
+  attach(image: PromptImage) {
+    this.insert(this.placeholderFor(image));
+  }
+
+  // Inserts pasted text, with the listed spans replaced by image placeholders.
+  paste(text: string, found: { start: number; end: number; image: PromptImage }[]) {
+    let result = "";
+    let position = 0;
+    for (const { start, end, image } of found) {
+      result += text.slice(position, start) + this.placeholderFor(image);
+      position = end;
+    }
+    this.insert(result + text.slice(position));
+  }
+
+  // The images whose placeholders are still in the text, in the order they appear.
+  images() {
+    return this.placeholderIds(this.text).flatMap((id) => this.attached.get(id) ?? []);
+  }
+
+  // Puts a draft back, in front of anything typed since.
+  restore(text: string, images: PromptImage[]) {
+    this.placeholderIds(text).forEach((id, index) => {
+      if (images[index]) this.attached.set(id, images[index]);
+    });
+    this.text = this.text ? `${text}\n${this.text}` : text;
+    this.cursor = this.text.length;
+    this.historyIndex = -1;
+    this.completionIndex = 0;
+  }
+
+  private placeholderFor(image: PromptImage) {
+    const id = this.nextImage++;
+    this.attached.set(id, image);
+    return `[Image #${id}]`;
+  }
+
+  private placeholderIds(text: string) {
+    return [...text.matchAll(IMAGE_PLACEHOLDER)].map((match) => Number(match[1]));
+  }
+
+  // The placeholder that ends at the cursor, when it holds an attached image.
+  private placeholderBeforeCursor() {
+    const match = this.text.slice(0, this.cursor).match(/\[Image #(\d+)\]$/);
+    return match && this.attached.has(Number(match[1])) ? match[0] : null;
   }
 
   private insert(value: string) {
@@ -118,6 +177,10 @@ export class Editor {
       case "backspace":
         if (key.meta) {
           const start = this.wordLeft();
+          this.text = this.text.slice(0, start) + this.text.slice(this.cursor);
+          this.cursor = start;
+        } else if (this.placeholderBeforeCursor()) {
+          const start = this.cursor - this.placeholderBeforeCursor()!.length;
           this.text = this.text.slice(0, start) + this.text.slice(this.cursor);
           this.cursor = start;
         } else if (this.cursor > 0) {

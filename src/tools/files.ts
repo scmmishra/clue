@@ -29,6 +29,19 @@ export const display = (cwd: string, path: string) => {
 
 const mtime = (file: string) => statSync(file).mtimeMs;
 
+// An image as Claude receives it. Claude scales images above about 1568 px anyway,
+// so shrinking here sends fewer bytes and tokens.
+export async function encodeImage(file: string, size: number) {
+  const image = Bun.file(file).image();
+  const { width, height } = await image.metadata();
+  const large = Math.max(width, height) > MAX_IMAGE_EDGE || size > MAX_IMAGE_BYTES;
+  const data = large
+    ? await image.resize(MAX_IMAGE_EDGE, MAX_IMAGE_EDGE, { fit: "inside", withoutEnlargement: true }).webp({ quality: 85 }).toBase64()
+    : Buffer.from(await Bun.file(file).bytes()).toString("base64");
+  const block = { type: "image" as const, source: { type: "base64" as const, media_type: large ? ("image/webp" as const) : IMAGE_TYPES[extname(file).toLowerCase()], data } };
+  return { block, width, height, large };
+}
+
 function withNestedInstructions(context: ToolContext, path: string, text: string) {
   const notes = nestedInstructions(context.cwd, path, context.seenInstructions);
   return notes.length ? `${text}\n\n${notes.join("\n\n")}` : text;
@@ -84,15 +97,9 @@ export const readFile: Tool<{ path: string; offset?: number; limit?: number }> =
     const imageType = IMAGE_TYPES[extname(file).toLowerCase()];
     if (imageType) {
       context.readStamps.set(file, stat.mtimeMs);
-      const image = Bun.file(file).image();
-      const { width, height } = await image.metadata();
-      // Claude scales images above about 1568 px anyway. Shrinking here sends fewer bytes and tokens.
-      const large = Math.max(width, height) > MAX_IMAGE_EDGE || stat.size > MAX_IMAGE_BYTES;
-      const data = large
-        ? await image.resize(MAX_IMAGE_EDGE, MAX_IMAGE_EDGE, { fit: "inside", withoutEnlargement: true }).webp({ quality: 85 }).toBase64()
-        : Buffer.from(await Bun.file(file).bytes()).toString("base64");
+      const { block, width, height, large } = await encodeImage(file, stat.size);
       return {
-        content: [{ type: "image", source: { type: "base64", media_type: large ? "image/webp" : imageType, data } }],
+        content: [block],
         full: `[image ${input.path}, ${width}×${height}${large ? `, sent as ${MAX_IMAGE_EDGE}px webp` : ""}]`,
         note: `${width}×${height}${large ? " → resized" : ""}`,
       };

@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { Effort, Settings } from "../config";
 import type { McpManager } from "../mcp/manager";
 import { approvalQuestion, Permissions, reviewAction } from "../permissions";
-import { Session, type ToolRecord, type TurnRecord, type Usage } from "../session";
+import { Session, type PromptImage, type ToolRecord, type TurnRecord, type Usage } from "../session";
 import { findTool } from "../tools";
 import type { Skill } from "../tools/skills";
 import { clip, toolKind, type Question, type ToolContext, type ToolOutput } from "../tools/types";
@@ -67,7 +67,7 @@ export class Agent {
   }
 
   // Runs one user prompt to completion: model turns and tool calls until Claude stops.
-  async runTurn(prompt: string, signal: AbortSignal): Promise<TurnRecord> {
+  async runTurn(prompt: string, signal: AbortSignal, images: PromptImage[] = []): Promise<TurnRecord> {
     const { session, events, settings } = this.options;
     const startedAt = Date.now();
     const clock = now();
@@ -80,9 +80,9 @@ export class Agent {
     session.closeUnfinishedTools();
     if (session.isEmpty) {
       const context = await buildContext(this.options.cwd, this.options.skills(), this.options.mcp.configuredNames(), this.seenInstructions);
-      session.appendMessage({ role: "user", content: [{ type: "text", text: context }, { type: "text", text: prompt }] });
+      session.appendMessage({ role: "user", content: [{ type: "text", text: context }, { type: "text", text: prompt }, ...images] });
     } else {
-      session.appendMessage({ role: "user", content: prompt });
+      session.appendMessage({ role: "user", content: images.length ? [{ type: "text", text: prompt }, ...images] : prompt });
     }
 
     let jsonRetries = 0;

@@ -6,7 +6,7 @@ import { VERSION } from "../config";
 import { columns, duration, homePath, money, spinnerFrame, spread, style, tokens, width, wrapLine } from "./ansi";
 import { MarkdownStream } from "./markdown";
 import { msSince, now } from "../clock";
-import type { Key, Screen } from "./screen";
+import type { Key, LiveFrame, Screen } from "./screen";
 
 // ---------------------------------------------------------------------------
 // Pieces shared by the live view and by replaying a saved session.
@@ -132,7 +132,11 @@ export class TurnView implements AgentEvents {
   private wroteText = false;
   private lastAnswerAt = now();
 
-  constructor(private screen: Screen) {
+  // `composer` draws the input under the turn, so the user can type while clue works.
+  constructor(
+    private screen: Screen,
+    private composer?: () => LiveFrame,
+  ) {
     this.markdown = new MarkdownStream((lines) => this.commitText(lines), columns);
   }
 
@@ -148,7 +152,7 @@ export class TurnView implements AgentEvents {
 
   start() {
     this.startedAt = now();
-    this.screen.setRenderer(() => ({ lines: this.liveLines() }));
+    this.screen.setRenderer(() => this.frame());
     this.screen.animate(true);
   }
 
@@ -234,6 +238,16 @@ export class TurnView implements AgentEvents {
     this.rows = [];
     this.screen.commit([...(this.wroteText ? [""] : []), ...toolTree(rows), ""]);
     this.wroteText = false;
+  }
+
+  // The turn, then the input. A prompt takes the keys, so it replaces the input while it waits.
+  private frame(): LiveFrame {
+    const lines = this.liveLines();
+    if (this.prompt || !this.composer) return { lines };
+    if (lines.length) lines.push("");
+    const composer = this.composer();
+    const cursor = composer.cursor && { row: composer.cursor.row + lines.length, col: composer.cursor.col };
+    return { lines: [...lines, ...composer.lines], cursor };
   }
 
   private liveLines(): string[] {
