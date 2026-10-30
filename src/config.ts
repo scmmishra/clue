@@ -1,8 +1,10 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+// package.json is the one place the version is set. The release workflow publishes when it changes.
+import { version } from "../package.json" with { type: "json" };
 
-export const VERSION = "0.1.0";
+export const VERSION = version;
 
 export const CLUE_HOME = process.env.CLUE_HOME ?? join(homedir(), ".clue");
 
