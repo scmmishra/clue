@@ -34,7 +34,7 @@ export type AgentEvents = {
 export type AgentOptions = {
   cwd: string;
   session: Session;
-  settings: Pick<Settings, "model" | "effort" | "review_model">;
+  settings: Pick<Settings, "model" | "effort" | "review">;
   permissions: Permissions;
   mcp: McpManager;
   skills: () => Skill[];
@@ -299,7 +299,7 @@ export class Agent {
     }
     if (decision.action === "review") {
       events.review(use.id, "reviewing");
-      const verdict = await reviewAction(tool.name, input, prompt, this.options.settings.review_model, signal);
+      const verdict = await reviewAction(tool.name, input, prompt, this.options.settings.review, signal);
       if (!verdict.approved) {
         events.review(use.id, "held", `${verdict.reviewer}: ${verdict.reason ?? "held"}`);
         return finish(

@@ -34,12 +34,15 @@ export type PermissionMode = (typeof PERMISSION_MODES)[number];
 export type RuleValue = "allow" | "deny" | "ask";
 export type PermissionRules = Record<string, RuleValue | Record<string, RuleValue>>;
 
+// Who reviews actions in auto mode. Both keys are optional.
+export type ReviewSetting = { provider?: string; model?: string };
+
 export type Settings = {
   model: string;
   effort: Effort;
   permission_mode: PermissionMode;
   permission: PermissionRules;
-  review_model: string;
+  review?: ReviewSetting;
   bell: boolean;
 };
 
@@ -48,7 +51,6 @@ const DEFAULTS: Settings = {
   effort: "medium",
   permission_mode: "auto",
   permission: {},
-  review_model: "typesafe/jev-1.14",
   bell: true,
 };
 

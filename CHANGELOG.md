@@ -4,6 +4,9 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- The `review` setting chooses the reviewer, with `provider` and `model`. It replaces `review_model`.
+- If a reviewer fails, Claude Haiku at low effort reviews instead, so one provider's outage or limit no longer holds every action.
+- `$?` no longer sends a command to review.
 ## 0.4.0
 
 - Releases are compressed, so a download is about 58% smaller.

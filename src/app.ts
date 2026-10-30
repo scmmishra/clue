@@ -98,7 +98,7 @@ export class App {
     this.agent = new Agent({
       cwd: session.cwd,
       session,
-      settings: { model: this.settings.model, effort: this.settings.effort, review_model: this.settings.review_model },
+      settings: { model: this.settings.model, effort: this.settings.effort, review: this.settings.review },
       permissions: this.permissions,
       mcp: this.mcp,
       skills: () => (this.skillCache ??= discoverSkills(session.cwd)),

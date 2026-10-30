@@ -1,9 +1,27 @@
 // A stand-in for the Anthropic Messages API, for tests without credentials.
 // It streams a reply that calls read_file, then a final answer once the tool result arrives.
 
-type Body = { messages: { role: string; content: unknown }[]; max_tokens: number; stream?: boolean };
+type Body = { model?: string; messages: { role: string; content: unknown }[]; max_tokens: number; stream?: boolean; output_config?: { effort?: string } };
 
 export const requests: Body[] = [];
+
+// How the reviewers answer. Tests change this to force each failure.
+export const reviewers = {
+  // Claude models that answer with an error.
+  failing: new Set<string>(),
+  // What a Claude reviewer decides.
+  decision: "clear",
+  // What Jev decides. "error" answers 500, and anything else is sent as the choice.
+  jev: "clear",
+  claudeCalls: [] as { model: string; effort?: string }[],
+  jevCalls: [] as { model: string }[],
+};
+
+export const resetReviewers = () => {
+  reviewers.failing.clear();
+  reviewers.decision = reviewers.jev = "clear";
+  reviewers.claudeCalls.length = reviewers.jevCalls.length = 0;
+};
 
 // MOCK_DELAY_MS spaces the events out, so tests can watch the live view.
 const DELAY = Number(process.env.MOCK_DELAY_MS ?? 0);
@@ -43,8 +61,20 @@ export function startMockApi(port = 0, delay = DELAY) {
     port,
     async fetch(request) {
       const url = new URL(request.url);
+      if (url.pathname.endsWith("/api/alpha/decisions")) {
+        const { model } = (await request.json()) as { model: string };
+        reviewers.jevCalls.push({ model });
+        if (reviewers.jev === "error") return Response.json({ error: { message: "limit reached" } }, { status: 500 });
+        return Response.json({ answers: { decision: { choice: reviewers.jev } } });
+      }
       if (!url.pathname.endsWith("/v1/messages")) return new Response("not found", { status: 404 });
       const body = (await request.json()) as Body;
+      // A review is the one request that doesn't stream and asks for a reply.
+      if (!body.stream && body.max_tokens !== 0) {
+        reviewers.claudeCalls.push({ model: body.model!, effort: body.output_config?.effort });
+        if (reviewers.failing.has(body.model!)) return Response.json({ type: "error", error: { type: "invalid_request_error", message: "reviewer is down" } }, { status: 400 });
+        return Response.json(message([{ type: "text", text: JSON.stringify({ decision: reviewers.decision, reason: "the reviewer's reason" }) }], "end_turn"));
+      }
       requests.push(body);
       const last = body.messages.at(-1);
       const hasToolResult = Array.isArray(last?.content) && (last.content as { type: string }[]).some((block) => block.type === "tool_result");

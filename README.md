@@ -238,14 +238,22 @@ It has these reviewed first:
 - Changing sensitive configuration.
 - Calling an MCP tool.
 
-A review sends the exact action to a review model, which checks it for prompt injection and harmful behavior. If the reviewer finds no problem, clue runs the action. If it flags the action or can't finish the check, clue holds the action and tells the model why.
+A review sends the exact action to a review model, which checks it for prompt injection and harmful behavior. If the reviewer finds no problem, clue runs the action. If it flags the action, or no reviewer can finish the check, clue holds the action and tells the model why.
 
-clue picks the reviewer from the keys you have:
+By default, clue picks the reviewer from the keys you have:
 
 | Key set | Reviewer |
 | --- | --- |
 | `OPENROUTER_API_KEY` | [Jev](https://openrouter.ai/typesafe/jev-1.14), TypeSafe's decision model, through OpenRouter. Reviewed actions go to OpenRouter. |
 | No OpenRouter key | Claude Haiku 5.5 (`claude-haiku-5-5`) at `low` effort, on your Claude credentials. Reviewed actions go to Anthropic, like the rest of the conversation. |
+
+To choose one, set `review` in `~/.clue/settings.json`. Both keys are optional:
+
+```json
+{ "review": { "provider": "anthropic", "model": "haiku" } }
+```
+
+`provider` is `anthropic` or `openrouter`. If the reviewer fails or the setting can't work, Claude Haiku at low effort reviews instead. The action is held only if that fails too.
 
 Every review adds to your usage.
 
