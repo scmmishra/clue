@@ -212,13 +212,21 @@ test("--name is for the interactive shell, not clue ask", async () => {
   expect(code).toBe(2);
 });
 
-test("--name with a taken name stops and starts nothing", async () => {
+test("--name with a name in this folder resumes that session", async () => {
   const cwd = folder();
   const name = unique();
   saved(cwd, name);
-  const { stderr, code } = await run(["--name", name], cwd);
-  expect(stderr).toContain(`clue: A session named ${name} already exists here. Resume it with clue -r ${name}.`);
-  expect(code).toBe(2);
+  const { output, code } = await firstPaint(["--name", name], cwd);
+  expect(code).toBe(0);
+  expect(output).toContain(`session ${name} · `);
+});
+
+test("--name never opens a session from another folder", async () => {
+  const name = unique();
+  saved(folder(), name);
+  const { output, code } = await firstPaint(["--name", name], folder());
+  expect(code).toBe(0);
+  expect(output).not.toContain(`session ${name} · `);
 });
 
 test("--name with an invalid name stops", async () => {

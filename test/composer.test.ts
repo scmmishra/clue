@@ -18,16 +18,16 @@ const paste = (text: string) => `\x1b[200~${text}\x1b[201~`;
 let stop = async () => {};
 afterEach(() => stop());
 
-async function startClue(options: { delay?: number; env?: Record<string, string> } = {}) {
+async function startClue(options: { delay?: number; env?: Record<string, string>; args?: string[]; cwd?: string; home?: string } = {}) {
   requests.length = 0;
   const server = startMockApi(0, options.delay ?? 0);
-  const cwd = realpathSync(mkdtempSync(join(tmpdir(), "clue-composer-")));
+  const cwd = options.cwd ?? realpathSync(mkdtempSync(join(tmpdir(), "clue-composer-")));
   let output = "";
   const decoder = new TextDecoder();
   const terminal = new Bun.Terminal({ cols: 120, rows: 40, data: (_terminal, data) => (output += decoder.decode(data, { stream: true })) });
-  const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts")], {
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), ...(options.args ?? [])], {
     cwd,
-    env: { ...process.env, SHELL: "/bin/sh", CLUE_HOME: mkdtempSync(join(tmpdir(), "clue-composer-home-")), ANTHROPIC_BASE_URL: server.url.origin, ANTHROPIC_API_KEY: "sk-ant-test", OPENROUTER_API_KEY: "", ...options.env },
+    env: { ...process.env, SHELL: "/bin/sh", CLUE_HOME: options.home ?? mkdtempSync(join(tmpdir(), "clue-composer-home-")), ANTHROPIC_BASE_URL: server.url.origin, ANTHROPIC_API_KEY: "sk-ant-test", OPENROUTER_API_KEY: "", ...options.env },
     terminal,
   });
   stop = async () => {
@@ -350,4 +350,71 @@ test("/new clears the name", async () => {
   await clue.seen("New session.");
   await clue.type(`/rename${ENTER}`);
   await clue.seen("This session has no name.");
+}, 25_000);
+
+const scratch = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), name)));
+const clueFirstRun = (cwd: string, home: string, prompt: string) => startClue({ cwd, home, args: ["--name", "thread-1", prompt] });
+
+test("a prompt on the command line runs as the first turn", async () => {
+  const clue = await startClue({ args: ["summarise this"] });
+  await clue.turns(1);
+  expect(clue.wasSent("summarise this")).toBe(true);
+}, 25_000);
+
+test("-c with a prompt runs it in the resumed session", async () => {
+  const [cwd, home] = [scratch("clue-c-"), scratch("clue-c-home-")];
+  const first = await startClue({ cwd, home, args: ["first prompt"] });
+  await first.turns(1);
+  await stop();
+  const second = await startClue({ cwd, home, args: ["-c", "second prompt"] });
+  await second.turns(1);
+  expect(second.wasSent("first prompt")).toBe(true);
+  expect(second.wasSent("second prompt")).toBe(true);
+}, 25_000);
+
+test("--name creates the session and runs the prompt, then resumes it without running the prompt again", async () => {
+  const [cwd, home] = [scratch("clue-open-"), scratch("clue-open-home-")];
+  const first = await clueFirstRun(cwd, home, "read the thread");
+  await first.turns(1);
+  expect(first.wasSent("read the thread")).toBe(true);
+  await stop();
+
+  const second = await clueFirstRun(cwd, home, "read the thread");
+  await second.seen("session thread-1 · 1 prompt");
+  await second.seen("Resumed thread-1. Your prompt was not sent.");
+  await Bun.sleep(300);
+  expect(requests.filter((request) => request.max_tokens !== 0)).toEqual([]);
+}, 25_000);
+
+test("--name without a prompt resumes quietly", async () => {
+  const [cwd, home] = [scratch("clue-quiet-"), scratch("clue-quiet-home-")];
+  const first = await clueFirstRun(cwd, home, "read the thread");
+  await first.turns(1);
+  await stop();
+  const second = await startClue({ cwd, home, args: ["--name", "THREAD-1"] });
+  await second.seen("session thread-1 · 1 prompt");
+  expect(second.screen()).not.toContain("was not sent");
+}, 25_000);
+
+test("the same name in another folder creates a separate session", async () => {
+  const home = scratch("clue-other-home-");
+  const first = await clueFirstRun(scratch("clue-other-a-"), home, "first folder");
+  await first.turns(1);
+  await stop();
+  const second = await clueFirstRun(scratch("clue-other-b-"), home, "second folder");
+  await second.turns(1);
+  expect(second.wasSent("second folder")).toBe(true);
+  expect(second.wasSent("first folder")).toBe(false);
+  expect(second.screen()).not.toContain("Resumed thread-1");
+}, 25_000);
+
+test("/rename still refuses a name taken in this folder", async () => {
+  const [cwd, home] = [scratch("clue-taken-"), scratch("clue-taken-home-")];
+  const first = await clueFirstRun(cwd, home, "read the thread");
+  await first.turns(1);
+  await stop();
+  const second = await startClue({ cwd, home, args: ["another prompt"] });
+  await second.turns(1);
+  await second.type(`/rename thread-1${ENTER}`);
+  await second.seen("A session named thread-1 already exists here.");
 }, 25_000);

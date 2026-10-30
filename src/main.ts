@@ -4,12 +4,12 @@
 
 import { existsSync } from "node:fs";
 import { loadSettings, PERMISSION_MODES, VERSION, EFFORTS, type Effort, type PermissionMode, type Settings } from "./config";
-import { Session, findSession, latestSessionFile, nameProblem, realFolder, resolveSession, sessionFile, type SessionMeta } from "./session";
+import { Session, findSession, latestSessionFile, nameFormatProblem, realFolder, resolveSession, sessionFile, sessionNamedIn, type SessionMeta } from "./session";
 
 const HELP = `clue ${VERSION}: a coding agent for the terminal
 
 Usage
-  clue                       start a session in this folder
+  clue [prompt]              start a session in this folder
   clue -c                    continue the latest session in this folder
   clue -r [id|name]          pick any past session, or resume one by id or name
   clue ask [prompt]          one request; prompt from arguments or stdin
@@ -22,7 +22,7 @@ Options
   --effort <level>           low, medium, high, xhigh or max
   --permission-mode <mode>   ask, auto or full-access
   --full-access              shorthand for --permission-mode full-access
-  --name <name>              name a new session, to resume it with clue -r <name>
+  --name <name>              open the session with this name in this folder, or create it
   --json                     with ask: print a JSON result
   --resume <id>              with ask: continue a saved session
   -v, --version              print the version
@@ -139,7 +139,7 @@ async function main() {
     if (command === "ask") fail("--name doesn't work with clue ask.");
     if (flags.name === true) fail("--name needs a name.");
     if (flags.continue || flags.pick || flags.resume) fail("--name only works for a new session. Use /rename after resuming.");
-    const problem = nameProblem(realFolder(process.cwd()), String(flags.name));
+    const problem = nameFormatProblem(String(flags.name));
     if (problem) fail(problem);
   }
 
@@ -183,10 +183,25 @@ async function main() {
     session = sessionById(choice.id);
     resumed = true;
   }
+  const name = typeof flags.name === "string" ? flags.name : null;
+  const existing = name ? sessionNamedIn(realFolder(process.cwd()), name) : null;
+  if (existing) {
+    session = openSession(existing);
+    resumed = true;
+  }
   session ??= Session.create(process.cwd());
-  if (typeof flags.name === "string") session.rename(flags.name);
+  if (name && !existing) session.rename(name);
   if (session.cwd !== process.cwd()) process.chdir(session.cwd);
-  const app = new App({ settings, session, resumed, benchReady: process.env.CLUE_BENCH_READY === "1" });
+  const prompt = positional.join(" ");
+  const app = new App({
+    settings,
+    session,
+    resumed,
+    // An existing named session already had its first prompt, so a repeat of the command must not run it again.
+    prompt: existing ? undefined : prompt,
+    droppedPrompt: Boolean(existing && prompt),
+    benchReady: process.env.CLUE_BENCH_READY === "1",
+  });
   await app.start();
 }
 

@@ -48,6 +48,10 @@ export type AppOptions = {
   settings: Settings;
   session: Session;
   resumed: boolean;
+  // Sent as the first message once the prompt is ready.
+  prompt?: string;
+  // A prompt was given, but the session already existed.
+  droppedPrompt?: boolean;
   benchReady?: boolean;
 };
 
@@ -150,6 +154,12 @@ export class App {
 
     process.on("SIGTERM", () => this.exit(0));
     process.stdout.on("resize", () => this.screen.refresh());
+
+    if (this.options.droppedPrompt) this.notice(`Resumed ${this.session.name}. Your prompt was not sent.`);
+    if (this.options.prompt) {
+      this.editor.remember(this.options.prompt);
+      void this.submit(this.options.prompt);
+    }
   }
 
   private print(lines: string[]) {

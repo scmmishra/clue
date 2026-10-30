@@ -31,5 +31,5 @@ cd your-project
 clue
 ```
 
-Type what you want done and press Enter.
+Type what you want done and press Enter. You can also pass the first prompt: `clue "fix the flaky spec"`.
 

@@ -309,9 +309,15 @@ function sessionsNamed(name: string) {
   }
 }
 
+export const nameFormatProblem = (name: string) => (VALID_NAME.test(name) ? null : "A session name uses letters, digits, ., _ and -, up to 64 characters.");
+
+// The session with this name in this folder. Other folders never match.
+export const sessionNamedIn = (cwd: string, name: string) => sessionsNamed(name).find((meta) => meta.cwd === cwd) ?? null;
+
 // Why a session in this folder can't take this name, or null when it can.
 export function nameProblem(cwd: string, name: string, self?: string) {
-  if (!VALID_NAME.test(name)) return "A session name uses letters, digits, ., _ and -, up to 64 characters.";
+  const format = nameFormatProblem(name);
+  if (format) return format;
   if (!sessionsNamed(name).some((meta) => meta.cwd === cwd && meta.id !== self)) return null;
   return `A session named ${name} already exists here. Resume it with clue -r ${name}.`;
 }

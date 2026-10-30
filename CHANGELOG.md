@@ -4,6 +4,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- `clue "prompt"` runs the prompt as the first turn. It also works with `-c`.
+- `--name` now opens the session with that name in this folder, or creates it. An existing session is resumed and the prompt isn't sent, so a tool can run the same command every time. It no longer fails on a taken name.
 - `install.sh` and `clue upgrade` show each step and a download progress bar.
 
 ## 0.2.0
