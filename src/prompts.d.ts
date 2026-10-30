@@ -1,4 +1,9 @@
 // Markdown prompts are imported as text: `import text from "./x.md" with { type: "text" }`.
+declare module "*.sh" {
+  const text: string;
+  export default text;
+}
+
 declare module "*.md" {
   const text: string;
   export default text;

@@ -15,6 +15,7 @@ Usage
   clue ask [prompt]          one request; prompt from arguments or stdin
   clue login | logout        save or remove Claude credentials
   clue mcp <command>         manage MCP servers (list, add, remove, login, ...)
+  clue upgrade               install the latest release
 
 Options
   --model <id>               model for this run, such as sonnet or claude-opus-5-5
@@ -57,7 +58,7 @@ function parse(argv: string[]): Parsed {
     else if (arg === "-h") flags.help = true;
     else positional.push(arg);
   }
-  const commands = new Set(["ask", "login", "logout", "mcp", "help", "version"]);
+  const commands = new Set(["ask", "login", "logout", "mcp", "upgrade", "help", "version"]);
   const command = positional[0] && commands.has(positional[0]) ? positional.shift()! : "";
   return { command, positional, flags };
 }
@@ -114,6 +115,11 @@ async function main() {
   const { command, positional, flags } = parse(process.argv.slice(2));
   if (flags.version || command === "version") return console.log(VERSION);
   if (flags.help || command === "help") return process.stdout.write(HELP);
+
+  if (command === "upgrade") {
+    const { upgrade } = await import("./commands/upgrade");
+    return upgrade();
+  }
 
   if (command === "login" || command === "logout") {
     const { login, logout } = await import("./commands/login");

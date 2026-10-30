@@ -4,6 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/scmmishra/clue/main/install.sh | bash
 #
 # Set CLUE_INSTALL_DIR to install somewhere other than ~/.local/bin.
+# `clue upgrade` runs this script and sets CLUE_CURRENT_VERSION.
 # While the repository is private, the GitHub CLI is used when it is logged in.
 set -euo pipefail
 
@@ -81,6 +82,11 @@ else
   tag="local"
 fi
 
+if [[ -n "${CLUE_CURRENT_VERSION:-}" && "$tag" == "v$CLUE_CURRENT_VERSION" ]]; then
+  echo "clue $tag is already the latest version."
+  exit 0
+fi
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
@@ -111,4 +117,4 @@ case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
   *) warn "$INSTALL_DIR is not on your PATH. Add it to your shell profile to run clue." ;;
 esac
-echo "Next: run \`clue login\`, or set ANTHROPIC_API_KEY, then run \`clue\` in a project."
+[[ -n "$was_installed" ]] || echo "Next: run \`clue login\`, or set ANTHROPIC_API_KEY, then run \`clue\` in a project."
