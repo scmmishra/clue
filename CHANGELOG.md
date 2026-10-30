@@ -4,6 +4,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+## 0.4.0
+
 - Releases are compressed, so a download is about 58% smaller.
 - `clue upgrade` compares versions, so it never replaces a newer build with an older release.
 - `install.sh` and `clue upgrade` run the new binary before they install it, and keep the old one if it doesn't start.
