@@ -1,5 +1,8 @@
 # clue
 
+[![CI](https://github.com/scmmishra/clue/actions/workflows/ci.yml/badge.svg)](https://github.com/scmmishra/clue/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/scmmishra/clue)](https://github.com/scmmishra/clue/releases/latest)
+
 clue is a coding agent for the terminal. It runs on Claude's API natively and is written in TypeScript on Bun.
 
 clue calls Claude's Messages API directly, so it can use what the API offers: prompt caching, server-side web tools, adaptive thinking and server-side compaction. It uses them for one goal: less waiting. clue measures three waits and works to shorten each one:
@@ -41,7 +44,7 @@ curl -fsSL https://raw.githubusercontent.com/scmmishra/clue/main/install.sh | ba
 
 clue runs on macOS and Linux, on arm64 and x86_64. The installer downloads the binary for your machine from the latest release, checks it against the published SHA-256 checksum, and puts it in `~/.local/bin`. Set `CLUE_INSTALL_DIR` to choose another folder, or `CLUE_VERSION` to install a specific tag. Run the same command again to update. You don't need Bun installed to run clue.
 
-While the repository is private, the installer uses the GitHub CLI when `gh` is logged in with access to it.
+To install by hand, download `clue-<os>-<arch>` and `SHA256SUMS` from the [latest release](https://github.com/scmmishra/clue/releases/latest).
 
 ## Quick start
 
@@ -305,6 +308,22 @@ bun run build        # dist/clue for this machine; --all for every platform
 bun run bench        # start, resume and first-token benchmarks
 bun run bench:tools  # each tool on its own, outside the agent loop
 ```
+
+CI runs the type check, the tests and a build on macOS and Linux for every push and pull request. It also installs that build with `install.sh`.
+
+### Release
+
+The version in `package.json` is clue's only version number. `clue --version` reads it at build time.
+
+To release, change the version in `package.json` and push it to `main`. The release workflow then:
+
+1. Runs the type check and the tests.
+2. Builds the binary for each platform.
+3. Creates the tag `v<version>` and a GitHub release with the binaries and `SHA256SUMS`.
+
+If the tag already exists, the workflow skips the release. A change to `package.json` that keeps the version, such as a dependency update, publishes nothing.
+
+### Prompts
 
 The system prompt is in `prompts/system.md` and the reviewer's prompt is in `prompts/review.yaml`. Bun embeds both in the binary at build time. Tool descriptions stay in the code, next to each tool's parameters.
 
