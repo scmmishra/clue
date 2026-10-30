@@ -9,6 +9,7 @@ import { checkFields, type Tool } from "./types";
 // so a slow .zshrc doesn't slow every command.
 
 const SHELL = process.env.SHELL || "/bin/sh";
+const IGNORE_HUP = "trap '' HUP";
 const ENV_CACHE = join(CLUE_HOME, "shell-env.json");
 const STARTUP_FILES = [".zshenv", ".zprofile", ".zshrc", ".bash_profile", ".bashrc", ".profile"].map((name) => join(homedir(), name));
 const DEFAULT_WAIT_MS = 120_000;
@@ -105,7 +106,11 @@ async function start(command: string, cwd: string): Promise<Running> {
   try {
     // detached makes the command lead its own process group. Without it a PTY command
     // stays in clue's group, so stop could only kill the wrapper shell, not its children.
-    running.proc = Bun.spawn([SHELL, "-c", command], { cwd, env, terminal, detached: true });
+    // When the shell exits, the PTY sends SIGHUP to its group. bash and sh don't shield
+    // background children from it, so `npm run dev &` would die with the shell. The trap
+    // makes the children ignore SIGHUP. It has to run inside the user's shell: zsh restores
+    // SIGHUP for its children when it starts with the signal already ignored. stop uses SIGTERM.
+    running.proc = Bun.spawn([SHELL, "-c", `${IGNORE_HUP}\n${command}`], { cwd, env, terminal, detached: true });
   } catch (error) {
     terminal.close();
     running.output = (error as Error).message;
