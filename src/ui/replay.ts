@@ -2,7 +2,7 @@ import type { Session, ToolRecord, TurnRecord } from "../session";
 import { columns, duration, money, rows, style, truncate, wrapLine } from "./ansi";
 import { renderMarkdown } from "./markdown";
 import type { Key } from "./screen";
-import { footerLine, promptLines, summaryLine } from "./turn";
+import { footerLine, promptLines, toolTree } from "./turn";
 
 type Entry =
   | { type: "prompt"; text: string; at?: number }
@@ -58,7 +58,7 @@ export function sessionEntries(session: Session): Entry[] {
 function entryLines(entry: Entry, width: number) {
   if (entry.type === "prompt") return [...promptLines(entry.text), ""];
   if (entry.type === "text") return [...renderMarkdown(entry.text, width), ""];
-  if (entry.type === "tools") return [summaryLine(entry.tools), ""];
+  if (entry.type === "tools") return [...toolTree(entry.tools), ""];
   return [footerLine(entry.turn), ""];
 }
 

@@ -3,8 +3,7 @@ import { CLUE_HOME, ensureDir, paths } from "../config";
 import { columns, style, width } from "./ansi";
 import type { Key, LiveFrame } from "./screen";
 
-const PROMPT = "› ";
-const CONTINUATION = "  ";
+const PROMPT = "┃ ";
 const HISTORY_LIMIT = 500;
 const PASTE_FOLD_LINES = 12;
 
@@ -19,10 +18,7 @@ export class Editor {
   private draft = "";
   private completionIndex = 0;
 
-  constructor(
-    private commands: Command[],
-    private placeholder = "Describe a task, or type / for commands",
-  ) {
+  constructor(private commands: Command[]) {
     try {
       if (existsSync(paths.history)) {
         this.history = readFileSync(paths.history, "utf8")
@@ -220,15 +216,12 @@ export class Editor {
     return "handled";
   }
 
-  // The input as live lines, with the cursor position.
-  frame(hint?: string): LiveFrame {
+  // The input as live lines, with the cursor position. `footer` goes under it,
+  // after a blank line, unless command completions take its place.
+  frame(footer: string): LiveFrame {
     const max = columns() - 1;
     const prompt = style.accent(PROMPT);
-    if (!this.text) {
-      const lines = [`${prompt}${style.faint(this.placeholder)}`];
-      if (hint) lines.push(hint);
-      return { lines, cursor: { row: 0, col: width(PROMPT) } };
-    }
+    if (!this.text) return { lines: [prompt, "", footer], cursor: { row: 0, col: width(PROMPT) } };
     const lines: string[] = [];
     let cursorRow = 0;
     let cursorCol = width(PROMPT);
@@ -238,7 +231,7 @@ export class Editor {
     let offset = 0;
     const visible = folded ? [...logical.slice(0, 3), `… ${logical.length - 6} more lines`, ...logical.slice(-3)] : logical;
     visible.forEach((line, index) => {
-      const lead = index === 0 ? prompt : CONTINUATION;
+      const lead = prompt;
       const leadWidth = width(PROMPT);
       const room = Math.max(10, max - leadWidth);
       const pieces: string[] = [];
@@ -256,7 +249,7 @@ export class Editor {
       const isFoldMarker = folded && index === 3;
       const lineStart = offset;
       pieces.forEach((piece, pieceIndex) => {
-        lines.push((pieceIndex === 0 ? lead : CONTINUATION) + (isFoldMarker ? style.faint(piece) : piece));
+        lines.push(lead + (isFoldMarker ? style.faint(piece) : piece));
       });
       if (!folded) {
         const lineEnd = lineStart + line.length;
@@ -278,12 +271,15 @@ export class Editor {
       cursorCol = width(PROMPT) + width(logical.at(-1) ?? "");
     }
     const matches = this.matches();
+    lines.push("");
     if (matches.length) {
+      const size = Math.max(...matches.map((command) => command.name.length)) + 3;
       for (const [index, command] of matches.slice(0, 8).entries()) {
         const active = index === this.completionIndex % matches.length;
-        lines.push(`  ${active ? style.accent(`/${command.name}`) : style.muted(`/${command.name}`)}  ${style.faint(command.description)}`);
+        const name = `/${command.name}`.padEnd(size);
+        lines.push(`${active ? style.accent(name) : style.muted(name)}${style.faint(command.description)}`);
       }
-    } else if (hint) lines.push(hint);
+    } else lines.push(footer);
     return { lines, cursor: { row: cursorRow, col: cursorCol } };
   }
 }

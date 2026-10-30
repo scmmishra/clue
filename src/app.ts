@@ -18,7 +18,7 @@ import { Editor, type Command } from "./ui/editor";
 import { pickSession } from "./ui/picker";
 import { detailLines, Pager, replay } from "./ui/replay";
 import { Keyboard, Screen, type Key } from "./ui/screen";
-import { header, promptLines, TurnView } from "./ui/turn";
+import { BAR, header, promptLines, statusLine, TurnView } from "./ui/turn";
 
 const COMMANDS: Command[] = [
   { name: "help", description: "commands and keys" },
@@ -58,6 +58,7 @@ export class App {
   private hint = "";
   private warming: AbortController | null = null;
   private settings: Settings;
+  private branch: string | null = null;
 
   constructor(private options: AppOptions) {
     this.settings = options.settings;
@@ -73,6 +74,7 @@ export class App {
     void this.mcp?.closeAll();
     this.session = session;
     if (process.cwd() !== session.cwd) process.chdir(session.cwd);
+    this.branch = gitBranch(session.cwd);
     this.skillCache = null;
     this.mcp = new McpManager(session.cwd);
     this.permissions = new Permissions(this.settings.permission_mode, this.settings.permission, session.cwd);
@@ -108,10 +110,8 @@ export class App {
   async start() {
     this.load(this.session);
     // First paint, before anything slow.
-    const headerLine = header(this.settings.model, this.settings.effort, this.settings.permission_mode, this.cwd, gitBranch(this.cwd), uptimeMs());
-    this.screen.commit([headerLine]);
+    this.screen.commit([header(), ""]);
     if (this.options.resumed) this.printResumed();
-    else this.screen.commit([""]);
     this.idle();
     this.keyboard.start();
     this.screen.flush();
@@ -145,7 +145,7 @@ export class App {
   private printResumed() {
     const { lines, hidden } = replay(this.session, Math.max(6, rows() - 8));
     this.print([
-      `  ${style.faint(`session ${this.session.id}   ${this.session.turns.length} ${this.session.turns.length === 1 ? "prompt" : "prompts"}${hidden ? "   earlier turns hidden, ctrl+o shows all" : ""}`)}`,
+      `  ${style.faint(`session ${this.session.id} · ${this.session.turns.length} ${this.session.turns.length === 1 ? "prompt" : "prompts"}${hidden ? " · earlier turns hidden, ctrl+o shows all" : ""}`)}`,
       "",
       ...lines,
     ]);
@@ -156,7 +156,7 @@ export class App {
     const started = now();
     try {
       const usage = await warmCache({ model: this.settings.model, effort: this.settings.effort, messages: this.session.messages }, this.warming.signal);
-      if (usage) this.print([`  ${style.faint(`history cached   ${duration(msSince(started))}`)}`, ""]);
+      if (usage) this.print([`  ${style.faint(`history cached in ${duration(msSince(started))}`)}`, ""]);
     } catch {
       // Warming is an optimization. The first real request caches the history anyway.
     } finally {
@@ -171,7 +171,9 @@ export class App {
 
   // Waiting for input.
   private idle() {
-    this.screen.setRenderer(() => this.editor.frame(this.hint ? `  ${style.faint(this.hint)}` : undefined));
+    this.screen.setRenderer(() =>
+      this.editor.frame(this.hint ? style.faint(this.hint) : statusLine(this.permissions.mode, this.settings.model, this.settings.effort, this.cwd, this.branch)),
+    );
     this.keyboard.set((key) => this.onIdleKey(key));
   }
 
@@ -213,7 +215,7 @@ export class App {
     const trimmed = text.trim();
     if (trimmed.startsWith("/") && !trimmed.includes("\n")) {
       this.screen.setRenderer(() => ({ lines: [] }));
-      this.print([`${style.accent("›")} ${style.muted(trimmed)}`]);
+      this.print([`${style.accent(BAR)}${style.muted(trimmed)}`, ""]);
       await this.command(trimmed);
       this.idle();
       return;
@@ -289,8 +291,8 @@ export class App {
         this.print([
           ...COMMANDS.map((command) => `  ${style.accent(`/${command.name}`.padEnd(14))}${style.muted(command.description)}`),
           "",
-          `  ${style.muted("enter send   alt+enter or \\ newline   ↑↓ history   tab complete")}`,
-          `  ${style.muted("esc esc or ctrl+c interrupt   ctrl+o detail   ctrl+d exit")}`,
+          `  ${style.muted("enter send · alt+enter or \\ newline · ↑↓ history · tab complete")}`,
+          `  ${style.muted("esc esc or ctrl+c interrupt · ctrl+o detail · ctrl+d exit")}`,
           "",
         ]);
         return;
@@ -331,7 +333,6 @@ export class App {
         if (!session) return say(style.red("That session file could not be read."));
         this.load(session);
         this.mcp.startAll();
-        this.print([header(this.settings.model, this.settings.effort, this.permissions.mode, this.cwd, gitBranch(this.cwd))]);
         this.printResumed();
         void this.warmResumedCache();
         return;

@@ -1,5 +1,5 @@
-// Terminal styling on Bun's native ANSI functions. One accent, a dim tone for
-// metadata, and diff colors. NO_COLOR turns every style into plain text.
+// Terminal styling on Bun's native ANSI functions. Greys only, plus red, green
+// and orange for errors, diffs and warnings. NO_COLOR turns every style into plain text.
 
 const enabled = !process.env.NO_COLOR && process.env.TERM !== "dumb";
 
@@ -9,13 +9,16 @@ const FG_RESET = "\x1b[39m";
 
 const wrap = (open: string, close: string) => (text: string) => (enabled && open ? `${open}${text}${close}` : text);
 
-// The palette: warm gold for clue itself, cool greys around it.
+// Light terminals set COLORFGBG to "fg;bg" with a bg of 7 or 15. Bun.markdown reads it the same way.
+export const lightBackground = /;(7|15)$/.test(process.env.COLORFGBG ?? "");
+
 const color = (hex: string) => wrap(fg(hex), FG_RESET);
 
 export const style = {
-  accent: color("#E6B450"),
-  muted: color("#8A93A5"),
-  faint: color("#5C6370"),
+  // Text that should stand out from the default foreground: names, paths, code.
+  accent: color(lightBackground ? "#000000" : "#EEEEEE"),
+  muted: color("#8A8A8A"),
+  faint: color(lightBackground ? "#A8A8A8" : "#626262"),
   green: color("#8BD49C"),
   red: color("#F07178"),
   blue: color("#82AAFF"),

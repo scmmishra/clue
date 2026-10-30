@@ -1,4 +1,4 @@
-import { colorsEnabled } from "./ansi";
+import { colorsEnabled, lightBackground, style } from "./ansi";
 
 // Streams Markdown through Bun's native renderer. Finished blocks (text up to a
 // blank line outside a code fence) are rendered once and committed; only the
@@ -6,11 +6,26 @@ import { colorsEnabled } from "./ansi";
 
 const INDENT = "  ";
 
+// Bun's theme colors headings, list markers, links and inline code. These
+// replacements turn them into clue's greys. Code blocks keep their syntax colors.
+// The codes are the ones Bun 1.4 emits. A new Bun that changes them only brings the colors back.
+const BRIGHT = style.accent("\0").split("\0")[0];
+const RECOLOR: [RegExp, string][] = [
+  [/\x1b\[48;5;\d+m\x1b\[38;5;\d+m([^\x1b]*)\x1b\[39m\x1b\[49m/g, style.accent("$1")],
+  [/\x1b\[1m\x1b\[3[56]m/g, "\x1b[1m"],
+  [/\x1b\[3[26]m(• |☒ |\d+\. )/g, "\x1b[2m$1"],
+  [/\x1b\[34m\x1b\[4m/g, `${BRIGHT}\x1b[4m`],
+];
+const HEADING_RULE = /^\x1b\[2m[═─]+\x1b\[0m$/;
+
 function render(text: string, columns: number): string[] {
-  const out = Bun.markdown.ansi(text, { columns: Math.max(20, columns - INDENT.length - 1), hyperlinks: colorsEnabled, colors: colorsEnabled });
+  let out = Bun.markdown.ansi(text, { columns: Math.max(20, columns - INDENT.length - 1), hyperlinks: colorsEnabled, colors: colorsEnabled, light: lightBackground });
+  if (colorsEnabled) for (const [pattern, replacement] of RECOLOR) out = out.replace(pattern, replacement);
   const lines = out.replace(/\n+$/, "").split("\n");
   while (lines.length && !lines[0].trim()) lines.shift();
-  return lines.map((line) => (line ? INDENT + line : line));
+  // Headings are bold. The rule Bun draws under each one is dropped.
+  const kept = lines.filter((line, index) => !(index > 0 && lines[index - 1].startsWith("\x1b[1m") && HEADING_RULE.test(line)));
+  return kept.map((line) => (line ? INDENT + line : line));
 }
 
 // Index just past the last blank line that sits outside a code fence, or -1.

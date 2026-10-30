@@ -2,7 +2,8 @@ import type { ConfirmAnswer, AgentEvents } from "../agent/loop";
 import { modelLabel } from "../agent/models";
 import type { ToolRecord, TurnRecord } from "../session";
 import type { Question } from "../tools/types";
-import { columns, duration, homePath, money, spinnerFrame, spread, style, wrapLine } from "./ansi";
+import { VERSION } from "../config";
+import { columns, duration, homePath, money, spinnerFrame, spread, style, width, wrapLine } from "./ansi";
 import { MarkdownStream } from "./markdown";
 import { msSince, now } from "../clock";
 import type { Key, Screen } from "./screen";
@@ -10,22 +11,25 @@ import type { Key, Screen } from "./screen";
 // ---------------------------------------------------------------------------
 // Pieces shared by the live view and by replaying a saved session.
 
-export function header(model: string, effort: string, mode: string, cwd: string, branch: string | null, readyMs?: number) {
-  const left = [
-    style.bold(style.accent("clue")),
-    style.muted(modelLabel(model)),
-    style.muted(effort),
-    mode === "full-access" ? style.orange(mode) : style.muted(mode),
-    style.muted(`${homePath(cwd)}${branch ? ` (${branch})` : ""}`),
-  ].join("  ");
-  return spread(left, readyMs === undefined ? "" : style.faint(`ready ${duration(readyMs)}`));
+export function header() {
+  return `${style.bold(style.accent("clue"))} ${style.muted(`${VERSION} · /help for commands`)}`;
 }
+
+// The line under the input: permission mode, model and effort, then the folder.
+// A folder too long for the line loses its start: "…/mentioninator/clue (main)".
+export function statusLine(mode: string, model: string, effort: string, cwd: string, branch: string | null) {
+  const left = `${mode === "full-access" ? style.orange(mode) : style.muted(mode)}${style.faint(` · ${modelLabel(model)} · ${effort}`)}`;
+  const room = columns() - 1 - width(left) - 4;
+  let place = `${homePath(cwd)}${branch ? ` (${branch})` : ""}`;
+  if (width(place) > room) place = room > 12 ? `…${Bun.sliceAnsi(place, -(room - 1))}` : "";
+  return spread(left, style.faint(place));
+}
+
+export const BAR = "┃ ";
 
 export function promptLines(prompt: string) {
   const max = columns() - 3;
-  return prompt.split("\n").flatMap((line, index) =>
-    wrapLine(line, max).map((piece, pieceIndex) => (index === 0 && pieceIndex === 0 ? `${style.accent("›")} ${style.bold(piece)}` : `  ${style.bold(piece)}`)),
-  );
+  return prompt.split("\n").flatMap((line) => wrapLine(line, max).map((piece) => `${style.accent(BAR)}${style.bold(piece)}`));
 }
 
 const KIND_NAMES: Record<string, [string, string]> = {
@@ -42,45 +46,71 @@ const KIND_NAMES: Record<string, [string, string]> = {
   result: ["stored result", "stored results"],
 };
 
+// A tool run shows at most this many calls. ctrl+o shows the rest.
+const MAX_TREE_ROWS = 8;
+
 type Row = { id: string; label: string; kind: string; done: boolean; isError?: boolean; note?: string; review?: string; reviewing?: boolean; added?: number; removed?: number; startedAt: number };
 
-// "▸ 5 tool calls  2 reads  1 edit +3 −1  2 commands  1 failed"
-export function summaryLine(rows: Pick<Row, "kind" | "isError" | "added" | "removed" | "review">[]) {
+const isHeld = (row: Pick<Row, "review">) => row.review?.startsWith("held") || row.review === "declined" || row.review === "denied";
+
+// "5 tool calls · 2 reads · 1 edit · 2 commands · 1 failed". Line counts show on each edit's row.
+function summary(rows: Pick<Row, "kind" | "isError" | "review">[]) {
   const counts = new Map<string, number>();
-  let added = 0;
-  let removed = 0;
   let failed = 0;
   let held = 0;
   for (const row of rows) {
     counts.set(row.kind, (counts.get(row.kind) ?? 0) + 1);
-    added += row.added ?? 0;
-    removed += row.removed ?? 0;
     if (row.isError) failed += 1;
-    if (row.review?.startsWith("held") || row.review === "declined" || row.review === "denied") held += 1;
+    if (isHeld(row)) held += 1;
   }
+  const dot = style.faint(" · ");
   const parts = [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([kind, count]) => {
       const [one, many] = KIND_NAMES[kind] ?? [kind, `${kind}s`];
-      let part = `${count} ${count === 1 ? one : many}`;
-      if ((kind === "edit" || kind === "write") && (added || removed)) part += ` ${style.green(`+${added}`)} ${style.red(`−${removed}`)}`;
-      return style.muted(part);
+      return style.muted(`${count} ${count === 1 ? one : many}`);
     });
   if (held) parts.push(style.orange(`${held} held`));
   else if (failed) parts.push(style.red(`${failed} failed`));
   const total = rows.length;
-  return `  ${style.accent("▸")} ${total} tool ${total === 1 ? "call" : "calls"}   ${parts.join("  ")}`;
+  return [style.muted(`${total} tool ${total === 1 ? "call" : "calls"}`), ...parts].join(dot);
 }
 
-export function footerLine(turn: Pick<TurnRecord, "firstTokenMs" | "tools" | "ms" | "cost" | "stop">) {
-  const parts = [
-    turn.firstTokenMs === null ? null : `first token ${duration(turn.firstTokenMs)}`,
-    turn.tools ? `${turn.tools} ${turn.tools === 1 ? "tool" : "tools"}` : null,
-    duration(turn.ms),
-    money(turn.cost),
+function rowText(row: Row, clock: string) {
+  const extra = [
+    row.added || row.removed ? `${style.green(`+${row.added ?? 0}`)} ${style.red(`−${row.removed ?? 0}`)}` : "",
+    row.reviewing ? style.orange("reviewing") : "",
+    row.note ? style.faint(row.note) : "",
+    row.review ? style.faint(row.review) : "",
+    clock,
   ].filter(Boolean);
-  const left = `  ${style.faint(parts.join("   "))}${turn.stop === "interrupted" ? `   ${style.orange("interrupted")}` : ""}`;
-  return spread(left, style.faint("ctrl+o detail"));
+  const label = row.label || "…";
+  const text = row.done === false ? label : isHeld(row) ? style.orange(label) : row.isError ? style.red(label) : style.muted(label);
+  return `${text}${extra.length ? `  ${extra.join("  ")}` : ""}`;
+}
+
+// A run of tool calls as a tree under one summary line:
+//   ● 2 tool calls · 1 read · 1 command
+//   ├ Read src/clock.ts
+//   └ Ran git log -3 --oneline
+export function toolTree(rows: Row[] | ToolRecord[], clock?: string) {
+  const items = rows as Row[];
+  const running = items.some((row) => row.done === false);
+  const lines = [`${running ? style.accent(spinnerFrame()) : style.accent("●")} ${summary(items)}`];
+  const hidden = Math.max(0, items.length - MAX_TREE_ROWS);
+  const shown = hidden ? items.slice(-(MAX_TREE_ROWS - 1)) : items;
+  if (hidden) lines.push(style.faint(`├ … ${hidden + 1} earlier, ctrl+o shows all`));
+  const lastRunning = items.findLast((row) => row.done === false);
+  shown.forEach((row, index) => {
+    const branch = style.faint(index === shown.length - 1 ? "└ " : "├ ");
+    lines.push(`${branch}${rowText(row, row === lastRunning && clock ? clock : "")}`);
+  });
+  return lines;
+}
+
+export function footerLine(turn: Pick<TurnRecord, "ms" | "cost" | "stop">) {
+  const left = `  ${style.faint(`${duration(turn.ms)} · ${money(turn.cost)}`)}`;
+  return turn.stop === "interrupted" ? `${left}${style.faint(" · ")}${style.orange("interrupted")}` : left;
 }
 
 // ---------------------------------------------------------------------------
@@ -115,7 +145,7 @@ export class TurnView implements AgentEvents {
     this.foldTools();
     this.screen.animate(false);
     this.screen.setRenderer(() => ({ lines: [] }));
-    this.screen.commit(["", footerLine(turn), ""]);
+    this.screen.commit([...(this.wroteText ? [""] : []), footerLine(turn), ""]);
   }
 
   // Keys while a turn runs. Returns true when the view handled the key.
@@ -167,8 +197,9 @@ export class TurnView implements AgentEvents {
   private answer(prompt: Extract<Prompt, { type: "question" }>, answer: string | null) {
     this.prompt = null;
     this.screen.commit([
-      `  ${style.accent("?")} ${style.bold(prompt.question.question)}`,
-      `    ${answer === null ? style.faint("dismissed") : style.green(answer)}`,
+      "",
+      `${style.accent("?")} ${style.bold(prompt.question.question)}`,
+      `  ${answer === null ? style.faint("dismissed") : style.green(answer)}`,
     ]);
     prompt.resolve(answer);
   }
@@ -180,12 +211,13 @@ export class TurnView implements AgentEvents {
     this.screen.commit(lines);
   }
 
-  // Once every call in a run has finished, the run folds into one summary line.
+  // Once every call in a run has finished, the run's tree moves to the scrollback.
+  // A blank line separates it from text above. The prompt and earlier trees end with one already.
   private foldTools() {
     if (this.rows.length === 0 || this.rows.some((row) => !row.done)) return;
     const rows = this.rows;
     this.rows = [];
-    this.screen.commit(["", summaryLine(rows), ""]);
+    this.screen.commit([...(this.wroteText ? [""] : []), ...toolTree(rows), ""]);
     this.wroteText = false;
   }
 
@@ -195,27 +227,28 @@ export class TurnView implements AgentEvents {
     const running = this.rows.filter((row) => !row.done);
     // While a prompt waits for an answer, it stands in for the row it asks about.
     const shown = this.prompt ? this.rows.filter((row) => row.done) : this.rows;
-    for (const row of shown) lines.push(this.rowLine(row, row === running.at(-1)));
+    if (shown.length) lines.push(...toolTree(shown, style.faint(duration(msSince(this.startedAt)))));
     if (this.prompt?.type === "confirm") {
-      lines.push(`  ${style.accent("?")} ${style.bold(this.prompt.label)}`);
+      const dot = style.faint(" · ");
+      lines.push("", `${style.accent("?")} ${style.bold(this.prompt.label)}`);
       lines.push(
-        `    ${style.accent("y")} ${style.muted("yes, once")}   ${style.accent("a")} ${style.muted(`always allow ${this.prompt.pattern} this session`)}   ${style.accent("n")} ${style.muted("no")}`,
+        `  ${style.accent("y")} ${style.muted("yes, once")}${dot}${style.accent("a")} ${style.muted(`always allow ${this.prompt.pattern} this session`)}${dot}${style.accent("n")} ${style.muted("no")}`,
       );
       return lines;
     }
     if (this.prompt?.type === "question") {
       const prompt = this.prompt;
-      lines.push(`  ${style.accent("?")} ${style.bold(prompt.question.question)}`);
+      lines.push("", `${style.accent("?")} ${style.bold(prompt.question.question)}`);
       prompt.question.options.forEach((option, index) => {
         const active = index === prompt.selected;
         const mark = prompt.question.multiple ? (prompt.chosen.has(index) ? style.green("■ ") : style.faint("□ ")) : "";
         const label = active ? style.accent(`› ${index + 1} ${option.label}`) : `  ${style.muted(`${index + 1}`)} ${option.label}`;
-        lines.push(`    ${mark}${label}${option.description ? `  ${style.faint(option.description)}` : ""}`);
+        lines.push(`  ${mark}${label}${option.description ? `  ${style.faint(option.description)}` : ""}`);
       });
       const otherActive = prompt.selected === prompt.question.options.length;
-      if (prompt.custom !== null) lines.push(`    ${style.accent("› ")}${prompt.custom}${style.inverse(" ")}`);
-      else lines.push(`    ${otherActive ? style.accent("› Type my own answer") : style.faint("  Type my own answer")}`);
-      lines.push(`    ${style.faint(prompt.question.multiple ? "↑↓ move   space pick   enter send   esc dismiss" : "↑↓ move   enter pick   esc dismiss")}`);
+      if (prompt.custom !== null) lines.push(`  ${style.accent("› ")}${prompt.custom}${style.inverse(" ")}`);
+      else lines.push(`  ${otherActive ? style.accent("› Type my own answer") : style.faint("  Type my own answer")}`);
+      lines.push("", `  ${style.faint(prompt.question.multiple ? "↑↓ move · space pick · enter send · esc dismiss" : "↑↓ move · enter pick · esc dismiss")}`);
       return lines;
     }
     // While a tool runs, its own row carries the spinner and the clock.
@@ -223,25 +256,9 @@ export class TurnView implements AgentEvents {
       const elapsed = style.faint(duration(msSince(this.startedAt)));
       const note = this.note ? style.italic(style.muted(this.note)) : style.muted("thinking");
       if (this.rows.length && !this.markdown.pending().length) lines.push("");
-      lines.push(`  ${style.accent(spinnerFrame())} ${note}  ${elapsed}`);
+      lines.push(`${style.accent(spinnerFrame())} ${note}  ${elapsed}`);
     }
     return lines;
-  }
-
-  private rowLine(row: Row, showClock = false) {
-    const label = row.label || "…";
-    if (!row.done) {
-      const status = row.reviewing ? style.orange("reviewing") : row.note ? style.faint(row.note) : "";
-      const clock = showClock ? `  ${style.faint(duration(msSince(this.startedAt)))}` : "";
-      return `  ${style.accent(spinnerFrame())} ${label}${status ? `  ${status}` : ""}${clock}`;
-    }
-    const mark = row.review?.startsWith("held") || row.review === "declined" || row.review === "denied" ? style.orange("⊘") : row.isError ? style.red("✗") : style.green("✓");
-    const extra = [
-      row.added || row.removed ? `${style.green(`+${row.added ?? 0}`)} ${style.red(`−${row.removed ?? 0}`)}` : "",
-      row.note ? style.faint(row.note) : "",
-      row.review ? style.faint(row.review) : "",
-    ].filter(Boolean);
-    return `  ${mark} ${style.muted(label)}${extra.length ? `  ${extra.join("  ")}` : ""}`;
   }
 
   // --- AgentEvents ---
