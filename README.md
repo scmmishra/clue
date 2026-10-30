@@ -43,9 +43,9 @@ clue is a single binary. The conversation prints into your terminal's scrollback
 curl -fsSL https://raw.githubusercontent.com/scmmishra/clue/main/install.sh | bash
 ```
 
-clue runs on macOS and Linux, on arm64 and x86_64. The installer downloads the binary for your machine from the latest release, checks it against the published SHA-256 checksum, and puts it in `~/.local/bin`. Set `CLUE_INSTALL_DIR` to choose another folder, or `CLUE_VERSION` to install a specific tag. Run `clue upgrade`, or the same command again, to update. You don't need Bun installed to run clue.
+clue runs on macOS and Linux, on arm64 and x86_64. The installer downloads the binary for your machine from the latest release, checks it against the published SHA-256 checksum, confirms it runs, and puts it in `~/.local/bin`. Set `CLUE_INSTALL_DIR` to choose another folder, or `CLUE_VERSION` to install a specific tag. Run `clue upgrade`, or the same command again, to update. You don't need Bun installed to run clue.
 
-To install by hand, download `clue-<os>-<arch>` and `SHA256SUMS` from the [latest release](https://github.com/scmmishra/clue/releases/latest).
+To install by hand, download `clue-<os>-<arch>.gz` and `SHA256SUMS` from the [latest release](https://github.com/scmmishra/clue/releases/latest).
 
 ## Quick start
 

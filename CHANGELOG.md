@@ -4,6 +4,10 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- Releases are compressed, so a download is about 58% smaller.
+- `clue upgrade` compares versions, so it never replaces a newer build with an older release.
+- `install.sh` and `clue upgrade` run the new binary before they install it, and keep the old one if it doesn't start.
+- `clue upgrade` refuses to replace a local build.
 ## 0.3.0
 
 - `clue "prompt"` runs the prompt as the first turn. It also works with `-c`.

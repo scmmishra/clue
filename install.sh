@@ -4,7 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/scmmishra/clue/main/install.sh | bash
 #
 # Set CLUE_INSTALL_DIR to install somewhere other than ~/.local/bin.
-# `clue upgrade` runs this script and sets CLUE_CURRENT_VERSION.
+# `clue upgrade` runs this script after it checks for a newer release.
 set -euo pipefail
 
 REPO="scmmishra/clue"
@@ -57,7 +57,7 @@ download() {
   local url="https://github.com/$REPO/releases/download/$tag/$name"
   if [[ -n "$LOCAL_RELEASE" ]]; then
     cp "$LOCAL_RELEASE/$name" "$tmp/$name" || fail "$name is missing from $LOCAL_RELEASE."
-  elif [[ "$name" == "$asset" && -t 2 ]]; then
+  elif [[ "$name" != SHA256SUMS && -t 2 ]]; then
     curl -fL --progress-bar "$url" -o "$tmp/$name" || fail "Could not download $name from release $tag."
   else
     curl -fsSL "$url" -o "$tmp/$name" 2> /dev/null || fail "Could not download $name from release $tag."
@@ -71,12 +71,7 @@ if [[ -z "$LOCAL_RELEASE" ]]; then
     tag="$(latest_tag)"
   fi
 else
-  tag="local"
-fi
-
-if [[ -n "${CLUE_CURRENT_VERSION:-}" && "$tag" == "v$CLUE_CURRENT_VERSION" ]]; then
-  echo "clue $tag is already the latest version."
-  exit 0
+  tag="${tag:-local}"
 fi
 
 tmp="$(mktemp -d)"
@@ -84,19 +79,29 @@ trap 'rm -rf "$tmp"' EXIT
 
 echo "Downloading clue $tag for $os-$arch"
 download SHA256SUMS
-download "$asset"
+# Releases before 0.4.0 have no compressed files.
+file="$asset"
+if awk -v name="$asset.gz" '$2 == name { found = 1 } END { exit !found }' "$tmp/SHA256SUMS"; then
+  file="$asset.gz"
+fi
+download "$file"
 
 echo "Checking the download"
 # A binary that doesn't match its published checksum is never installed.
-expected="$(awk -v name="$asset" '$2 == name { print $1 }' "$tmp/SHA256SUMS")"
-[[ -n "$expected" ]] || fail "$asset is not listed in the release checksums."
-[[ "$(sha256 "$tmp/$asset")" == "$expected" ]] || fail "The download of $asset does not match its checksum. Nothing was installed."
+expected="$(awk -v name="$file" '$2 == name { print $1 }' "$tmp/SHA256SUMS")"
+[[ -n "$expected" ]] || fail "$file is not listed in the release checksums."
+[[ "$(sha256 "$tmp/$file")" == "$expected" ]] || fail "The download of $file does not match its checksum. Nothing was installed."
+[[ "$file" == "$asset" ]] || gzip -d "$tmp/$file" || fail "Could not unpack $file. Nothing was installed."
+chmod +x "$tmp/$asset"
+
+# A checksum proves the file is intact, not that it runs here.
+reported="$("$tmp/$asset" --version 2> /dev/null)" || fail "The new binary does not start on this machine. Nothing was installed."
+[[ "$tag" == "local" || "v$reported" == "$tag" ]] || fail "The new binary reports version $reported, not ${tag#v}. Nothing was installed."
 
 was_installed=""
 [[ -e "$TARGET" ]] && was_installed=1
 
 mkdir -p "$INSTALL_DIR"
-chmod +x "$tmp/$asset"
 # Copy beside the target and rename, so a failed copy never leaves a half-written binary.
 cp "$tmp/$asset" "$TARGET.new"
 mv -f "$TARGET.new" "$TARGET"

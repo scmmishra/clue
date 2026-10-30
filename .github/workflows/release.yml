@@ -65,9 +65,11 @@ jobs:
       - name: Check the version in the binary
         run: test "v$(dist/clue-darwin-arm64 --version)" = "$TAG"
 
-      - name: Write checksums
+      # The plain binaries stay, because clue upgrade in 0.3.0 and earlier downloads them.
+      - name: Compress the binaries and write checksums
         run: |
           cd dist
+          gzip -9 -k clue-darwin-arm64 clue-darwin-x64 clue-linux-arm64 clue-linux-x64
           shasum -a 256 clue-* > SHA256SUMS
           cat SHA256SUMS
 
@@ -78,5 +80,7 @@ jobs:
           gh release create "$TAG" \
             dist/clue-darwin-arm64 dist/clue-darwin-x64 \
             dist/clue-linux-arm64 dist/clue-linux-x64 \
+            dist/clue-darwin-arm64.gz dist/clue-darwin-x64.gz \
+            dist/clue-linux-arm64.gz dist/clue-linux-x64.gz \
             dist/SHA256SUMS \
             --target "$GITHUB_SHA" --title "clue $TAG" --notes-file "$RUNNER_TEMP/notes.md"

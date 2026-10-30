@@ -13,6 +13,8 @@ const PROFILE = join(DIST, "launch.order");
 const ALL = ["bun-darwin-arm64", "bun-darwin-x64", "bun-linux-arm64", "bun-linux-x64"];
 const native = `bun-${process.platform}-${process.arch}`;
 const targets = process.argv.includes("--all") ? ALL : [native];
+// `clue upgrade` refuses anything but a release, so it never replaces a local build.
+const channel = process.argv.includes("--all") ? "release" : "local";
 
 mkdirSync(DIST, { recursive: true });
 
@@ -21,6 +23,7 @@ async function build(target: string, outfile: string, bytecodeOrder: string | fa
     entrypoints: [join(ROOT, "src/main.ts")],
     minify: true,
     bytecode: true,
+    define: { BUILD_CHANNEL: JSON.stringify(channel) },
     compile: {
       target: target as never,
       outfile,
