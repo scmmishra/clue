@@ -3,6 +3,7 @@ import { relative, resolve } from "node:path";
 import type { PermissionMode, PermissionRules, RuleValue } from "./config";
 import { REVIEW_FALLBACK_MODEL } from "./agent/models";
 import { getClient } from "./agent/provider";
+import { parseCommand } from "./shell-command";
 import type { Tool } from "./tools/types";
 import reviewPrompt from "../prompts/review.yaml";
 
@@ -13,29 +14,69 @@ import reviewPrompt from "../prompts/review.yaml";
 
 export type Decision = { action: "run" | "ask" | "review" | "deny"; reason?: string; subject: string };
 
-// Commands that only read, or that are a normal part of working on a project.
-const ROUTINE_COMMANDS: RegExp[] = [
-  /^(ls|pwd|cat|head|tail|wc|echo|printf|which|type|file|stat|du|df|date|env|true|false|sort|uniq|cut|tr|diff|cmp|tree|basename|dirname|realpath)\b/,
-  /^(rg|grep|egrep|fgrep|find|fd|ag|jq|yq|sed -n|awk)\b/,
-  /^git (status|diff|log|show|branch|rev-parse|ls-files|blame|grep|describe|remote -v|stash list|tag --list|add|commit|switch|checkout -b|restore --staged|fetch|worktree list)\b/,
-  /^(npm|pnpm|yarn|bun|npx|bunx) (test|run|install|i|ci|add|build|lint|exec|x|typecheck|check|tsc|vitest|jest|eslint|prettier|format|outdated|ls|list|why)\b/,
-  /^(bun|node|deno|python3?|ruby|go|cargo|rustc|swift|java|dotnet|php|elixir|mix) /,
-  /^(tsc|vitest|jest|eslint|prettier|biome|pytest|rspec|rubocop|ruff|mypy|black|make|cmake|ninja|gradle|mvn|cargo|go|rails|rake|bundle|pip|uv|poetry|mix|swift|xcodebuild|zig)\b/,
-  /^(docker (ps|images|logs|compose (ps|logs|up|down|build)))\b/,
-];
+// A test for the arguments after a routine prefix. True when they make the command unsafe.
+type UnsafeArgs = (args: string[]) => boolean;
 
-// Shell features that can hide what a command does.
-const DYNAMIC = /(\$\(|`|\beval\b|\bsource\b|^\.\s|\bsudo\b|\bcurl\b.*\|\s*(ba|z)?sh|\bwget\b.*\|\s*(ba|z)?sh|\brm\s+-[a-z]*r[a-z]*f?\s+\/(?!\w)|>\s*\/(?!dev\/null))/;
+const anyArg = (pattern: RegExp): UnsafeArgs => (args) => args.some((arg) => pattern.test(arg));
+const routine = (commands: string, unsafe: UnsafeArgs | null = null) => commands.split(",").map((command) => [command, unsafe] as const);
+const forEach = (programs: string, commands: string) => programs.split(" ").flatMap((program) => commands.split(" ").map((command) => `${program} ${command}`)).join(",");
+
+// git reads these as prefixes of the long options --output, --ext-diff and --open-files-in-pager.
+const GIT_READ = anyArg(/^(--ou|--ext|--op|-O)/);
+const PACKAGE_NAME = anyArg(/^[^-]/);
+const NOT_A_SCRIPT_NAME: UnsafeArgs = ([name = ""]) => !/^\w[\w:-]*$/.test(name);
+
+// Commands that only read, or that are a normal part of working on a project, keyed by
+// their leading words. Everything else goes to review, so this list stays short.
+// Programs that run other programs, such as env, find, awk, node or xargs, stay off it.
+const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
+  ...routine("ls,pwd,cat,head,tail,wc,echo,printf,which,file,stat,du,df,true,false,cut,tr,cmp,basename,dirname,realpath,grep,egrep,fgrep,jq"),
+  ...routine("sort", anyArg(/^(-[a-zA-Z]*o|--o|--c)/)),
+  ...routine("uniq", (args) => args.filter((arg) => !arg.startsWith("-")).length > 1),
+  ...routine("diff", anyArg(/^--o/)),
+  ...routine("rg", anyArg(/^--(pre|hostname-bin)/)),
+  ...routine("fd", anyArg(/^(-[a-zA-Z]*[xX]|--exec)/)),
+  ...routine("tree", anyArg(/^(-[a-zA-Z]*o|--fromfile)/)),
+  ...routine("date", anyArg(/^(-[a-zA-Z]*s|--s)/)),
+
+  ...routine("git status,git diff,git log,git show,git grep,git blame,git ls-files,git rev-parse,git describe,git stash list,git worktree list", GIT_READ),
+  ...routine("git branch", anyArg(/^(?!(-a|-r|-v|-vv|--all|--remotes|--verbose|--list|--show-current)$)/)),
+  ...routine("git remote -v", anyArg(/./)),
+  ...routine("git tag --list,git tag -l", anyArg(/^-/)),
+  ...routine("git add,git checkout -b"),
+  ...routine("git commit", anyArg(/^(--am|--no-v|-[a-zA-Z]*n)/)),
+  ...routine("git switch", anyArg(/^(-f|-C|--f|--d)/)),
+  ...routine("git restore --staged", anyArg(/^(-W|--w)/)),
+  ...routine("git fetch", anyArg(/^-(?!-all$|-tags$)/)),
+
+  ...routine(forEach("npm pnpm yarn bun", "test outdated ls list why")),
+  ...routine(forEach("npm pnpm yarn bun", "install i ci"), PACKAGE_NAME),
+  ...routine(forEach("npm pnpm yarn bun", "run"), NOT_A_SCRIPT_NAME),
+  ...routine(forEach("pnpm yarn", "build lint typecheck format")),
+  ...routine(forEach("npx bunx", "tsc vitest jest eslint prettier biome")),
+
+  ...routine("tsc,vitest,jest,eslint,prettier,biome,pytest,rspec,rubocop,ruff,mypy,black,make,ninja"),
+  ...routine("python -m pytest,python3 -m pytest,bundle exec rspec,bundle exec rubocop,rails test,gradle test,gradle build,mvn test,zig build"),
+  ...routine(forEach("cargo", "test build check clippy fmt")),
+  ...routine(forEach("go", "test build vet fmt")),
+  ...routine(forEach("swift", "test build")),
+  ...routine(forEach("mix", "test compile format")),
+  ...routine("docker ps,docker images,docker logs,docker compose ps,docker compose logs"),
+]);
 
 const SENSITIVE_PATH = /(^|\/)(\.env(\..*)?|\.git\/|\.ssh\/|\.aws\/|\.npmrc|\.netrc|\.gnupg\/|id_rsa|\.clue\/settings\.json|credentials)/;
 
+function wordsAreRoutine(words: string[]) {
+  for (let length = words.length; length > 0; length--) {
+    const prefix = words.slice(0, length).join(" ");
+    if (ROUTINE_COMMANDS.has(prefix)) return !ROUTINE_COMMANDS.get(prefix)?.(words.slice(length));
+  }
+  return false;
+}
+
 export function commandIsRoutine(command: string) {
-  if (DYNAMIC.test(command)) return false;
-  const segments = command
-    .split(/&&|\|\||;|\|/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return segments.length > 0 && segments.every((part) => ROUTINE_COMMANDS.some((pattern) => pattern.test(part.replace(/^(\w+=\S+\s+)+/, ""))));
+  const commands = parseCommand(command);
+  return commands !== null && commands.length > 0 && commands.every(wordsAreRoutine);
 }
 
 function insideProject(cwd: string, path: string) {
@@ -72,6 +113,21 @@ export function ruleFor(rules: PermissionRules, toolName: string, subject: strin
   apply(rules["*"]);
   apply(rules[toolName]);
   return result;
+}
+
+// The rule for a shell command line. Each command in a chain gets its own rule, so a deny
+// can't hide behind `cd x &&`, and an allow can't carry a second command along. A line that
+// can't be parsed can match a deny or an ask, but never an allow.
+function shellRule(rules: PermissionRules, line: string): RuleValue | null {
+  const commands = parseCommand(line);
+  if (!commands?.length) {
+    const rule = ruleFor(rules, "shell", line);
+    return rule === "allow" ? null : rule;
+  }
+  const values = commands.map((words) => ruleFor(rules, "shell", words.join(" ")));
+  if (values.includes("deny")) return "deny";
+  if (values.includes("ask")) return "ask";
+  return values.every((value) => value === "allow") ? "allow" : null;
 }
 
 // The question an approval prompt asks, such as "Run git push origin main?".
@@ -117,13 +173,23 @@ export class Permissions {
     return "*";
   }
 
+  // An "always allow" answer must cover every command in a chain.
+  private granted(toolName: string, subject: string, runsCommand: boolean) {
+    const patterns = this.grants.get(toolName) ?? [];
+    const matches = (text: string) => patterns.some((pattern) => globToRegex(pattern).test(text));
+    if (!runsCommand) return matches(subject);
+    const commands = parseCommand(subject);
+    return commands !== null && commands.length > 0 && commands.every((words) => matches(words.join(" ")));
+  }
+
   decide(tool: Tool, input: any): Decision {
     const subject = subjectOf(tool, input);
-    if (tool.readOnly) return { action: "run", subject };
-    const rule = ruleFor(this.rules, tool.name, subject);
+    const runsCommand = tool.name === "shell" && (input?.action ?? "run") === "run";
+    const rule = runsCommand ? shellRule(this.rules, subject) : ruleFor(this.rules, tool.name, subject);
     if (rule === "deny") return { action: "deny", subject, reason: "a deny rule in ~/.clue/settings.json" };
+    if (tool.readOnly) return { action: "run", subject };
     if (rule === "allow") return { action: "run", subject };
-    if (this.grants.get(tool.name)?.some((pattern) => globToRegex(pattern).test(subject))) return { action: "run", subject };
+    if (this.granted(tool.name, subject, runsCommand)) return { action: "run", subject };
     if (this.mode === "full-access") return { action: "run", subject };
     if (rule === "ask" || this.mode === "ask") return { action: "ask", subject };
     // auto mode

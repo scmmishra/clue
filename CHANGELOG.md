@@ -4,6 +4,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- `auto` mode now parses shell commands instead of matching them with a regex. A background `&`, a newline, or a program that runs other programs, such as `env`, `find` or `node`, now goes to review. The list of routine commands is shorter, so some commands that used to run directly are now reviewed.
+- Allow rules, deny rules and "always allow" answers now apply to each command in a chain. Deny rules also apply to read-only tools.
 - clue rings the terminal bell when it needs you, and when a turn ends after 30 seconds or more without input from you. Set `"bell": false` in `settings.json` to turn it off.
 - clue tells the terminal when it is idle, working, waiting for you, finished or failed, through the Program Status Protocol (OSC 7501).
 - The footer after each reply shows tokens in and out. Tokens in include cached input.
