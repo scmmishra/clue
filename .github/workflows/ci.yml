@@ -1,0 +1,48 @@
+name: CI
+
+# Type checks, tests and builds clue on macOS and Linux, then installs the
+# build with install.sh, the way a user would.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run typecheck
+
+      - run: bun test
+
+      - run: bun run build
+
+      # A release folder with one asset and its checksum, named the way a release names them.
+      - name: Install the build with install.sh
+        run: |
+          os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          case "$(uname -m)" in arm64 | aarch64) arch=arm64 ;; *) arch=x64 ;; esac
+          mkdir -p "$RUNNER_TEMP/release"
+          cp dist/clue "$RUNNER_TEMP/release/clue-$os-$arch"
+          (cd "$RUNNER_TEMP/release" && shasum -a 256 clue-* > SHA256SUMS)
+          CLUE_LOCAL_RELEASE="$RUNNER_TEMP/release" CLUE_INSTALL_DIR="$RUNNER_TEMP/bin" bash install.sh
+          test "$("$RUNNER_TEMP/bin/clue" --version)" = "$(jq -r .version package.json)"
+
+      - name: Lint install.sh
+        if: runner.os == 'Linux'
+        run: shellcheck install.sh

@@ -1,16 +1,47 @@
 name: Release
 
-# Publishes binaries for every platform when a version tag is pushed, e.g. v0.1.0.
+# Publishes a release when the version in package.json changes on main.
+# The release creates the tag v<version> and carries a binary for every platform.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths: [package.json]
+  workflow_dispatch:
 
-permissions:
-  contents: write
+concurrency:
+  group: release
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      new: ${{ steps.version.outputs.new }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # package.json also changes for dependencies. Only a version without a tag is released.
+      - id: version
+        run: |
+          tag="v$(jq -r .version package.json)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+            echo "$tag is already released."
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
   release:
+    needs: version
+    if: needs.version.outputs.new == 'true'
     runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,10 +51,15 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - run: bun run typecheck
+
       - run: bun test
 
       - name: Build every platform
         run: bun scripts/build.ts --all
+
+      - name: Check the version in the binary
+        run: test "v$(dist/clue-darwin-arm64 --version)" = "$TAG"
 
       - name: Write checksums
         run: |
@@ -35,8 +71,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$TAG" \
             dist/clue-darwin-arm64 dist/clue-darwin-x64 \
             dist/clue-linux-arm64 dist/clue-linux-x64 \
             dist/SHA256SUMS \
-            --title "clue $GITHUB_REF_NAME" --generate-notes
+            --target "$GITHUB_SHA" --title "clue $TAG" --generate-notes
