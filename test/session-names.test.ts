@@ -180,6 +180,9 @@ const firstPaint = async (args: string[], cwd: string, env: Record<string, strin
   const terminal = new Bun.Terminal({ cols: 120, rows: 30, data: (_terminal, data) => (output += decoder.decode(data, { stream: true })) });
   const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), ...args], { cwd, env: { ...process.env, CLUE_BENCH_READY: "1", ...env }, terminal });
   const code = await proc.exited;
+  // On Linux the output can land just after the process exits.
+  for (let waited = 0; !output && waited < 2000; waited += 10) await Bun.sleep(10);
+  for (let seen = -1; seen !== output.length; await Bun.sleep(20)) seen = output.length;
   terminal.close();
   return { output: Bun.stripANSI(output), code };
 };
