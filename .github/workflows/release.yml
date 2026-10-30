@@ -20,7 +20,7 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       new: ${{ steps.version.outputs.new }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # package.json also changes for dependencies. Only a version without a tag is released.
       - id: version
@@ -43,11 +43,15 @@ jobs:
     env:
       TAG: ${{ needs.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.3
+
+      # Before the build, so a version without notes fails in seconds.
+      - name: Read the release notes from CHANGELOG.md
+        run: bun scripts/release-notes.ts > "$RUNNER_TEMP/notes.md"
 
       - run: bun install --frozen-lockfile
 
@@ -75,4 +79,4 @@ jobs:
             dist/clue-darwin-arm64 dist/clue-darwin-x64 \
             dist/clue-linux-arm64 dist/clue-linux-x64 \
             dist/SHA256SUMS \
-            --target "$GITHUB_SHA" --title "clue $TAG" --generate-notes
+            --target "$GITHUB_SHA" --title "clue $TAG" --notes-file "$RUNNER_TEMP/notes.md"
