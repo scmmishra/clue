@@ -1,5 +1,6 @@
-// Terminal styling on Bun's native ANSI functions. Greys only, plus red, green
-// and orange for errors, diffs and warnings. NO_COLOR turns every style into plain text.
+// Terminal styling on Bun's native ANSI functions. Greys, one blue for clue's own glyphs,
+// plus red, green and orange for errors, diffs and warnings. NO_COLOR turns every style
+// into plain text.
 
 const enabled = !process.env.NO_COLOR && process.env.TERM !== "dumb";
 
@@ -17,6 +18,8 @@ const color = (hex: string) => wrap(fg(hex), FG_RESET);
 export const style = {
   // Text that should stand out from the default foreground: names, paths, code.
   accent: color(lightBackground ? "#000000" : "#EEEEEE"),
+  // The prompt bar, the tool dot and the spinner.
+  brand: color(lightBackground ? "#3B6FD4" : "#82AAFF"),
   muted: color("#8A8A8A"),
   faint: color(lightBackground ? "#A8A8A8" : "#626262"),
   green: color("#8BD49C"),

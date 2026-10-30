@@ -12,24 +12,32 @@ import type { Key, LiveFrame, Screen } from "./screen";
 // Pieces shared by the live view and by replaying a saved session.
 
 export function header() {
-  return `${style.bold(style.accent("clue"))} ${style.muted(`${VERSION} · /help for commands`)}`;
+  return style.muted(`clue ${VERSION} · /help for commands`);
 }
 
 // The line under the input: permission mode, model and effort, then the folder.
 // A folder too long for the line loses its start: "…/mentioninator/clue (main)".
 export function statusLine(mode: string, model: string, effort: string, cwd: string, branch: string | null) {
-  const left = `${mode === "full-access" ? style.orange(mode) : style.muted(mode)}${style.faint(` · ${modelLabel(model)} · ${effort}`)}`;
+  const left = `${mode === "full-access" ? style.orange(mode) : style.muted(mode)}${style.muted(` · ${modelLabel(model)} · ${effort}`)}`;
   const room = columns() - 1 - width(left) - 4;
   let place = `${homePath(cwd)}${branch ? ` (${branch})` : ""}`;
   if (width(place) > room) place = room > 12 ? `…${Bun.sliceAnsi(place, -(room - 1))}` : "";
-  return spread(left, style.faint(place));
+  return spread(left, style.muted(place));
 }
 
 export const BAR = "┃ ";
 
+// A prompt as it goes to the scrollback. The terminal wraps it and only the first line has
+// the bar, so selecting it copies the text as typed, and it reflows when the window resizes.
 export function promptLines(prompt: string) {
+  const [first, ...rest] = prompt.split("\n");
+  return [`${style.brand(BAR)}${first}`, ...rest];
+}
+
+// A prompt for the pager, which draws its own rows and can't leave wrapping to the terminal.
+export function wrappedPromptLines(prompt: string) {
   const max = columns() - 3;
-  return prompt.split("\n").flatMap((line) => wrapLine(line, max).map((piece) => `${style.accent(BAR)}${style.bold(piece)}`));
+  return prompt.split("\n").flatMap((line) => wrapLine(line, max).map((piece) => `${style.brand(BAR)}${piece}`));
 }
 
 const KIND_NAMES: Record<string, [string, string]> = {
@@ -63,7 +71,7 @@ function summary(rows: Pick<Row, "kind" | "isError" | "review">[]) {
     if (row.isError) failed += 1;
     if (isHeld(row)) held += 1;
   }
-  const dot = style.faint(" · ");
+  const dot = style.muted(" · ");
   const parts = [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([kind, count]) => {
@@ -80,8 +88,8 @@ function rowText(row: Row, clock: string) {
   const extra = [
     row.added || row.removed ? `${style.green(`+${row.added ?? 0}`)} ${style.red(`−${row.removed ?? 0}`)}` : "",
     row.reviewing ? style.orange("reviewing") : "",
-    row.note ? style.faint(row.note) : "",
-    row.review ? style.faint(row.review) : "",
+    row.note ? style.muted(row.note) : "",
+    row.review ? style.muted(row.review) : "",
     clock,
   ].filter(Boolean);
   const label = row.label || "…";
@@ -96,13 +104,13 @@ function rowText(row: Row, clock: string) {
 export function toolTree(rows: Row[] | ToolRecord[], clock?: string) {
   const items = rows as Row[];
   const running = items.some((row) => row.done === false);
-  const lines = [`${running ? style.accent(spinnerFrame()) : style.accent("●")} ${summary(items)}`];
+  const lines = [`${running ? style.brand(spinnerFrame()) : style.brand("●")} ${summary(items)}`];
   const hidden = Math.max(0, items.length - MAX_TREE_ROWS);
   const shown = hidden ? items.slice(-(MAX_TREE_ROWS - 1)) : items;
-  if (hidden) lines.push(style.faint(`├ … ${hidden + 1} earlier, ctrl+o shows all`));
+  if (hidden) lines.push(style.muted(`├ … ${hidden + 1} earlier, ctrl+o shows all`));
   const lastRunning = items.findLast((row) => row.done === false);
   shown.forEach((row, index) => {
-    const branch = style.faint(index === shown.length - 1 ? "└ " : "├ ");
+    const branch = style.muted(index === shown.length - 1 ? "└ " : "├ ");
     lines.push(`${branch}${rowText(row, row === lastRunning && clock ? clock : "")}`);
   });
   return lines;
@@ -111,8 +119,8 @@ export function toolTree(rows: Row[] | ToolRecord[], clock?: string) {
 export function footerLine(turn: Pick<TurnRecord, "ms" | "cost" | "stop" | "usage">) {
   // Most input is read from or written to the cache, so "in" counts all three.
   const input = turn.usage.input + turn.usage.cacheRead + turn.usage.cacheWrite;
-  const left = `  ${style.faint(`${duration(turn.ms)} · ${money(turn.cost)} · ${tokens(input)} in · ${tokens(turn.usage.output)} out`)}`;
-  return turn.stop === "interrupted" ? `${left}${style.faint(" · ")}${style.orange("interrupted")}` : left;
+  const left = `  ${style.muted(`${duration(turn.ms)} · ${money(turn.cost)} · ${tokens(input)} in · ${tokens(turn.usage.output)} out`)}`;
+  return turn.stop === "interrupted" ? `${left}${style.muted(" · ")}${style.orange("interrupted")}` : left;
 }
 
 // ---------------------------------------------------------------------------
@@ -256,7 +264,7 @@ export class TurnView implements AgentEvents {
     const running = this.rows.filter((row) => !row.done);
     // While a prompt waits for an answer, it stands in for the row it asks about.
     const shown = this.prompt ? this.rows.filter((row) => row.done) : this.rows;
-    if (shown.length) lines.push(...toolTree(shown, style.faint(duration(msSince(this.startedAt)))));
+    if (shown.length) lines.push(...toolTree(shown, style.muted(duration(msSince(this.startedAt)))));
     if (this.prompt?.type === "confirm") {
       const dot = style.faint(" · ");
       lines.push("", `${style.accent("?")} ${style.bold(this.prompt.label)}`);
@@ -282,10 +290,10 @@ export class TurnView implements AgentEvents {
     }
     // While a tool runs, its own row carries the spinner and the clock.
     if (this.status === "working" && running.length === 0) {
-      const elapsed = style.faint(duration(msSince(this.startedAt)));
+      const elapsed = style.muted(duration(msSince(this.startedAt)));
       const note = this.note ? style.italic(style.muted(this.note)) : style.muted("thinking");
       if (this.rows.length && !this.markdown.pending().length) lines.push("");
-      lines.push(`${style.accent(spinnerFrame())} ${note}  ${elapsed}`);
+      lines.push(`${style.brand(spinnerFrame())} ${note}  ${elapsed}`);
     }
     return lines;
   }

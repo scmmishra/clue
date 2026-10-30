@@ -184,7 +184,7 @@ export class App {
 
   // The input, with the queued message above it.
   private composer = (): LiveFrame => {
-    const frame = this.editor.frame(this.hint ? style.faint(this.hint) : statusLine(this.permissions.mode, this.settings.model, this.settings.effort, this.cwd, this.branch));
+    const frame = this.editor.frame(this.hint ? style.muted(this.hint) : statusLine(this.permissions.mode, this.settings.model, this.settings.effort, this.cwd, this.branch));
     if (!this.queued) return frame;
     const preview = this.queued.text.replace(/\s+/g, " ").trim();
     return {
@@ -302,7 +302,7 @@ export class App {
     const trimmed = text.trim();
     if (SLASH_COMMAND.test(trimmed) && !trimmed.includes("\n")) {
       this.screen.setRenderer(() => ({ lines: [] }));
-      this.print([`${style.accent(BAR)}${style.muted(trimmed)}`, ""]);
+      this.print([`${style.brand(BAR)}${style.muted(trimmed)}`, ""]);
       await this.command(trimmed);
       this.idle();
       return;

@@ -4,6 +4,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- The prompt bar, the tool dot and the spinner are blue, and secondary text is one even grey. Prompts are no longer bold.
+- Copying a sent prompt no longer picks up the `┃` bar or extra line breaks. The bar shows on its first line only, and the terminal wraps the rest.
 - Pasting or dragging an image file adds it to the prompt as `[Image #1]`. `ctrl+v` and `/paste` attach an image from the clipboard on macOS.
 - You can type while clue works. `Tab` or `Enter` queues one message, and `↑` takes it back to edit.
 - A message that starts with a path, such as `/tmp/a.png`, is no longer read as a slash command.

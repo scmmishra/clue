@@ -2,7 +2,7 @@ import type { Session, ToolRecord, TurnRecord } from "../session";
 import { columns, duration, money, rows, style, truncate, wrapLine } from "./ansi";
 import { renderMarkdown } from "./markdown";
 import type { Key } from "./screen";
-import { footerLine, promptLines, toolTree } from "./turn";
+import { footerLine, promptLines, toolTree, wrappedPromptLines } from "./turn";
 
 type Entry =
   | { type: "prompt"; text: string; at?: number }
@@ -119,7 +119,7 @@ export function detailLines(session: Session): string[] {
     if (entry.type === "prompt") {
       lines.push(style.faint("─".repeat(width - 1)));
       if (entry.at) lines.push(style.faint(new Date(entry.at).toLocaleString()));
-      lines.push(...promptLines(entry.text), "");
+      lines.push(...wrappedPromptLines(entry.text), "");
     } else if (entry.type === "text") lines.push(...renderMarkdown(entry.text, width), "");
     else if (entry.type === "tools") {
       for (const tool of entry.tools) lines.push(...toolDetail(tool, width), "");

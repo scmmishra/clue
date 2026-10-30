@@ -283,7 +283,7 @@ export class Editor {
   // after a blank line, unless command completions take its place.
   frame(footer: string): LiveFrame {
     const max = columns() - 1;
-    const prompt = style.accent(PROMPT);
+    const prompt = style.brand(PROMPT);
     if (!this.text) return { lines: [prompt, "", footer], cursor: { row: 0, col: width(PROMPT) } };
     const lines: string[] = [];
     let cursorRow = 0;
