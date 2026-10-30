@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadSettings, paths, saveSetting } from "../src/config";
-import { Screen } from "../src/ui/screen";
+import { Screen, type Key } from "../src/ui/screen";
 import { shouldRing, statusReport, turnStatus, type ProgramStatus } from "../src/ui/status";
 import { TurnView } from "../src/ui/turn";
 import { startMockApi } from "./mock-api";
@@ -157,3 +157,67 @@ test("a session with the bell off never rings", async () => {
   expect(output).toContain(statusReport("blocked-permission"));
   expect(output).not.toContain("\x07");
 }, 15_000);
+
+const fruits = { question: "Which fruits?", options: [{ label: "apple" }, { label: "mango" }, { label: "kiwi" }], multiple: true };
+const press = (view: TurnView, ...keys: Key[]) => keys.forEach((key) => view.handleKey(key));
+const typed = (text: string): Key[] => [...text].map((char) => ({ name: "char", text: char }));
+const down: Key = { name: "down" };
+const space: Key = { name: "char", text: " " };
+const enter: Key = { name: "enter" };
+
+test("a typed answer adds to the picked options, in the order of the list", async () => {
+  const view = new TurnView(capture().screen);
+  const answer = view.question(fruits);
+  press(view, down, down, space);
+  press(view, { name: "up" }, space);
+  press(view, ...typed("banana"), enter);
+  expect(await answer).toBe("mango, kiwi, banana");
+});
+
+test("a typed answer with nothing picked is sent alone", async () => {
+  const view = new TurnView(capture().screen);
+  const answer = view.question(fruits);
+  press(view, ...typed("banana"), enter);
+  expect(await answer).toBe("banana");
+});
+
+test("an empty typed answer still sends the picked options", async () => {
+  const view = new TurnView(capture().screen);
+  const answer = view.question(fruits);
+  press(view, down, space, { name: "up" }, { name: "up" }, { name: "up" });
+  press(view, enter);
+  press(view, enter);
+  expect(await answer).toBe("mango");
+});
+
+test("an empty typed answer with nothing picked keeps waiting", () => {
+  const { out, screen } = capture();
+  const view = new TurnView(screen);
+  void view.question(fruits);
+  press(view, { name: "up" }, enter, enter);
+  expect(out.text).not.toContain(statusReport("working"));
+});
+
+test("going back from typing keeps the picks", async () => {
+  const view = new TurnView(capture().screen);
+  const answer = view.question(fruits);
+  press(view, down, space, ...typed("x"), { name: "escape" }, down, space, enter);
+  expect(await answer).toBe("mango, kiwi");
+});
+
+test("a typed answer to a single-choice question is sent alone", async () => {
+  const view = new TurnView(capture().screen);
+  const answer = view.question({ question: "Which?", options: [{ label: "apple" }] });
+  press(view, ...typed("banana"), enter);
+  expect(await answer).toBe("banana");
+});
+
+test("while typing, the hint says what the keys do then", () => {
+  const { screen } = capture();
+  const view = new TurnView(screen);
+  void view.question(fruits);
+  const hint = () => (view as unknown as { liveLines(): string[] }).liveLines().at(-1)!;
+  expect(Bun.stripANSI(hint())).toContain("space pick");
+  press(view, ...typed("b"));
+  expect(Bun.stripANSI(hint())).toBe("  enter send · esc back to the list");
+});

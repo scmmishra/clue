@@ -191,8 +191,9 @@ export class TurnView implements AgentEvents {
     if (prompt.custom !== null) {
       if (key.name === "enter") {
         const text = prompt.custom.trim();
-        if (!text) return true;
-        this.answer(prompt, text);
+        const answers = [...this.picked(prompt), ...(text ? [text] : [])];
+        if (!answers.length) return true;
+        this.answer(prompt, answers.join(", "));
       } else if (key.name === "escape") prompt.custom = null;
       else if (key.name === "backspace") prompt.custom = prompt.custom.slice(0, -1);
       else if (key.text) prompt.custom += key.text;
@@ -212,12 +213,17 @@ export class TurnView implements AgentEvents {
     } else if (key.name === "enter") {
       if (prompt.selected === options.length) prompt.custom = "";
       else if (prompt.question.multiple) {
-        const picked = [...(prompt.chosen.size ? prompt.chosen : new Set([prompt.selected]))].map((index) => options[index].label);
+        const picked = prompt.chosen.size ? this.picked(prompt) : [options[prompt.selected].label];
         this.answer(prompt, picked.join(", "));
       } else this.answer(prompt, options[prompt.selected].label);
     } else if (key.text && key.name === "char") prompt.custom = key.text;
     this.screen.refresh();
     return true;
+  }
+
+  // The options checked so far, in the order of the list.
+  private picked(prompt: Extract<Prompt, { type: "question" }>) {
+    return [...prompt.chosen].sort((a, b) => a - b).map((index) => prompt.question.options[index].label);
   }
 
   private answer(prompt: Extract<Prompt, { type: "question" }>, answer: string | null) {
@@ -285,7 +291,8 @@ export class TurnView implements AgentEvents {
       const otherActive = prompt.selected === prompt.question.options.length;
       if (prompt.custom !== null) lines.push(`  ${style.accent("› ")}${prompt.custom}${style.inverse(" ")}`);
       else lines.push(`  ${otherActive ? style.accent("› Type my own answer") : style.faint("  Type my own answer")}`);
-      lines.push("", `  ${style.faint(prompt.question.multiple ? "↑↓ move · space pick · enter send · esc dismiss" : "↑↓ move · enter pick · esc dismiss")}`);
+      const keys = prompt.custom !== null ? "enter send · esc back to the list" : prompt.question.multiple ? "↑↓ move · space pick · enter send · esc dismiss" : "↑↓ move · enter pick · esc dismiss";
+      lines.push("", `  ${style.faint(keys)}`);
       return lines;
     }
     // While a tool runs, its own row carries the spinner and the clock.
