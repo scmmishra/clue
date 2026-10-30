@@ -7,6 +7,8 @@ const SEPARATORS = ["&&", "||", ";", "|"];
 // Outside quotes. Includes zsh's ^ and # globs and a single &, which runs what follows.
 const UNSUPPORTED = /[\x00-\x08\x0a-\x1f\x7f<>()$`\\{}^#!&]/;
 const UNSUPPORTED_IN_DOUBLE_QUOTES = /[$`\\!]/;
+// The last exit code. It's always a number, so it can't hide what a command does.
+const EXIT_CODE = "$?";
 
 // The words of each command, or null when the text can't be read with certainty.
 export function parseCommand(text: string): string[][] | null {
@@ -25,7 +27,7 @@ export function parseCommand(text: string): string[][] | null {
       const end = text.indexOf(char, index + 1);
       if (end === -1) return null;
       const quoted = text.slice(index + 1, end);
-      if (char === '"' && UNSUPPORTED_IN_DOUBLE_QUOTES.test(quoted)) return null;
+      if (char === '"' && UNSUPPORTED_IN_DOUBLE_QUOTES.test(quoted.replaceAll(EXIT_CODE, ""))) return null;
       word += quoted;
       inWord = true;
       index = end;
@@ -33,6 +35,12 @@ export function parseCommand(text: string): string[][] | null {
     }
     if (char === " " || char === "\t") {
       endWord();
+      continue;
+    }
+    if (text.startsWith(EXIT_CODE, index)) {
+      word += EXIT_CODE;
+      inWord = true;
+      index += EXIT_CODE.length - 1;
       continue;
     }
     const separator = SEPARATORS.find((item) => text.startsWith(item, index));

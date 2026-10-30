@@ -31,6 +31,17 @@ test("~ inside a word is plain text", () => {
   expect(parseCommand("git diff HEAD~1")).toEqual([["git", "diff", "HEAD~1"]]);
 });
 
+test("$? is the last exit code, a number, so it can be read plainly", () => {
+  expect(parseCommand(`false; echo "exit=$?"`)).toEqual([["false"], ["echo", "exit=$?"]]);
+  expect(parseCommand("echo $?")).toEqual([["echo", "$?"]]);
+});
+
+test("$? does not let other expansions through", () => {
+  expect(parseCommand(`echo "$?$(id)"`)).toBeNull();
+  expect(parseCommand("echo $?$HOME")).toBeNull();
+  expect(parseCommand("echo $?(x)")).toBeNull();
+});
+
 test("nothing to run is no commands", () => {
   expect(parseCommand("")).toEqual([]);
   expect(parseCommand("   ")).toEqual([]);
@@ -130,6 +141,7 @@ test.each([
   "bun test && git diff",
   "git status; git diff",
   "bun test || git status",
+  `git status; echo "exit=$?"`,
 ])("routine: %s", (command) => {
   expect(commandIsRoutine(command)).toBe(true);
 });
@@ -245,6 +257,13 @@ test("a command that can't be parsed never matches an allow rule", () => {
 test("a command that can't be parsed still matches a deny rule", () => {
   const permissions = new Permissions("auto", gitRules, "/tmp/project");
   expect(action(permissions, "git push origin main > log")).toBe("deny");
+});
+
+test("a rule still matches a command followed by an exit code check", () => {
+  const permissions = new Permissions("auto", { shell: { "chatwoot auth *": "allow" } } as never, "/tmp/project");
+  expect(action(permissions, `chatwoot auth status -o json; echo "exit=$?"`)).toBe("review");
+  const withEcho = new Permissions("auto", { shell: { "chatwoot auth *": "allow", "echo *": "allow" } } as never, "/tmp/project");
+  expect(action(withEcho, `chatwoot auth status -o json; echo "exit=$?"`)).toBe("run");
 });
 
 test("one command with an ask rule makes the chain ask", () => {
