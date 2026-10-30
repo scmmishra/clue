@@ -46,6 +46,7 @@ export type AgentOptions = {
 const emptyUsage = (): Usage => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, webSearches: 0 });
 const MAX_JSON_RETRIES = 2;
 const MAX_FEATURE_RETRIES = 3;
+const ERROR_NOTE_CHARS = 60;
 
 export class Agent {
   readStamps = new Map<string, number>();
@@ -262,7 +263,8 @@ export class Agent {
         startedAt,
         ms: msSince(clock),
         review,
-        note: output.note,
+        // A failed call without its own note shows the error's first line.
+        note: output.note ?? (output.isError && !review ? full.trim().split("\n")[0].slice(0, ERROR_NOTE_CHARS) || undefined : undefined),
       };
       session.append({ t: "tool", tool: record });
       events.toolEnd(record);
