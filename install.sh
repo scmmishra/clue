@@ -5,7 +5,6 @@
 #
 # Set CLUE_INSTALL_DIR to install somewhere other than ~/.local/bin.
 # `clue upgrade` runs this script and sets CLUE_CURRENT_VERSION.
-# While the repository is private, the GitHub CLI is used when it is logged in.
 set -euo pipefail
 
 REPO="scmmishra/clue"
@@ -43,41 +42,34 @@ sha256() {
   fi
 }
 
-# Finds the newest release tag. Public repositories answer without a login.
+# Finds the newest release tag.
 latest_tag() {
   local tag
   tag="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2> /dev/null \
     | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)" || true
-  if [[ -z "$tag" ]] && gh_ready; then
-    tag="$(gh release view -R "$REPO" --json tagName --jq .tagName 2> /dev/null)" || true
-  fi
-  [[ -n "$tag" ]] || fail "No release of $REPO was found. Check the repository name and your access."
+  [[ -n "$tag" ]] || fail "No release of $REPO was found."
   echo "$tag"
 }
 
-gh_ready() {
-  command -v gh > /dev/null && gh auth status --hostname github.com > /dev/null 2>&1
-}
-
-# Downloads one release file into $tmp. Falls back to the GitHub CLI for private repositories.
+# Downloads one release file into $tmp. The binary shows a progress bar in a terminal.
 download() {
   local name="$1"
+  local url="https://github.com/$REPO/releases/download/$tag/$name"
   if [[ -n "$LOCAL_RELEASE" ]]; then
     cp "$LOCAL_RELEASE/$name" "$tmp/$name" || fail "$name is missing from $LOCAL_RELEASE."
-    return
+  elif [[ "$name" == "$asset" && -t 2 ]]; then
+    curl -fL --progress-bar "$url" -o "$tmp/$name" || fail "Could not download $name from release $tag."
+  else
+    curl -fsSL "$url" -o "$tmp/$name" 2> /dev/null || fail "Could not download $name from release $tag."
   fi
-  if curl -fsSL "https://github.com/$REPO/releases/download/$tag/$name" -o "$tmp/$name" 2> /dev/null; then
-    return
-  fi
-  if gh_ready && gh release download "$tag" -R "$REPO" -p "$name" -D "$tmp" --clobber > /dev/null 2>&1; then
-    return
-  fi
-  fail "Could not download $name from release $tag."
 }
 
 tag="${CLUE_VERSION:-}"
 if [[ -z "$LOCAL_RELEASE" ]]; then
-  [[ -n "$tag" ]] || tag="$(latest_tag)"
+  if [[ -z "$tag" ]]; then
+    echo "Finding the latest release"
+    tag="$(latest_tag)"
+  fi
 else
   tag="local"
 fi
@@ -90,9 +82,11 @@ fi
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+echo "Downloading clue $tag for $os-$arch"
 download SHA256SUMS
 download "$asset"
 
+echo "Checking the download"
 # A binary that doesn't match its published checksum is never installed.
 expected="$(awk -v name="$asset" '$2 == name { print $1 }' "$tmp/SHA256SUMS")"
 [[ -n "$expected" ]] || fail "$asset is not listed in the release checksums."

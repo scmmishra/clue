@@ -39,3 +39,17 @@ test("the installer stops when the version is already installed, without downloa
   expect(stdout).toContain("clue v0.1.0 is already the latest version.");
   expect(code).toBe(0);
 });
+
+test("the installer says what it is doing, in order", async () => {
+  const release = folder();
+  const asset = `clue-${process.platform}-${process.arch}`;
+  writeFileSync(join(release, asset), "#!/bin/sh\n");
+  const hash = new Bun.CryptoHasher("sha256").update("#!/bin/sh\n").digest("hex");
+  writeFileSync(join(release, "SHA256SUMS"), `${hash}  ${asset}\n`);
+  const proc = Bun.spawn(["bash", installer], { env: { ...process.env, CLUE_LOCAL_RELEASE: release, CLUE_INSTALL_DIR: folder() }, stdout: "pipe", stderr: "pipe" });
+  const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+  expect(code).toBe(0);
+  const steps = ["Downloading clue local", "Checking the download", "Installed clue local"].map((step) => stdout.indexOf(step));
+  expect(steps.every((position) => position >= 0)).toBe(true);
+  expect(steps).toEqual([...steps].sort((a, b) => a - b));
+});

@@ -4,6 +4,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- `install.sh` and `clue upgrade` show each step and a download progress bar.
+
 ## 0.2.0
 
 - `clue upgrade` installs the latest release.
