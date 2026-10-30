@@ -231,6 +231,14 @@ export class App {
     this.screen.refresh();
   }
 
+  // Handles a key that adds to the input from outside it. True when the key was one.
+  private pasteKey(key: Key) {
+    if (key.name === "paste") this.keyboard.hold(this.paste(key.text ?? ""));
+    else if (key.ctrl && key.name === "v") this.keyboard.hold(this.pasteClipboard());
+    else return false;
+    return true;
+  }
+
   private notice(text: string) {
     this.print([`  ${style.muted(text)}`, ""]);
   }
@@ -277,8 +285,7 @@ export class App {
       process.stdout.write("\x1b[2J\x1b[H");
       return this.screen.flush();
     }
-    if (key.name === "paste") return void this.paste(key.text ?? "");
-    if (key.ctrl && key.name === "v") return void this.pasteClipboard();
+    if (this.pasteKey(key)) return;
     const result = this.editor.handle(key);
     if (result === "submit") {
       const text = this.editor.text;
@@ -308,17 +315,19 @@ export class App {
     this.screen.setRenderer(() => ({ lines: [] }));
     this.print([...promptLines(prompt), ""]);
     this.screen.status("working");
+    // Before the first await: a second Enter must queue, not start a second turn.
+    this.keyboard.set((key) => this.onTurnKey(key));
     try {
       await getClient();
     } catch (error) {
       this.print([`  ${style.red((error as Error).message)}`, ""]);
       this.screen.status("error");
+      this.unqueue();
       return this.idle();
     }
     const view = new TurnView(this.screen, this.composer);
     this.view = view;
     this.turn = new AbortController();
-    this.keyboard.set((key) => this.onTurnKey(key));
     view.start();
     let turn: TurnRecord | null = null;
     try {
@@ -360,8 +369,7 @@ export class App {
       return;
     }
     this.hint = "";
-    if (key.name === "paste") return void this.paste(key.text ?? "");
-    if (key.ctrl && key.name === "v") return void this.pasteClipboard();
+    if (this.pasteKey(key)) return;
     if (key.name === "up" && this.queued) return this.unqueue();
     if (key.name === "tab" && !this.editor.hasCompletions) return this.queueDraft();
     if (this.editor.handle(key) === "submit") return this.queueDraft();
@@ -444,8 +452,11 @@ export class App {
       case "mcp":
         await mcpCommand(args, this.cwd, this.mcp, (lines) => this.print(lines));
         return;
-      case "paste":
-        return this.pasteClipboard();
+      case "paste": {
+        const work = this.pasteClipboard();
+        this.keyboard.hold(work);
+        return work;
+      }
       case "cost": {
         const total = this.session.turns.reduce(
           (sum, turn) => ({ cost: sum.cost + (turn.cost ?? 0), input: sum.input + turn.usage.input, cacheRead: sum.cacheRead + turn.usage.cacheRead, cacheWrite: sum.cacheWrite + turn.usage.cacheWrite, output: sum.output + turn.usage.output }),

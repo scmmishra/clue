@@ -226,6 +226,7 @@ export type KeyHandler = (key: Key) => void;
 export class Keyboard {
   private handler: KeyHandler = () => {};
   private started = false;
+  private held: Key[] | null = null;
 
   start() {
     if (this.started || !process.stdin.isTTY) return;
@@ -234,7 +235,7 @@ export class Keyboard {
     process.stdin.setEncoding("utf8");
     process.stdout.write(term.bracketedPasteOn);
     process.stdin.on("data", (data: string) => {
-      for (const key of parseKeys(data)) this.handler(key);
+      for (const key of parseKeys(data)) this.deliver(key);
     });
     process.stdin.resume();
   }
@@ -249,5 +250,20 @@ export class Keyboard {
 
   set(handler: KeyHandler) {
     this.handler = handler;
+  }
+
+  // Keys that arrive during `work` wait for it, so Enter can't overtake a paste.
+  hold(work: Promise<unknown>) {
+    this.held ??= [];
+    void work.finally(() => {
+      const keys = this.held ?? [];
+      this.held = null;
+      for (const key of keys) this.deliver(key);
+    });
+  }
+
+  private deliver(key: Key) {
+    if (this.held) this.held.push(key);
+    else this.handler(key);
   }
 }

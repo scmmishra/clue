@@ -8,6 +8,9 @@ import { encodeImage } from "../tools/files";
 // clipboard directly. macOS only: osascript writes the clipboard to a file as PNG.
 export const clipboardSupported = process.platform === "darwin";
 
+// The keyboard waits for this read, so it can't be allowed to hang.
+const READ_TIMEOUT_MS = 5000;
+
 export async function clipboardImage(): Promise<PromptImage | null> {
   const dir = mkdtempSync(join(tmpdir(), "clue-clipboard-"));
   const file = join(dir, "clipboard.png");
@@ -20,7 +23,7 @@ export async function clipboardImage(): Promise<PromptImage | null> {
     "close access fileRef",
   ].join("\n");
   try {
-    const proc = Bun.spawn(["osascript", "-e", script], { stdout: "ignore", stderr: "ignore" });
+    const proc = Bun.spawn(["osascript", "-e", script], { stdout: "ignore", stderr: "ignore", timeout: READ_TIMEOUT_MS });
     if ((await proc.exited) !== 0) return null;
     return (await encodeImage(file, statSync(file).size)).block;
   } catch {

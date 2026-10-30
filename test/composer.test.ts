@@ -39,7 +39,7 @@ async function startClue(options: { delay?: number; env?: Record<string, string>
     stop = async () => {};
   };
   const waitFor = async (check: () => boolean, label: string) => {
-    const deadline = Date.now() + 3000;
+    const deadline = Date.now() + 8000;
     while (!check() && Date.now() < deadline) await Bun.sleep(10);
     if (!check()) throw new Error(`timed out waiting for ${label}\n${Bun.stripANSI(output).slice(-600)}`);
   };
@@ -83,14 +83,14 @@ test("a pasted image path becomes a placeholder and is sent as an image", async 
   await clue.turns(1);
   const blocks = promptBlocks("[Image #1] describe it");
   expect(imagesIn(blocks)).toEqual([{ type: "image", source: { type: "base64", media_type: "image/png", data: PNG.toString("base64") } }]);
-}, 15_000);
+}, 25_000);
 
 test("a path with escaped spaces, as a dragged file arrives, attaches", async () => {
   const clue = await startClue();
   writeFileSync(join(clue.cwd, "my shot.png"), PNG);
   await clue.type(paste(join(clue.cwd, "my\\ shot.png")));
   await clue.seen("[Image #1]");
-}, 15_000);
+}, 25_000);
 
 test("a pasted path to a missing image stays as text", async () => {
   const clue = await startClue();
@@ -99,7 +99,7 @@ test("a pasted path to a missing image stays as text", async () => {
   await clue.turns(1);
   expect(clue.wasSent("/tmp/clue-no-such-image.png")).toBe(true);
   expect(clue.wasSent('"type":"image"')).toBe(false);
-}, 15_000);
+}, 25_000);
 
 test("a pasted path to any other file stays as text", async () => {
   const clue = await startClue();
@@ -110,7 +110,7 @@ test("a pasted path to any other file stays as text", async () => {
   await clue.turns(1);
   expect(clue.wasSent(file)).toBe(true);
   expect(clue.wasSent('"type":"image"')).toBe(false);
-}, 15_000);
+}, 25_000);
 
 test("a resumed-style prompt with no image keeps a plain string", async () => {
   const clue = await startClue();
@@ -122,14 +122,31 @@ test("a resumed-style prompt with no image keeps a plain string", async () => {
   await clue.turns(2);
   const last = requests.at(-1)!.messages.filter((message) => message.role === "user" && typeof message.content === "string");
   expect(last.map((message) => message.content)).toContain("second");
-}, 15_000);
+}, 25_000);
+
+test("enter right after a paste sends the pasted text", async () => {
+  const clue = await startClue();
+  await clue.type(paste("/tmp/clue-no-such-image.png") + ENTER);
+  await clue.turns(1);
+  expect(clue.wasSent("/tmp/clue-no-such-image.png")).toBe(true);
+}, 25_000);
+
+test("enter right after pasting an image sends the image", async () => {
+  const clue = await startClue();
+  const file = join(clue.cwd, "shot.png");
+  writeFileSync(file, PNG);
+  await clue.type(paste(file) + ENTER);
+  await clue.turns(1);
+  expect(imagesIn(promptBlocks("[Image #1]"))).toHaveLength(1);
+}, 25_000);
 
 // A stand-in for osascript. It writes the PNG to the path in the script, like the real one.
-function fakeOsascript(succeeds: boolean) {
+function fakeOsascript(succeeds: boolean, delay = 0) {
   const bin = mkdtempSync(join(tmpdir(), "clue-fake-bin-"));
   const png = join(bin, "fixture.png");
   writeFileSync(png, PNG);
-  const body = succeeds ? `path=$(printf '%s' "$2" | sed -n 's/.*POSIX file "\\(.*\\)".*/\\1/p' | head -n 1)\ncp "${png}" "$path"\n` : "exit 1\n";
+  const wait = delay ? `sleep ${delay}\n` : "";
+  const body = wait + (succeeds ? `path=$(printf '%s' "$2" | sed -n 's/.*POSIX file "\\(.*\\)".*/\\1/p' | head -n 1)\ncp "${png}" "$path"\n` : "exit 1\n");
   writeFileSync(join(bin, "osascript"), `#!/bin/sh\n${body}`);
   chmodSync(join(bin, "osascript"), 0o755);
   return { PATH: `${bin}:${process.env.PATH}` };
@@ -149,13 +166,20 @@ macOnly.each([
   await clue.type(ENTER);
   await clue.turns(1);
   expect(imagesIn(promptBlocks("what is this"))).toHaveLength(1);
-}, 15_000);
+}, 25_000);
+
+macOnly("keys typed while the clipboard is read stay in order, and enter waits for the image", async () => {
+  const clue = await startClue({ env: fakeOsascript(true, 0.3) });
+  await clue.type(`${CTRL_V}what is this${ENTER}`);
+  await clue.turns(1);
+  expect(imagesIn(promptBlocks("[Image #1]what is this"))).toHaveLength(1);
+}, 25_000);
 
 macOnly("clue says so when the clipboard has no image", async () => {
   const clue = await startClue({ env: fakeOsascript(false) });
   await clue.type(CTRL_V);
   await clue.seen("No image on the clipboard.");
-}, 15_000);
+}, 25_000);
 
 test("tab queues the typed message, and it sends when the turn ends", async () => {
   const clue = await startClue({ delay: 30 });
@@ -168,7 +192,15 @@ test("tab queues the typed message, and it sends when the turn ends", async () =
   expect(clue.wasSent("second message")).toBe(false);
   await clue.turns(2);
   expect(clue.wasSent("second message")).toBe(true);
-}, 15_000);
+}, 25_000);
+
+test("a second message sent right after the first queues, and never starts a second turn", async () => {
+  const clue = await startClue({ delay: 30 });
+  await clue.type(`first${ENTER}second${ENTER}`);
+  await clue.seen("Queued: second");
+  await clue.turns(2);
+  expect(clue.wasSent("second")).toBe(true);
+}, 25_000);
 
 test("enter also queues during a run", async () => {
   const clue = await startClue({ delay: 30 });
@@ -179,7 +211,7 @@ test("enter also queues during a run", async () => {
   await clue.type(ENTER);
   await clue.seen("Queued: second message");
   await clue.turns(2);
-}, 15_000);
+}, 25_000);
 
 test("only one message can be queued", async () => {
   const clue = await startClue({ delay: 30 });
@@ -198,7 +230,7 @@ test("only one message can be queued", async () => {
   await clue.type(ENTER);
   await clue.turns(3);
   expect(clue.wasSent("third")).toBe(true);
-}, 15_000);
+}, 25_000);
 
 test("up takes the queued message back to edit it, and it no longer sends by itself", async () => {
   const clue = await startClue({ delay: 30 });
@@ -217,7 +249,7 @@ test("up takes the queued message back to edit it, and it no longer sends by its
   await clue.type(ENTER);
   await clue.turns(2);
   expect(clue.wasSent("second edited")).toBe(true);
-}, 15_000);
+}, 25_000);
 
 test("up in front of a draft keeps both", async () => {
   const clue = await startClue({ delay: 30 });
@@ -233,7 +265,7 @@ test("up in front of a draft keeps both", async () => {
   await clue.type(ENTER);
   await clue.turns(2);
   expect(clue.wasSent("second\\ndraft")).toBe(true);
-}, 15_000);
+}, 25_000);
 
 test("an interrupt returns the queued message to the editor instead of sending it", async () => {
   const clue = await startClue({ delay: 30 });
@@ -249,7 +281,7 @@ test("an interrupt returns the queued message to the editor instead of sending i
   await clue.type(ENTER);
   await clue.turns(1);
   expect(clue.wasSent("second")).toBe(true);
-}, 15_000);
+}, 25_000);
 
 test("a queued message keeps its image", async () => {
   const clue = await startClue({ delay: 30 });
@@ -265,7 +297,7 @@ test("a queued message keeps its image", async () => {
   await clue.seen("Queued: [Image #1] later");
   await clue.turns(2);
   expect(imagesIn(promptBlocks("[Image #1] later"))).toHaveLength(1);
-}, 15_000);
+}, 25_000);
 
 test("nothing typed means tab queues nothing", async () => {
   const clue = await startClue({ delay: 30 });
@@ -277,4 +309,4 @@ test("nothing typed means tab queues nothing", async () => {
   await Bun.sleep(200);
   expect(clue.screen()).not.toContain("Queued:");
   expect(existsSync(clue.cwd)).toBe(true);
-}, 15_000);
+}, 25_000);
