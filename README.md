@@ -13,7 +13,7 @@ clue calls Claude's Messages API directly, so it can use what the API offers: pr
 
 clue is a single binary. The conversation prints into your terminal's scrollback, like any other command's output.
 
-> Status: early. v0.1 runs end to end against a local stand-in for the API. It has not yet been run against the live Claude API.
+> Status: early. Expect rough edges, and see [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 ## Principles
 
@@ -29,8 +29,8 @@ clue is a single binary. The conversation prints into your terminal's scrollback
 - **Ready before it's loaded**: clue shows the prompt first. The SDK, MCP servers and skills load while you type, and the connection to the API opens in the background.
 - **Resume without the wait**: `clue -c` prints only the last screen of the conversation. While you type, clue sends the history to Claude ahead of your message, so your message reads cached history instead of processing it again.
 - **A prompt Claude has already seen**: the system prompt and tool list are the same bytes in every session, so Claude caches them across sessions. Details that change, such as the working directory and git state, travel in messages.
-- **A quiet transcript**: each run of tool calls folds into one summary line. Command output, diffs and errors wait behind `ctrl+o`. tmux copy mode keeps working.
-- **Every wait on screen**: each reply ends with its first-token time, total time and cost.
+- **A quiet transcript**: each run of tool calls shows as a short tree, one line per call. Command output, diffs and errors wait behind `ctrl+o`. tmux copy mode keeps working.
+- **Every wait on screen**: each reply ends with its total time and cost. `ctrl+o` shows the first-token time of each turn.
 - **Tools for real work**: clue finds, reads and edits files, runs shell commands and dev servers, searches the web, reads URLs and hands tasks to subagents. See [Tools](#tools).
 - **MCP servers**: local and remote. A server's tools cost nothing until the model needs them.
 - **Three permission modes**: `auto` runs routine work and has risky actions reviewed first. See [Permissions](#permissions).
@@ -84,36 +84,45 @@ clue ask --json "summarize the failing tests" | jq -r .final_output
 
 ```
 $ clue
-clue  opus-5.5 medium  auto  ~/code/chatwoot (main)        ready 21ms
+clue 0.1.0 · /help for commands
 
-› the conversation spec is flaky, fix it
+┃ the conversation spec is flaky, fix it
 
   I'll run the spec a few times to see how it fails.
 
-  ▸ 3 tool calls  1 command  1 read  1 search
+● 3 tool calls · 1 command · 1 read · 1 search
+├ Ran bundle exec rspec spec/models/conversation_spec.rb
+├ Read spec/models/conversation_spec.rb  180 lines
+└ Searched "last_activity_at"  12 matches
 
   The spec compares `last_activity_at` with `Time.now`. The two
   timestamps can land in different seconds. I'll freeze time in that
   example.
 
-  ▸ 2 tool calls  1 edit +3 -1  1 command
+● 2 tool calls · 1 edit · 1 command
+├ Edited spec/models/conversation_spec.rb  +3 −1
+└ Ran bundle exec rspec spec/models/conversation_spec.rb
 
   Fixed. The example now freezes time, and 5 runs in a row pass.
 
-  first token 0.8s   5 tools   41s   $0.21              ctrl+o detail
-›
+  41s · $0.21
+
+┃
+
+auto · opus 5.5 · medium                      ~/code/chatwoot (main)
 ```
 
-- **The header** shows the model, effort, permission mode, folder and branch, and how long clue took to be ready.
-- **Tool calls** show one line per call while they run. When a run of calls finishes, it folds into one summary line: how many calls, of which kinds, and how many failed. Edits keep their added and removed line counts.
-- **The footer** after each reply shows the time to the first token, the number of tool calls, the total time and the cost.
-- **`ctrl+o`** opens the full detail: every command and its output, every diff, errors, timestamps and token use per turn. Press `ctrl+o` or `escape` to close it. clue keeps working while it's open.
+- **The header** shows clue's version.
+- **The status line** under the input shows the permission mode, model, effort, folder and branch.
+- **Tool calls** show as a tree under a summary line: how many calls, of which kinds, and how many failed. Each call has its own line, with line counts for edits and the error for a failed call. A run of more than 8 calls shows the last 7.
+- **The footer** after each reply shows the total time and the cost.
+- **`ctrl+o`** opens the full detail: every command and its output, every diff, errors, timestamps, first-token time and token use per turn. Press `ctrl+o` or `escape` to close it. clue keeps working while it's open.
 
-A reviewed action in `auto` mode shows its review on the call's line, then folds like any other call. In `ask` mode, clue stops and asks:
+A reviewed action in `auto` mode shows its review on the call's line. In `ask` mode, clue stops and asks:
 
 ```
-  ? slack.post_message  #eng  "Fixed the flaky conversation spec…"
-    [y] run once   [a] always allow slack.post_message   [n] no
+? slack.post_message
+  y yes, once · a always allow slack.post_message this session · n no
 ```
 
 ## Models
@@ -315,11 +324,22 @@ CI runs the type check, the tests and a build on macOS and Linux for every push 
 
 The version in `package.json` is clue's only version number. `clue --version` reads it at build time.
 
-To release, change the version in `package.json` and push it to `main`. The release workflow then:
+Changes are listed in [CHANGELOG.md](CHANGELOG.md), under `## Unreleased` until they ship.
 
-1. Runs the type check and the tests.
-2. Builds the binary for each platform.
-3. Creates the tag `v<version>` and a GitHub release with the binaries and `SHA256SUMS`.
+To release:
+
+1. Rename `## Unreleased` in `CHANGELOG.md` to the new version, such as `## 0.2.0`, and add an empty `## Unreleased` above it.
+2. Change the version in `package.json` to match.
+3. Push both to `main`.
+
+The release workflow then:
+
+1. Reads the changelog section for the version. If the section is missing or empty, the release stops.
+2. Runs the type check and the tests.
+3. Builds the binary for each platform.
+4. Creates the tag `v<version>` and a GitHub release with the binaries and `SHA256SUMS`. The changelog section becomes the release notes.
+
+CI checks on every push that the version in `package.json` has a changelog section, so a missing entry fails before the release does.
 
 If the tag already exists, the workflow skips the release. A change to `package.json` that keeps the version, such as a dependency update, publishes nothing.
 
