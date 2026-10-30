@@ -86,17 +86,13 @@ export function buildRequest(options: RequestOptions) {
   return request;
 }
 
-// Drops the optional feature a 400 complains about. Returns false when nothing was left to drop.
+// Drops the optional feature a 400 names. Returns false when it names none: most 400s
+// are about the request itself, and dropping compaction for those would cost the session.
 export function dropRejectedFeature(error: unknown) {
   const message = String((error as Error)?.message ?? "").toLowerCase();
   if (features.fallbacks && message.includes("fallback")) return !(features.fallbacks = false);
   if (features.progressNotes && (message.includes("display") || message.includes("updates"))) return !(features.progressNotes = false);
   if (features.compaction && (message.includes("context_management") || message.includes("compact"))) return !(features.compaction = false);
-  // Unclear which feature: drop them all once.
-  if (features.fallbacks || features.progressNotes || features.compaction) {
-    features.fallbacks = features.progressNotes = features.compaction = false;
-    return true;
-  }
   return false;
 }
 

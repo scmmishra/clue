@@ -34,6 +34,11 @@ function parse(argv: string[]): Parsed {
   const takesValue = new Set(["model", "effort", "permission-mode", "resume"]);
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
+    // `clue mcp` has its own arguments, such as `--project` and `--`. They reach it untouched.
+    if (arg === "mcp" && positional.length === 0) {
+      positional.push(...argv.slice(index));
+      break;
+    }
     if (arg === "--") {
       positional.push(...argv.slice(index + 1));
       break;

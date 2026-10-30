@@ -4,6 +4,11 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- `clue mcp add <name> -- <command>`, `clue mcp add --project` and `clue mcp approve --all` now work as they do in `/mcp`.
+- A session that crashed during a tool call can continue. clue records the unfinished calls as failed before the next message.
+- A half-written line in a session file no longer hides the records after it.
+- A 400 from the API turns off an optional feature only when the error names that feature. A 400 that names none is reported as an error.
+
 ## 0.1.0
 
 The first release.

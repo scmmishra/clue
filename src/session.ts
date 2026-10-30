@@ -73,6 +73,25 @@ export function newSessionId() {
   return `${time}-${random}`;
 }
 
+// Bun parses the file natively, but it stops at a bad line. A crash can leave one half
+// written, and records appended later must survive it, so parsing continues on the next line.
+function parseRecords(text: string) {
+  const records: SessionRecord[] = [];
+  let start = 0;
+  while (start < text.length) {
+    const { values, read, done } = Bun.JSONL.parseChunk(text, start);
+    for (const value of values) records.push(value as SessionRecord);
+    if (done) break;
+    // read stops just before the bad line.
+    let line = read;
+    while (text[line] === "\n") line += 1;
+    const end = text.indexOf("\n", line);
+    if (end === -1) break;
+    start = end + 1;
+  }
+  return records;
+}
+
 export class Session {
   readonly file: string;
   messages: MessageParam[] = [];
@@ -100,9 +119,8 @@ export class Session {
   static load(file: string): Session | null {
     if (!existsSync(file)) return null;
     let session: Session | null = null;
-    // Bun parses the whole file natively. A half-written last line from a crash is skipped.
-    const { values } = Bun.JSONL.parseChunk(readFileSync(file, "utf8"));
-    for (const record of values as SessionRecord[]) {
+    const text = readFileSync(file, "utf8");
+    for (const record of parseRecords(text)) {
       if (record.t === "session") {
         session = new Session(record.id, record.cwd, record.created);
         session.records.push(record);
@@ -110,6 +128,7 @@ export class Session {
       }
       session?.apply(record);
     }
+    if (session && text && !text.endsWith("\n")) session.tornLastLine = true;
     return session;
   }
 
@@ -129,6 +148,8 @@ export class Session {
   }
 
   private sink: Bun.FileSink | null = null;
+  // The file ends mid-line, so the next record must start on a new one.
+  private tornLastLine = false;
 
   // Appends through Bun's FileSink on a descriptor opened in append mode.
   // (A FileSink on a path writes from the start of the file.)
@@ -143,6 +164,10 @@ export class Session {
         this.sink.write(`${JSON.stringify(header)}\n`);
         this.records.unshift(header);
       }
+    }
+    if (this.tornLastLine) {
+      this.sink.write("\n");
+      this.tornLastLine = false;
     }
     this.sink.write(`${JSON.stringify(record)}\n`);
     // Flush every record: a crash loses at most the line being written.
@@ -161,6 +186,19 @@ export class Session {
 
   get isEmpty() {
     return this.messages.length === 0;
+  }
+
+  // A crash mid-tool leaves tool calls without results, and the API refuses a new
+  // message until each call has one. Appending them keeps the history unchanged.
+  closeUnfinishedTools() {
+    const last = this.messages.at(-1);
+    if (last?.role !== "assistant" || !Array.isArray(last.content)) return;
+    const results = last.content.flatMap((block) =>
+      block.type === "tool_use"
+        ? [{ type: "tool_result" as const, tool_use_id: block.id, is_error: true, content: "clue stopped before this tool call finished. It may have partly run, so check before repeating it." }]
+        : [],
+    );
+    if (results.length) this.appendMessage({ role: "user", content: results });
   }
 
   private touchIndex() {

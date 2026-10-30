@@ -77,6 +77,7 @@ export class Agent {
     let stop = "end_turn";
     let model = settings.model;
 
+    session.closeUnfinishedTools();
     if (session.isEmpty) {
       const context = await buildContext(this.options.cwd, this.options.skills(), this.options.mcp.configuredNames(), this.seenInstructions);
       session.appendMessage({ role: "user", content: [{ type: "text", text: context }, { type: "text", text: prompt }] });
