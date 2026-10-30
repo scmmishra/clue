@@ -1,5 +1,5 @@
 // Benchmarks for clue's three waits: start, resume and first token.
-//   bun benchmarks/run.ts [--runs 30]
+//   bun benchmarks/run.ts [--runs 30] [--check]
 // Times are wall-clock from spawn, measured with Bun.nanoseconds(). Each
 // benchmark runs in a pseudo-terminal, the way a person starts clue.
 
@@ -7,6 +7,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startMockApi } from "../test/mock-api";
+import { BUDGETS_MS, overBudget } from "./budget";
 
 const ROOT = join(import.meta.dir, "..");
 const BINARY = join(ROOT, "dist", "clue");
@@ -172,3 +173,11 @@ lines.push(
 
 console.log(lines.join("\n"));
 rmSync(home, { recursive: true, force: true });
+
+// --check fails the run when a wait is over its budget. CI uses it.
+if (process.argv.includes("--check")) {
+  const problems = overBudget({ launch: readyBinary.internal?.p90 ?? null, resume: resumeBinary.internal?.p90 ?? null });
+  for (const problem of problems) console.error(`Over budget: ${problem}`);
+  if (problems.length) process.exit(1);
+  console.error(`Within budget: launch under ${BUDGETS_MS.launch} ms, resume under ${BUDGETS_MS.resume} ms.`);
+}

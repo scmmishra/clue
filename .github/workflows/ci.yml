@@ -35,6 +35,9 @@ jobs:
 
       - run: bun run build
 
+      - name: Check launch and resume against their budgets
+        run: bun benchmarks/run.ts --check
+
       # A release folder with one asset and its checksum, named the way a release names them.
       - name: Install the build with install.sh
         run: |

@@ -46,6 +46,15 @@ With the real API, the model's own time to first token is added on top.
 
 A larger session, 610 KB and 120 prompts with long tool results, loads in about 0.65 ms.
 
+## Budgets
+
+CI runs `bun benchmarks/run.ts --check` on macOS and Linux. It fails if the p90 inside the process isn't under these limits, which are set in [`budget.ts`](budget.ts):
+
+| Wait | Budget |
+|---|---|
+| Start to ready prompt | under 10 ms |
+| `clue -c` to ready prompt, 120 prompts | under 15 ms |
+
 ## Method notes
 
 - "Inside the process" is the time from process start to the first paint of the input line, as clue reports it with `CLUE_BENCH_READY=1`.
