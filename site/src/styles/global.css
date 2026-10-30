@@ -104,23 +104,31 @@ p code {
 main {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
-	gap: 56px;
+	gap: 72px;
 	padding-block-start: clamp(32px, 8vh, 72px);
 }
 
 @media (min-width: 1340px) {
 	main {
 		grid-template-columns: minmax(0, 640px) minmax(0, 1fr);
-		gap: 56px;
+		gap: 72px 56px;
+	}
+
+	.hero,
+	.features {
+		grid-column: 1;
 	}
 
 	.window {
+		grid-column: 2;
+		grid-row: 1 / span 2;
 		position: sticky;
 		top: 32px;
 	}
 }
 
-.copy-column {
+.hero,
+.features {
 	max-width: 640px;
 }
 
@@ -204,6 +212,28 @@ h1 {
 
 section {
 	margin-block-start: 40px;
+}
+
+.features section:first-child {
+	margin-block-start: 0;
+}
+
+.changelog {
+	display: block;
+	max-width: 640px;
+}
+
+.changelog h2 {
+	margin-block-start: 40px;
+}
+
+.changelog ul {
+	margin: 8px 0 0;
+	padding-inline-start: 2ch;
+}
+
+.changelog li + li {
+	margin-block-start: 8px;
 }
 
 h2 {

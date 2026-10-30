@@ -1,0 +1,45 @@
+---
+import geistMono from '@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?url';
+import '../styles/global.css';
+
+const { title, description } = Astro.props;
+const repo = 'https://github.com/scmmishra/clue';
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="theme-color" content="#0e0f12" />
+		<meta name="generator" content={Astro.generator} />
+		<meta name="color-scheme" content="dark" />
+		<meta name="description" content={description} />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:type" content="website" />
+		<link rel="preload" href={geistMono} as="font" type="font/woff2" crossorigin />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<title>{title}</title>
+	</head>
+	<body>
+		<div class="page">
+			<header class="top">
+				<a class="name" href="/">clue</a>
+				<nav aria-label="Main">
+					<a href={`${repo}/blob/main/README.md`}>docs</a>
+					<a href="/changelog">changelog</a>
+					<a href={repo}>source</a>
+				</nav>
+			</header>
+
+			<slot />
+
+			<footer class="foot">
+				<p>Apache-2.0</p>
+				<p>Builds on <a href="https://pi.dev">pi</a> and <a href="https://github.com/vercel-labs/fx">fx</a>.</p>
+			</footer>
+		</div>
+
+		<slot name="scripts" />
+	</body>
+</html>

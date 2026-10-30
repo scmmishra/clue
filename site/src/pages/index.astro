@@ -1,7 +1,6 @@
 ---
-import geistMono from '@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?url';
 import { version } from '../../../package.json';
-import '../styles/global.css';
+import Base from '../layouts/Base.astro';
 
 const repo = 'https://github.com/scmmishra/clue';
 const install = 'curl -fsSL https://raw.githubusercontent.com/scmmishra/clue/main/install.sh | bash';
@@ -16,34 +15,9 @@ const waits = [
 ];
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<meta name="theme-color" content="#0e0f12" />
-		<meta name="generator" content={Astro.generator} />
-		<meta name="color-scheme" content="dark" />
-		<meta name="description" content={description} />
-		<meta property="og:title" content={title} />
-		<meta property="og:description" content={description} />
-		<meta property="og:type" content="website" />
-		<link rel="preload" href={geistMono} as="font" type="font/woff2" crossorigin />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<title>{title}</title>
-	</head>
-	<body>
-		<div class="page">
-			<header class="top">
-				<a class="name" href="/">clue</a>
-				<nav aria-label="Main">
-					<a href={`${repo}/blob/main/README.md`}>docs</a>
-					<a href={`${repo}/blob/main/CHANGELOG.md`}>changelog</a>
-					<a href={repo}>source</a>
-				</nav>
-			</header>
-
+<Base title={title} description={description}>
 			<main>
-				<div class="copy-column">
+				<div class="hero">
 					<h1>A fast and minimal coding agent, for the terminal</h1>
 
 					<div class="install">
@@ -73,39 +47,6 @@ const waits = [
 							Medians on one Apple silicon Mac. The first-token figure uses a local stand-in for the API, so it
 							shows only clue's own time. <a href={`${repo}/blob/main/benchmarks/README.md`}>benchmarks</a>
 						</p>
-					</section>
-
-					<section>
-						<h2>Ready before it's loaded</h2>
-						<p>clue shows the prompt first. The SDK, MCP servers and skills load while you type.</p>
-					</section>
-
-					<section>
-						<h2>Resume without the wait</h2>
-						<p>
-							<code>clue -c</code> prints only the last screen of the conversation. While you type, clue sends the
-							history to Claude ahead of your message.
-						</p>
-					</section>
-
-					<section>
-						<h2>A prompt Claude has already seen</h2>
-						<p>The system prompt and tool list are the same bytes in every session, so Claude caches them across sessions.</p>
-					</section>
-
-					<section>
-						<h2>A quiet transcript</h2>
-						<p>Each run of tool calls shows as a short tree. Output, diffs and errors wait behind <code>ctrl+o</code>.</p>
-					</section>
-
-					<section>
-						<h2>Three permission modes</h2>
-						<p><code>auto</code> runs routine work and has risky actions reviewed first. <code>ask</code> asks before each action. <code>full-access</code> runs every action without checks.</p>
-					</section>
-
-					<section>
-						<h2>Your instructions</h2>
-						<p>clue reads <code>AGENTS.md</code> and <code>CLAUDE.md</code> files. Projects set up for Claude Code work as they are.</p>
 					</section>
 				</div>
 
@@ -142,15 +83,45 @@ const waits = [
 
 <span class="dim">auto · opus 5.5 · medium                               ~/code/app (main)</span></pre>
 				</figure>
+
+				<div class="features">
+					<section>
+						<h2>Ready before it's loaded</h2>
+						<p>clue shows the prompt first. The SDK, MCP servers and skills load while you type.</p>
+					</section>
+
+					<section>
+						<h2>Resume without the wait</h2>
+						<p>
+							<code>clue -c</code> prints only the last screen of the conversation. While you type, clue sends the
+							history to Claude ahead of your message.
+						</p>
+					</section>
+
+					<section>
+						<h2>A prompt Claude has already seen</h2>
+						<p>The system prompt and tool list are the same bytes in every session, so Claude caches them across sessions.</p>
+					</section>
+
+					<section>
+						<h2>A quiet transcript</h2>
+						<p>Each run of tool calls shows as a short tree. Output, diffs and errors wait behind <code>ctrl+o</code>.</p>
+					</section>
+
+					<section>
+						<h2>Three permission modes</h2>
+						<p><code>auto</code> runs routine work and has risky actions reviewed first. <code>ask</code> asks before each action. <code>full-access</code> runs every action without checks.</p>
+					</section>
+
+					<section>
+						<h2>Your instructions</h2>
+						<p>clue reads <code>AGENTS.md</code> and <code>CLAUDE.md</code> files. Projects set up for Claude Code work as they are.</p>
+					</section>
+				</div>
+
 			</main>
 
-			<footer class="foot">
-				<p>Apache-2.0</p>
-				<p>Builds on <a href="https://pi.dev">pi</a> and <a href="https://github.com/vercel-labs/fx">fx</a>.</p>
-			</footer>
-		</div>
-
-		<script>
+		<script slot="scripts">
 			const COPIED_MS = 1500;
 			const button = document.querySelector<HTMLButtonElement>('[data-copy]')!;
 			const label = button.querySelector('span')!;
@@ -180,5 +151,4 @@ const waits = [
 				copy();
 			});
 		</script>
-	</body>
-</html>
+</Base>
