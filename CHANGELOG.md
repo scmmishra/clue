@@ -4,6 +4,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- clue tells the terminal when it is idle, working, waiting for you, finished or failed, through the Program Status Protocol (OSC 7501).
+- The footer after each reply shows tokens in and out. Tokens in include cached input.
 - `clue mcp add <name> -- <command>`, `clue mcp add --project` and `clue mcp approve --all` now work as they do in `/mcp`.
 - A session that crashed during a tool call can continue. clue records the unfinished calls as failed before the next message.
 - A half-written line in a session file no longer hides the records after it.

@@ -1,4 +1,5 @@
 import { columns, term, truncate } from "./ansi";
+import { statusReport, type ProgramStatus } from "./status";
 
 // Output model: finished lines are printed once and become normal scrollback.
 // Only the "live" lines at the bottom (input, running tools, a spinner) are
@@ -72,6 +73,11 @@ export class Screen {
     this.cursorRowFromTop = 0;
     if (held.length) this.commit(held);
     else this.flush();
+  }
+
+  // Reports clue's state to the terminal. It moves nothing on screen, so it needs no redraw.
+  status(status: ProgramStatus) {
+    this.out.write(statusReport(status));
   }
 
   // Clears the live area and leaves the cursor at its first column.

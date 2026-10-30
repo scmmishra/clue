@@ -84,6 +84,13 @@ export function money(usd: number | null) {
   return `$${usd.toFixed(2)}`;
 }
 
+export function tokens(count: number) {
+  if (count < 1000) return String(count);
+  if (count < 10_000) return `${(count / 1000).toFixed(1)}k`;
+  if (count < 1_000_000) return `${Math.round(count / 1000)}k`;
+  return `${(count / 1_000_000).toFixed(1)}M`;
+}
+
 export function homePath(path: string) {
   const home = process.env.HOME;
   return home && path.startsWith(home) ? `~${path.slice(home.length)}` : path;

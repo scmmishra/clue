@@ -18,6 +18,7 @@ import { Editor, type Command } from "./ui/editor";
 import { pickSession } from "./ui/picker";
 import { detailLines, Pager, replay } from "./ui/replay";
 import { Keyboard, Screen, type Key } from "./ui/screen";
+import { turnStatus } from "./ui/status";
 import { BAR, header, promptLines, statusLine, TurnView } from "./ui/turn";
 
 const COMMANDS: Command[] = [
@@ -123,6 +124,7 @@ export class App {
     }
 
     // Everything else happens while the user types.
+    this.screen.status("idle");
     prefetchGitStatus(this.cwd);
     this.skillCache ??= discoverSkills(this.cwd);
     preconnect();
@@ -227,10 +229,12 @@ export class App {
     this.warming?.abort();
     this.screen.setRenderer(() => ({ lines: [] }));
     this.print([...promptLines(prompt), ""]);
+    this.screen.status("working");
     try {
       await getClient();
     } catch (error) {
       this.print([`  ${style.red((error as Error).message)}`, ""]);
+      this.screen.status("error");
       return this.idle();
     }
     const view = new TurnView(this.screen);
@@ -250,6 +254,7 @@ export class App {
       this.screen.setRenderer(() => ({ lines: [] }));
       this.print([""]);
     }
+    this.screen.status(turnStatus(turn));
     this.view = null;
     this.turn = null;
     this.idle();
@@ -368,6 +373,7 @@ export class App {
     this.screen.animate(false);
     this.screen.setRenderer(() => ({ lines: [] }));
     this.screen.flush();
+    this.screen.status("clear");
     this.keyboard.stop();
     stopAllProcesses();
     void this.mcp?.closeAll();

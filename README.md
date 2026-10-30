@@ -30,7 +30,8 @@ clue is a single binary. The conversation prints into your terminal's scrollback
 - **Resume without the wait**: `clue -c` prints only the last screen of the conversation. While you type, clue sends the history to Claude ahead of your message, so your message reads cached history instead of processing it again.
 - **A prompt Claude has already seen**: the system prompt and tool list are the same bytes in every session, so Claude caches them across sessions. Details that change, such as the working directory and git state, travel in messages.
 - **A quiet transcript**: each run of tool calls shows as a short tree, one line per call. Command output, diffs and errors wait behind `ctrl+o`. tmux copy mode keeps working.
-- **Every wait on screen**: each reply ends with its total time and cost. `ctrl+o` shows the first-token time of each turn.
+- **Your terminal knows the state**: clue reports when it is working, waiting for you, finished or failed through the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status) (OSC 7501). Terminals without support ignore it.
+- **Every wait on screen**: each reply ends with its total time, cost and tokens. `ctrl+o` shows the first-token time of each turn.
 - **Tools for real work**: clue finds, reads and edits files, runs shell commands and dev servers, searches the web, reads URLs and hands tasks to subagents. See [Tools](#tools).
 - **MCP servers**: local and remote. A server's tools cost nothing until the model needs them.
 - **Three permission modes**: `auto` runs routine work and has risky actions reviewed first. See [Permissions](#permissions).
@@ -105,7 +106,7 @@ clue 0.1.0 · /help for commands
 
   Fixed. The example now freezes time, and 5 runs in a row pass.
 
-  41s · $0.21
+  41s · $0.21 · 48k in · 1.2k out
 
 ┃
 
@@ -115,7 +116,7 @@ auto · opus 5.5 · medium                      ~/code/chatwoot (main)
 - **The header** shows clue's version.
 - **The status line** under the input shows the permission mode, model, effort, folder and branch.
 - **Tool calls** show as a tree under a summary line: how many calls, of which kinds, and how many failed. Each call has its own line, with line counts for edits and the error for a failed call. A run of more than 8 calls shows the last 7.
-- **The footer** after each reply shows the total time and the cost.
+- **The footer** after each reply shows the total time, the cost, and the tokens in and out. Tokens in include cached input.
 - **`ctrl+o`** opens the full detail: every command and its output, every diff, errors, timestamps, first-token time and token use per turn. Press `ctrl+o` or `escape` to close it. clue keeps working while it's open.
 
 A reviewed action in `auto` mode shows its review on the call's line. In `ask` mode, clue stops and asks:

@@ -3,7 +3,7 @@ import { modelLabel } from "../agent/models";
 import type { ToolRecord, TurnRecord } from "../session";
 import type { Question } from "../tools/types";
 import { VERSION } from "../config";
-import { columns, duration, homePath, money, spinnerFrame, spread, style, width, wrapLine } from "./ansi";
+import { columns, duration, homePath, money, spinnerFrame, spread, style, tokens, width, wrapLine } from "./ansi";
 import { MarkdownStream } from "./markdown";
 import { msSince, now } from "../clock";
 import type { Key, Screen } from "./screen";
@@ -108,8 +108,10 @@ export function toolTree(rows: Row[] | ToolRecord[], clock?: string) {
   return lines;
 }
 
-export function footerLine(turn: Pick<TurnRecord, "ms" | "cost" | "stop">) {
-  const left = `  ${style.faint(`${duration(turn.ms)} · ${money(turn.cost)}`)}`;
+export function footerLine(turn: Pick<TurnRecord, "ms" | "cost" | "stop" | "usage">) {
+  // Most input is read from or written to the cache, so "in" counts all three.
+  const input = turn.usage.input + turn.usage.cacheRead + turn.usage.cacheWrite;
+  const left = `  ${style.faint(`${duration(turn.ms)} · ${money(turn.cost)} · ${tokens(input)} in · ${tokens(turn.usage.output)} out`)}`;
   return turn.stop === "interrupted" ? `${left}${style.faint(" · ")}${style.orange("interrupted")}` : left;
 }
 
@@ -157,6 +159,7 @@ export class TurnView implements AgentEvents {
         key.text === "y" || key.name === "enter" ? "once" : key.text === "a" ? "always" : key.text === "n" || key.name === "escape" ? "no" : null;
       if (!answer) return true;
       this.prompt = null;
+      this.screen.status("working");
       prompt.resolve(answer);
       this.screen.refresh();
       return true;
@@ -201,6 +204,7 @@ export class TurnView implements AgentEvents {
       `${style.accent("?")} ${style.bold(prompt.question.question)}`,
       `  ${answer === null ? style.faint("dismissed") : style.green(answer)}`,
     ]);
+    this.screen.status("working");
     prompt.resolve(answer);
   }
 
@@ -330,6 +334,7 @@ export class TurnView implements AgentEvents {
   confirm(label: string, subject: string, pattern: string): Promise<ConfirmAnswer> {
     return new Promise((resolve) => {
       this.prompt = { type: "confirm", label, subject, pattern, resolve };
+      this.screen.status("blocked-permission");
       this.screen.refresh();
     });
   }
@@ -337,6 +342,7 @@ export class TurnView implements AgentEvents {
   question(question: Question): Promise<string | null> {
     return new Promise((resolve) => {
       this.prompt = { type: "question", question, selected: 0, chosen: new Set(), custom: question.options.length ? null : "", resolve };
+      this.screen.status("blocked-question");
       this.screen.refresh();
     });
   }
