@@ -1,6 +1,6 @@
 {
   "name": "clue",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A coding agent for the terminal that uses Claude's API natively",
   "private": true,
   "type": "module",

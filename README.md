@@ -89,7 +89,7 @@ clue ask --json "summarize the failing tests" | jq -r .final_output
 
 ```
 $ clue
-clue 0.1.0 · /help for commands
+clue 0.2.0 · /help for commands
 
 ┃ the conversation spec is flaky, fix it
 

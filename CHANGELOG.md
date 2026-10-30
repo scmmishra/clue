@@ -4,6 +4,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+## 0.2.0
+
 - `clue upgrade` installs the latest release.
 - Sessions can have a name. `clue --name <name>` starts a named session, `/rename` changes the name, and `clue -r <name>` resumes it. The ID stays, and `clue ask --resume` still takes only an ID.
 - In a multiple-choice question, a typed answer now adds to the picked options instead of replacing them.
