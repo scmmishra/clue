@@ -4,7 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/scmmishra/clue/main/install.sh | bash
 #
 # Set CLUE_INSTALL_DIR to install somewhere other than ~/.local/bin.
-# While the repository is private, the GitHub CLI is used when it is logged in.
+# When GitHub refuses an anonymous download, the GitHub CLI is used if it is logged in.
 set -euo pipefail
 
 REPO="scmmishra/clue"

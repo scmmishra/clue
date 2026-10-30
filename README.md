@@ -44,17 +44,17 @@ curl -fsSL https://raw.githubusercontent.com/scmmishra/clue/main/install.sh | ba
 
 clue runs on macOS and Linux, on arm64 and x86_64. The installer downloads the binary for your machine from the latest release, checks it against the published SHA-256 checksum, and puts it in `~/.local/bin`. Set `CLUE_INSTALL_DIR` to choose another folder, or `CLUE_VERSION` to install a specific tag. Run the same command again to update. You don't need Bun installed to run clue.
 
-To install by hand, download `clue-<os>-<arch>` and `SHA256SUMS` from the [latest release](https://github.com/scmmishra/clue/releases/latest).
+To install by hand, download `clue-<os>-<arch>`, such as `clue-darwin-arm64` or `clue-linux-x64`, and `SHA256SUMS` from the [latest release](https://github.com/scmmishra/clue/releases/latest).
 
 ## Quick start
 
 clue uses your Claude API credentials. It reads them in this order:
 
-1. The `ANTHROPIC_API_KEY` environment variable.
+1. The `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` environment variable.
 2. The profile saved by `ant auth login`.
 3. A key saved by `clue login`.
 
-`clue login` runs `ant auth login` when the `ant` CLI is installed. Without it, `clue login` asks for an API key and stores it in the macOS Keychain or the Linux keyring. `clue logout` removes it.
+`clue login` runs `ant auth login` when the `ant` CLI is installed. Without it, `clue login` asks for an API key and stores it in the macOS Keychain or the Linux keyring. Without a keyring, it uses `~/.clue/credentials`, readable only by you. `clue logout` removes it.
 
 Open a project and start clue:
 
@@ -135,6 +135,8 @@ clue starts with Claude Opus 5.5 (`claude-opus-5-5`) at `medium` effort.
 | In a session | `/model <id>` | `/effort <level>` |
 | As your default | `model` in `~/.clue/settings.json` | `effort` in `~/.clue/settings.json` |
 
+`--model` and `/model` also take short names, such as `sonnet` or `opus-5`. A family name picks its newest model.
+
 Effort levels are `low`, `medium`, `high`, `xhigh` and `max`. Lower effort means shorter thinking and a sooner first token.
 
 Changing the model mid-session starts a fresh cache for the rest of that session.
@@ -210,7 +212,7 @@ The same commands work as `clue mcp <command>` in your terminal.
 
 | Mode | Behavior |
 | --- | --- |
-| `ask` | clue asks before each action. |
+| `ask` | clue asks before each action that changes something. Reading and searching run directly. |
 | `auto` (default) | clue runs routine work directly and has other actions reviewed first. |
 | `full-access` | clue runs every action without checks. |
 
@@ -238,9 +240,9 @@ clue picks the reviewer from the keys you have:
 
 Every review adds to your usage.
 
-Switch modes with `/permissions <mode>`, `--permission-mode <mode>` for one run, or `permission_mode` in `~/.clue/settings.json`.
+Switch modes with `/permissions <mode>`, `--permission-mode <mode>` (or `--full-access`) for one run, or `permission_mode` in `~/.clue/settings.json`.
 
-Allow and deny rules in `~/.clue/settings.json` skip the review. The last matching rule wins.
+Rules in `~/.clue/settings.json` apply before the mode: `allow` runs an action without a review, `deny` refuses it, and `ask` asks you. A rule matches the command for `shell`, the path for file tools, and `server.tool` for `mcp_call`. The last matching rule wins. Tools that only read always run.
 
 ```json
 {
@@ -276,13 +278,13 @@ When a conversation nears the context limit, Claude's server-side compaction sum
 
 clue adds these files to the conversation when they exist:
 
-- `AGENTS.md` and `CLAUDE.md` in the project root.
+- `AGENTS.md` and `CLAUDE.md` in each folder from the git root down to the folder clue started in.
 - Nested `AGENTS.md` and `CLAUDE.md` files, for the folders they cover.
 - `~/.clue/AGENTS.md`, for your own instructions across projects.
 
 Projects already set up for Claude Code work as they are.
 
-clue loads skills from `.clue/skills`, `~/.clue/skills`, `.claude/skills` and `.agents/skills`. The model sees each skill's name and description, and reads the full instructions only when a task needs them.
+clue loads skills from `.clue/skills`, `.claude/skills` and `.agents/skills`, in the project and in your home folder. The model sees each skill's name and description, and reads the full instructions only when a task needs them.
 
 ## Where the time goes
 
@@ -300,12 +302,12 @@ Warming the cache on resume costs a cache write even if you then quit without se
 
 | File | Purpose |
 | --- | --- |
-| `~/.clue/settings.json` | Model, effort, permission mode and permission rules. |
+| `~/.clue/settings.json` | `model`, `effort`, `permission_mode`, `permission` rules, and `review_model`, the OpenRouter model for reviews. |
 | `~/.clue/mcp.json` | MCP servers for all projects. |
 | `.mcp.json` | MCP servers for one project. |
 | `~/.clue/AGENTS.md` | Your instructions for every project. |
 
-`CLUE_MODEL`, `CLUE_EFFORT` and `CLUE_PERMISSION_MODE` override `settings.json` for one process.
+`CLUE_MODEL`, `CLUE_EFFORT` and `CLUE_PERMISSION_MODE` override `settings.json` for one process. Command-line flags override both. `CLUE_HOME` moves `~/.clue` somewhere else.
 
 ## Develop
 
@@ -318,7 +320,7 @@ bun run bench        # start, resume and first-token benchmarks
 bun run bench:tools  # each tool on its own, outside the agent loop
 ```
 
-CI runs the type check, the tests and a build on macOS and Linux for every push and pull request. It also installs that build with `install.sh`.
+CI runs the type check, the tests and a build on macOS and Linux for every push to `main` and every pull request. It also installs that build with `install.sh`.
 
 ### Release
 
@@ -339,7 +341,7 @@ The release workflow then:
 3. Builds the binary for each platform.
 4. Creates the tag `v<version>` and a GitHub release with the binaries and `SHA256SUMS`. The changelog section becomes the release notes.
 
-CI checks on every push that the version in `package.json` has a changelog section, so a missing entry fails before the release does.
+CI also checks that the version in `package.json` has a changelog section, so a missing entry fails before the release does.
 
 If the tag already exists, the workflow skips the release. A change to `package.json` that keeps the version, such as a dependency update, publishes nothing.
 
