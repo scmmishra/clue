@@ -251,6 +251,19 @@ export class App {
   }
 
   // Handles a key that adds to the input from outside it. True when the key was one.
+  private setPermissionMode(mode: PermissionMode) {
+    this.permissions.mode = mode;
+    this.settings.permission_mode = mode;
+  }
+
+  private cycleKey(key: Key) {
+    if (key.name !== "tab" || !key.shift) return false;
+    const next = (PERMISSION_MODES.indexOf(this.permissions.mode) + 1) % PERMISSION_MODES.length;
+    this.setPermissionMode(PERMISSION_MODES[next]);
+    this.screen.refresh();
+    return true;
+  }
+
   private pasteKey(key: Key) {
     if (key.name === "paste") this.keyboard.hold(this.paste(key.text ?? ""));
     else if (key.ctrl && key.name === "v") this.keyboard.hold(this.pasteClipboard());
@@ -304,7 +317,7 @@ export class App {
       process.stdout.write("\x1b[2J\x1b[H");
       return this.screen.flush();
     }
-    if (this.pasteKey(key)) return;
+    if (this.cycleKey(key) || this.pasteKey(key)) return;
     const result = this.editor.handle(key);
     if (result === "submit") {
       const text = this.editor.text;
@@ -388,7 +401,7 @@ export class App {
       return;
     }
     this.hint = "";
-    if (this.pasteKey(key)) return;
+    if (this.cycleKey(key) || this.pasteKey(key)) return;
     if (key.name === "up" && this.queued && !this.editor.pickerOpen) return this.unqueue();
     if (key.name === "tab" && !this.editor.hasCompletions) return this.queueDraft();
     if (this.editor.handle(key) === "submit") return this.queueDraft();
@@ -416,7 +429,7 @@ export class App {
         this.print([
           ...COMMANDS.map((command) => `  ${style.accent(`/${command.name}`.padEnd(14))}${style.muted(command.description)}`),
           "",
-          `  ${style.muted("enter send · shift+enter, alt+enter or \\ newline · ↑↓ history · @ file · tab complete · ctrl+v paste image")}`,
+          `  ${style.muted("enter send · shift+enter, alt+enter or \\ newline · ↑↓ history · @ file · tab complete · shift+tab permission mode · ctrl+v paste image")}`,
           `  ${style.muted("while clue works: tab queue a message · ↑ edit it")}`,
           `  ${style.muted("esc esc or ctrl+c interrupt · ctrl+o detail · ctrl+d exit")}`,
           "",
@@ -447,8 +460,7 @@ export class App {
       case "permissions": {
         const mode = args[0] as PermissionMode;
         if (!PERMISSION_MODES.includes(mode)) return say(style.muted(`Permission mode is ${this.permissions.mode}. Choose ask, auto or full-access.`));
-        this.permissions.mode = mode;
-        this.settings.permission_mode = mode;
+        this.setPermissionMode(mode);
         return say(`Permission mode is now ${mode === "full-access" ? style.orange(mode) : style.bold(mode)}.`);
       }
       case "resume": {

@@ -575,3 +575,43 @@ test("the selected row is marked on the screen, without relying on colour", asyn
   await clue.type("\x1b[B");
   await clue.seen("› b.md");
 }, 25_000);
+
+const SHIFT_TAB = "\x1b[Z";
+
+test("shift+tab cycles the permission mode and leaves the input alone", async () => {
+  const clue = await startClue({ args: ["--permission-mode", "ask"] });
+  await clue.type("draft");
+  await clue.type(SHIFT_TAB);
+  await clue.seen("auto ·");
+  await clue.type(SHIFT_TAB);
+  await clue.seen("full-access ·");
+  await clue.type(SHIFT_TAB);
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(clue.wasSent("draft")).toBe(true);
+}, 25_000);
+
+test("shift+tab works during a turn, and doesn't queue the draft", async () => {
+  const clue = await startClue({ args: ["--permission-mode", "ask"], delay: 30 });
+  await clue.type("first");
+  await clue.type(ENTER);
+  await clue.working();
+  await clue.type("next");
+  await clue.type(SHIFT_TAB);
+  await clue.seen("auto ·");
+  expect(clue.screen()).not.toContain("Queued:");
+}, 25_000);
+
+test("shift+tab doesn't accept a pick in the file picker", async () => {
+  const cwd = scratch("clue-mention-shift-");
+  writeFileSync(join(cwd, "notes.md"), "");
+  const clue = await startClue({ cwd, args: ["--permission-mode", "ask"] });
+  await clue.type("@not");
+  await clue.seen("› notes.md");
+  await clue.type(SHIFT_TAB);
+  await clue.type(ENTER);
+  await clue.type("go");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(clue.wasSent("@notes.md go")).toBe(true);
+}, 25_000);

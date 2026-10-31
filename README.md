@@ -263,7 +263,7 @@ Every review adds to your usage.
 
 `auto` reduces risk, but it isn't a sandbox. An allowed command such as `bun test` still runs your project's code. Use a container or VM for untrusted repositories.
 
-Switch modes with `/permissions <mode>`, `--permission-mode <mode>` for one run, or `permission_mode` in `~/.clue/settings.json`.
+Switch modes with `shift+tab`, `/permissions <mode>`, `--permission-mode <mode>` for one run, or `permission_mode` in `~/.clue/settings.json`.
 
 Allow and deny rules in `~/.clue/settings.json` skip the review. The last matching rule wins. For a shell chain, clue checks each command: a deny on one denies the chain, and an allow needs every command to match. A command clue can't parse never matches an allow rule. Deny rules also apply to read-only tools. `full-access` skips the review, but deny rules still apply.
 

@@ -2,6 +2,10 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- `shift+tab` switches between the `ask`, `auto` and `full-access` permission modes.
+
 ## 0.6.0
 
 - `shift+enter` adds a new line in terminals that can report it.
