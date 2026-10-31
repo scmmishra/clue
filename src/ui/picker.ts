@@ -1,11 +1,9 @@
-import { basename } from "node:path";
-import { listSessions, type SessionMeta } from "../session";
+import { listSessions, realFolder, type SessionMeta } from "../session";
 import { columns, pad, rows, style, truncate, width } from "./ansi";
 import type { Key, Keyboard, Screen } from "./screen";
 
 const MAX_ROWS = 12;
 const LABEL_WIDTH = 24;
-const FOLDER_WIDTH = 16;
 
 export function ago(at: number) {
   const minutes = Math.round((Date.now() - at) / 60_000);
@@ -19,20 +17,23 @@ export function ago(at: number) {
 }
 
 // One row of the list. The name or ID comes first, because it is what tells sessions apart, and
-// what `clue -r <id or name>` takes. The folder is only its last part, so the title gets the room.
-export function sessionRow(meta: SessionMeta, widths: { label: number; folder: number }, max: number, active: boolean) {
-  const label = pad(truncate(meta.name ?? meta.id, widths.label), widths.label);
-  const folder = pad(truncate(basename(meta.cwd), widths.folder), widths.folder);
+// what `clue -r <id or name>` takes. Every row is from the same folder, so the folder isn't shown.
+export function sessionRow(meta: SessionMeta, labelWidth: number, max: number, active: boolean) {
+  const label = pad(truncate(meta.name ?? meta.id, labelWidth), labelWidth);
   const right = `${pad(ago(meta.updated), 9)} ${String(meta.prompts).padStart(4)}`;
-  const titleWidth = Math.max(10, max - widths.label - widths.folder - width(right) - 10);
+  const titleWidth = Math.max(10, max - labelWidth - width(right) - 8);
   const title = pad(truncate(meta.title || "(empty)", titleWidth), titleWidth);
   const marker = active ? style.accent("›") : " ";
   const shown = active ? style.bold(label) : style.muted(label);
-  return ` ${marker} ${shown}  ${active ? title : style.muted(title)}  ${style.muted(folder)}  ${style.faint(right)}`;
+  return ` ${marker} ${shown}  ${active ? title : style.muted(title)}  ${style.faint(right)}`;
 }
 
-// Lists every past session, current folder first. Typing searches folders,
-// titles and prompts through the SQLite index.
+// The past sessions of this folder, newest first. A query searches their titles and prompts
+// through the SQLite index.
+export const sessionsIn = (cwd: string, query = "") =>
+  listSessions(query).filter((meta) => meta.cwd === realFolder(cwd));
+
+// Lists the sessions of this folder only. `clue -r <id or name>` still opens a session from another folder.
 export function pickSession(screen: Screen, keyboard: Keyboard, cwd: string): Promise<SessionMeta | null> {
   return new Promise((resolve) => {
     let query = "";
@@ -40,8 +41,7 @@ export function pickSession(screen: Screen, keyboard: Keyboard, cwd: string): Pr
     let offset = 0;
     let items: SessionMeta[] = [];
     const load = () => {
-      const all = listSessions(query);
-      items = [...all.filter((meta) => meta.cwd === cwd), ...all.filter((meta) => meta.cwd !== cwd)];
+      items = sessionsIn(cwd, query);
       selected = Math.min(selected, Math.max(0, items.length - 1));
     };
     load();
@@ -51,17 +51,15 @@ export function pickSession(screen: Screen, keyboard: Keyboard, cwd: string): Pr
     screen.setRenderer(() => {
       const max = columns() - 1;
       const lines = [`  ${style.muted("filter")} ${style.accent("›")} ${query}${style.inverse(" ")}`, ""];
-      if (items.length === 0) lines.push(`  ${style.muted(query ? "No session matches." : "No saved sessions yet.")}`);
+      if (items.length === 0)
+        lines.push(`  ${style.muted(query ? "No session matches." : "No saved sessions in this folder yet.")}`);
       const height = visible();
       if (selected < offset) offset = selected;
       if (selected >= offset + height) offset = selected - height + 1;
       const shown = items.slice(offset, offset + height);
-      const widths = {
-        label: Math.min(LABEL_WIDTH, Math.max(...shown.map((meta) => width(meta.name ?? meta.id)), 8)),
-        folder: Math.min(FOLDER_WIDTH, Math.max(...shown.map((meta) => width(basename(meta.cwd))), 6)),
-      };
+      const labelWidth = Math.min(LABEL_WIDTH, Math.max(...shown.map((meta) => width(meta.name ?? meta.id)), 8));
       for (const [index, meta] of shown.entries())
-        lines.push(sessionRow(meta, widths, max, offset + index === selected));
+        lines.push(sessionRow(meta, labelWidth, max, offset + index === selected));
       if (items.length > height) lines.push(`  ${style.faint(`${items.length - height} more`)}`);
       lines.push("", `  ${style.faint("↑↓ pick   type to filter   enter resume   esc cancel")}`);
       return { lines };

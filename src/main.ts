@@ -30,7 +30,7 @@ const HELP = `clue ${VERSION}: a coding agent for the terminal
 Usage
   clue [prompt]              start a session in this folder
   clue -c                    continue the latest session in this folder
-  clue -r [id|name]          pick any past session, or resume one by id or name
+  clue -r [id|name]          pick a session from this folder, or resume any one by id or name
   clue ask [prompt]          one request; prompt from arguments or stdin
   clue login | logout        save or remove Claude credentials
   clue mcp <command>         manage MCP servers (list, add, remove, login, ...)

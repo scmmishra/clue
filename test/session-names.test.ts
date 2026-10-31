@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { listSessions, nameProblem, projectKey, resolveSession, Session, sessionFile } from "../src/session";
+import { sessionsIn } from "../src/ui/picker";
 
 const folder = () => realpathSync(mkdtempSync(join(tmpdir(), "clue-names-")));
 const unique = (() => {
@@ -178,6 +179,18 @@ test("the picker's search finds a session by name", () => {
   const name = unique();
   const session = saved(folder(), name);
   expect(ids(listSessions(name))).toContain(session.id);
+});
+
+test("the picker lists only this folder's sessions, even through a symlink", () => {
+  const here = folder();
+  const mine = saved(here, unique());
+  const other = saved(folder(), unique());
+  const link = join(mkdtempSync(join(tmpdir(), "clue-link-")), "here");
+  symlinkSync(here, link);
+  expect(ids(sessionsIn(here))).toEqual([mine.id]);
+  expect(ids(sessionsIn(link))).toEqual([mine.id]);
+  expect(ids(sessionsIn(here, other.name!))).toEqual([]);
+  expect(ids(sessionsIn(here, mine.name!))).toEqual([mine.id]);
 });
 
 const run = async (args: string[], cwd: string, env: Record<string, string> = {}) => {

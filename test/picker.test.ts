@@ -12,16 +12,13 @@ const meta = (overrides: Partial<SessionMeta> = {}) =>
     prompts: 3,
     ...overrides,
   }) as SessionMeta;
-const widths = { label: 13, folder: 6 };
-const row = (session: SessionMeta, active = false, max = 100) =>
-  Bun.stripANSI(sessionRow(session, widths, max, active));
+const row = (session: SessionMeta, active = false, max = 100) => Bun.stripANSI(sessionRow(session, 13, max, active));
 
-test("a row leads with the ID, and shows only the folder's name", () => {
+test("a row leads with the ID, and leaves out the folder, which every row shares", () => {
   const text = row(meta());
   expect(text.trim().startsWith("mvw6xkyk-hukv")).toBe(true);
   expect(text).toContain("fix the flaky spec");
-  expect(text).toContain("clue");
-  expect(text).not.toContain("/Users");
+  expect(text).not.toContain("clue");
 });
 
 test("a named session leads with its name", () => {
