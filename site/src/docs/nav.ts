@@ -9,8 +9,7 @@ export const NAV = [
 	{
 		group: 'using clue',
 		pages: [
-			{ title: 'Steer a run', slug: 'steer-a-run' },
-			{ title: 'Images and files', slug: 'images-and-files' },
+			{ title: 'Prompts', slug: 'prompts' },
 			{ title: 'Sessions', slug: 'sessions' },
 			{ title: 'Compaction', slug: 'compaction' },
 			{ title: 'Scripts', slug: 'scripts' },
