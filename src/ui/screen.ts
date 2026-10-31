@@ -92,17 +92,26 @@ export class Screen {
     return `${term.up(this.cursorRowFromTop)}\r${term.clearDown}`;
   }
 
+  // A row that scrolls past the top of the terminal can never be erased, so it would stay
+  // behind in the scrollback. The frame keeps its end, and the cursor stays in view.
+  private visible({ lines, cursor }: LiveFrame) {
+    const limit = Math.max(1, (this.out.rows || Infinity) - 1);
+    if (lines.length <= limit) return { rows: lines, cursor };
+    const start = cursor ? Math.min(cursor.row, lines.length - limit) : lines.length - limit;
+    return { rows: lines.slice(start, start + limit), cursor: cursor && { row: cursor.row - start, col: cursor.col } };
+  }
+
   private draw() {
     this.live = this.render();
     const max = columns() - 1;
-    const lines = this.live.lines.map((line) => truncate(line, max));
+    const { rows: shown, cursor } = this.visible(this.live);
+    const lines = shown.map((line) => truncate(line, max));
     this.drawnRows = lines.length;
     if (lines.length === 0) {
       this.cursorRowFromTop = 0;
       return term.hideCursor;
     }
     let text = lines.map((line) => `${line}\x1b[0m`).join("\n");
-    const cursor = this.live.cursor;
     if (cursor) {
       const fromBottom = lines.length - 1 - cursor.row;
       text += term.up(fromBottom) + term.column(cursor.col) + term.showCursor;

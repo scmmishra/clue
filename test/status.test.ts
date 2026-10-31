@@ -221,3 +221,29 @@ test("while typing, the hint says what the keys do then", () => {
   press(view, ...typed("b"));
   expect(Bun.stripANSI(hint())).toBe("  enter send · esc back to the list");
 });
+
+const multiLine = "Run cat > a <<'EOF'\none\ntwo\nEOF?";
+const frameOf = (view: TurnView) => (view as unknown as { frame(): { lines: string[]; cursor?: { row: number } } }).frame();
+
+test("every live row is one line, so a redraw erases exactly what it drew", () => {
+  const view = new TurnView(capture().screen);
+  void view.confirm(multiLine, "x", "x *");
+  const { lines } = frameOf(view);
+  expect(lines.every((line) => !line.includes("\n"))).toBe(true);
+});
+
+test("a permission prompt still shows the whole command", () => {
+  const view = new TurnView(capture().screen);
+  void view.confirm(multiLine, "x", "x *");
+  const text = frameOf(view).lines.map((line) => Bun.stripANSI(line)).join("\n");
+  for (const part of ["Run cat > a <<'EOF'", "one", "two", "EOF?"]) expect(text).toContain(part);
+});
+
+test("the input's cursor stays on the input under a tall turn", () => {
+  const { screen } = capture();
+  const composer = () => ({ lines: ["┃ ", "", "status"], cursor: { row: 0, col: 2 } });
+  const view = new TurnView(screen, composer);
+  view.toolStart("1", "Running a\nb\nc", "command");
+  const { lines, cursor } = frameOf(view);
+  expect(Bun.stripANSI(lines[cursor!.row])).toBe("┃ ");
+});

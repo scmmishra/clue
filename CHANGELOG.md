@@ -4,6 +4,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- A multi-line command takes one row in the tool tree, and no longer repeats the row in the scrollback while it runs.
+- In a short terminal, a long prompt or reply no longer leaves duplicate rows in the scrollback.
 ## 0.4.1
 
 - The `review` setting chooses the reviewer, with `provider` and `model`. It replaces `review_model`.

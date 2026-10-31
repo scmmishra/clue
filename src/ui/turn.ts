@@ -84,6 +84,12 @@ function summary(rows: Pick<Row, "kind" | "isError" | "review">[]) {
   return [style.muted(`${total} tool ${total === 1 ? "call" : "calls"}`), ...parts].join(dot);
 }
 
+// A label can be a whole script. A row shows its first line.
+function firstLine(label: string) {
+  const [first, ...rest] = label.trimEnd().split("\n");
+  return rest.length ? `${first} …` : first;
+}
+
 function rowText(row: Row, clock: string) {
   const extra = [
     row.added || row.removed ? `${style.green(`+${row.added ?? 0}`)} ${style.red(`−${row.removed ?? 0}`)}` : "",
@@ -92,7 +98,7 @@ function rowText(row: Row, clock: string) {
     row.review ? style.muted(row.review) : "",
     clock,
   ].filter(Boolean);
-  const label = row.label || "…";
+  const label = firstLine(row.label) || "…";
   const text = row.done === false ? label : isHeld(row) ? style.orange(label) : row.isError ? style.red(label) : style.muted(label);
   return `${text}${extra.length ? `  ${extra.join("  ")}` : ""}`;
 }
@@ -256,7 +262,8 @@ export class TurnView implements AgentEvents {
 
   // The turn, then the input. A prompt takes the keys, so it replaces the input while it waits.
   private frame(): LiveFrame {
-    const lines = this.liveLines();
+    // The screen counts rows to erase them, so each entry must be one row.
+    const lines = this.liveLines().flatMap((line) => line.split("\n"));
     if (this.prompt || !this.composer) return { lines };
     if (lines.length) lines.push("");
     const composer = this.composer();

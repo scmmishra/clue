@@ -86,3 +86,26 @@ test("the status line is one grey", () => {
 test("full-access still stands out in the status line", () => {
   expect(statusLine("full-access", "claude-opus-5-5", "medium", "/tmp/app", null).startsWith(style.orange("full-access"))).toBe(true);
 });
+
+const script = "Ran cat > /tmp/a.py <<'EOF'\nprint(1)\nEOF\ngit add a.py";
+const plain = (lines: string[]) => lines.map((line) => Bun.stripANSI(line));
+
+test("a multi-line command takes one row in the tree", () => {
+  const lines = toolTree([row({ label: script, note: undefined })] as never);
+  expect(lines).toHaveLength(2);
+  expect(plain(lines)[1]).toBe("└ Ran cat > /tmp/a.py <<'EOF' …");
+});
+
+test("a command with only a trailing line break shows no ellipsis", () => {
+  expect(plain(toolTree([row({ label: "Ran ls\n", note: undefined })] as never))[1]).toBe("└ Ran ls");
+});
+
+test("a running multi-line command takes one row too", () => {
+  const lines = toolTree([row({ label: script, note: undefined, done: false })] as never);
+  expect(lines.every((line) => !line.includes("\n"))).toBe(true);
+});
+
+test("a held multi-line command keeps its review after the first line", () => {
+  const [, line] = plain(toolTree([row({ label: script, note: undefined, review: "held by jev" })] as never));
+  expect(line).toBe("└ Ran cat > /tmp/a.py <<'EOF' …  held by jev");
+});
