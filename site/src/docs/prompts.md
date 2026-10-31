@@ -8,7 +8,7 @@ Type `@` and search. `↑` and `↓` choose a row, `enter` adds the path to your
 
 ## Add an image
 
-Paste or drag an image file into the prompt. It shows as `[Image #1]`, and deleting that text removes the image. Paths to other files stay as text, and the model reads them with its tools. A terminal only passes on text, so for an image on the clipboard, press `ctrl+v` or run `/paste`. That works on macOS.
+Paste an image, or paste or drag an image file, into the prompt. It shows as `[Image #1]`, and deleting that text removes the image. Paths to other files stay as text, and the model reads them with its tools. Pasting an image from the clipboard works on macOS.
 
 ## While clue works
 

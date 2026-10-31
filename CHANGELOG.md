@@ -13,6 +13,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - The reviewer treats deleting temporary files, such as `rm -rf` under `/tmp`, as routine cleanup.
 - The approval prompt shows the whole command, wrapped, instead of cutting it at the edge. A reviewer's reason shows on its own line.
 - Claude writes checks that exit 0 when they pass, such as `test ! -e` after a deletion, so a successful check no longer shows as failed.
+- `ctrl+v` with text on the clipboard pastes the text, instead of saying `No image on the clipboard.`
 - A dragged macOS screenshot attaches. Its name has a narrow space before `AM` or `PM`, which cut the path short, so it stayed as text.
 
 ## 0.7.4

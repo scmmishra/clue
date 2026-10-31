@@ -24,7 +24,7 @@ import { OptionPicker, type Option } from "./ui/option-picker";
 import { RewindPicker, rewindReport } from "./ui/rewind";
 import { undoReport } from "./ui/undo";
 import { usageReport } from "./ui/usage";
-import { clipboardImage, clipboardSupported } from "./ui/clipboard";
+import { clipboardImage, clipboardSupported, clipboardText } from "./ui/clipboard";
 import { findImagePaths } from "./ui/paste";
 import { pickSession } from "./ui/picker";
 import { detailLines, Pager, replay, RESUME_SCROLLBACK_BYTES } from "./ui/replay";
@@ -270,10 +270,13 @@ export class App {
     this.keyboard.set((key) => this.onIdleKey(key));
   }
 
-  // Pasted text, with image paths that exist turned into attachments. Nothing pasted
-  // means the clipboard held no text, which is how an image can arrive.
+  // A paste with no text can mean the clipboard holds an image, so clue looks for one.
   private async paste(text: string) {
-    if (!text.trim()) return this.pasteClipboard();
+    return text.trim() ? this.insertPaste(text) : this.pasteClipboard(text);
+  }
+
+  // Pasted text, with image paths that exist turned into attachments.
+  private async insertPaste(text: string) {
     const found = await Promise.all(
       findImagePaths(text).map(async (token) => {
         const block = await this.imageAt(token.path);
@@ -294,13 +297,22 @@ export class App {
     }
   }
 
-  private async pasteClipboard() {
-    if (!clipboardSupported)
+  // The clipboard's image, or its text when it has none. `pasted` is what the terminal
+  // already sent, such as a few spaces, and goes in as it is.
+  private async pasteClipboard(pasted = "") {
+    if (!clipboardSupported) {
+      if (pasted) return this.insertPaste(pasted);
       return this.notice("Pasting an image from the clipboard works on macOS. Paste its file path instead.");
+    }
     const image = await clipboardImage();
-    if (!image) return this.notice("No image on the clipboard.");
-    this.editor.attach(image);
-    this.screen.refresh();
+    if (image) {
+      this.editor.attach(image);
+      this.screen.refresh();
+      return;
+    }
+    const text = pasted || (await clipboardText());
+    if (text) return this.insertPaste(text);
+    this.notice("The clipboard is empty.");
   }
 
   // Handles a key that adds to the input from outside it. True when the key was one.
@@ -612,7 +624,7 @@ export class App {
             (command) => `  ${style.accent(`/${command.name}`.padEnd(14))}${style.muted(command.description)}`,
           ),
           "",
-          `  ${style.muted("enter send · shift+enter, alt+enter or \\ newline · ↑↓ history · @ file · tab complete · shift+tab permission mode · ctrl+v paste image")}`,
+          `  ${style.muted("enter send · shift+enter, alt+enter or \\ newline · ↑↓ history · @ file · tab complete · shift+tab permission mode")}`,
           `  ${style.muted("while clue works: enter steer the turn · tab queue for after it · ↑ edit")}`,
           `  ${style.muted("esc esc interrupt, or rewind when idle · ctrl+c interrupt · ctrl+o detail · ctrl+d exit")}`,
           "",

@@ -197,8 +197,9 @@ test("enter right after pasting an image sends the image", async () => {
   expect(imagesIn(promptBlocks("[Image #1]"))).toHaveLength(1);
 }, 25_000);
 
-// A stand-in for osascript. It writes the PNG to the path in the script, like the real one.
-function fakeOsascript(succeeds: boolean, delay = 0) {
+// Stand-ins for osascript and pbpaste. osascript writes the PNG to the path in the script,
+// like the real one. pbpaste prints `text`, so the test machine's clipboard stays out of it.
+function fakeOsascript(succeeds: boolean, delay = 0, text = "") {
   const bin = mkdtempSync(join(tmpdir(), "clue-fake-bin-"));
   const png = join(bin, "fixture.png");
   writeFileSync(png, PNG);
@@ -210,6 +211,8 @@ function fakeOsascript(succeeds: boolean, delay = 0) {
       : "exit 1\n");
   writeFileSync(join(bin, "osascript"), `#!/bin/sh\n${body}`);
   chmodSync(join(bin, "osascript"), 0o755);
+  writeFileSync(join(bin, "pbpaste"), `#!/bin/sh\nprintf '%s' '${text}'\n`);
+  chmodSync(join(bin, "pbpaste"), 0o755);
   return { PATH: `${bin}:${process.env.PATH}` };
 }
 
@@ -244,12 +247,40 @@ macOnly(
   25_000,
 );
 
+macOnly.each([
+  ["ctrl+v", CTRL_V],
+  ["/paste", `/paste${ENTER}`],
+])(
+  "%s pastes the clipboard's text when it holds no image",
+  async (_name, keys) => {
+    const clue = await startClue({ env: fakeOsascript(false, 0, "copied words") });
+    await clue.type(keys);
+    await clue.type(ENTER);
+    await clue.turns(1);
+    expect(JSON.stringify(promptBlocks("copied words"))).toContain("copied words");
+  },
+  25_000,
+);
+
 macOnly(
-  "clue says so when the clipboard has no image",
+  "a paste of only spaces keeps them when the clipboard has no image",
+  async () => {
+    const clue = await startClue({ env: fakeOsascript(false, 0, "should not appear") });
+    await clue.type(`a${paste("   ")}b${ENTER}`);
+    await clue.turns(1);
+    const blocks = JSON.stringify(promptBlocks("a   b"));
+    expect(blocks).toContain("a   b");
+    expect(blocks).not.toContain("should not appear");
+  },
+  25_000,
+);
+
+macOnly(
+  "clue says so when the clipboard is empty",
   async () => {
     const clue = await startClue({ env: fakeOsascript(false) });
     await clue.type(CTRL_V);
-    await clue.seen("No image on the clipboard.");
+    await clue.seen("The clipboard is empty.");
   },
   25_000,
 );
