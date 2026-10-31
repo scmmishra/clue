@@ -168,7 +168,7 @@ lines.push("\n### Hot paths, inside one process\n", "| | median µs | p90 µs | 
 lines.push(
   row("render a Markdown reply (Bun.markdown.ansi)", micros(micro(() => renderMarkdown(markdown, 100), 2000))),
   row("load the 120-prompt session file (Bun.JSONL)", micros(micro(() => Session.load(latest), 200))),
-  row("render its last screen for resume", micros(micro(() => replay(Session.load(latest)!, 32), 200))),
+  row("render all of it for resume", micros(micro(() => replay(Session.load(latest)!), 200))),
 );
 
 console.log(lines.join("\n"));

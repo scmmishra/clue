@@ -62,21 +62,27 @@ function entryLines(entry: Entry, width: number) {
   return [footerLine(entry.turn), ""];
 }
 
-// The conversation as it looked on screen, folded the same way. With `limit`,
-// renders from the end and stops once that many lines are filled.
-export function replay(session: Session, limit = Infinity): { lines: string[]; hidden: number } {
+// How much of a session a resume prints into the scrollback.
+export const RESUME_SCROLLBACK_BYTES = 1024 * 1024;
+
+const lineBytes = (line: string) => Buffer.byteLength(line) + 1;
+
+// The conversation as it looked on screen, folded the same way. With `maxBytes`,
+// renders from the end and stops once that much is filled.
+export function replay(session: Session, maxBytes = Infinity): { lines: string[]; hidden: number } {
   const width = columns();
   const entries = sessionEntries(session);
   const chunks: string[][] = [];
-  let count = 0;
+  let bytes = 0;
   let index = entries.length - 1;
-  for (; index >= 0 && count < limit; index--) {
+  for (; index >= 0 && bytes < maxBytes; index--) {
     const lines = entryLines(entries[index], width);
     chunks.unshift(lines);
-    count += lines.length;
+    bytes += lines.reduce((total, line) => total + lineBytes(line), 0);
   }
   const lines = chunks.flat();
-  const cut = Math.max(0, lines.length - limit);
+  let cut = 0;
+  while (bytes > maxBytes && cut < lines.length - 1) bytes -= lineBytes(lines[cut++]);
   return { lines: lines.slice(cut), hidden: index + 1 + (cut ? 1 : 0) };
 }
 

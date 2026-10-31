@@ -29,7 +29,7 @@ clue is a single binary. The conversation prints into your terminal's scrollback
 ## Features
 
 - **Ready before it's loaded**: clue shows the prompt first. The SDK, MCP servers and skills load while you type, and the connection to the API opens in the background.
-- **Resume without the wait**: `clue -c` prints only the last screen of the conversation. While you type, clue sends the history to Claude ahead of your message, so your message reads cached history instead of processing it again.
+- **Resume without the wait**: `clue -c` prints the conversation back into your scrollback, up to the last 1 MB. While you type, clue sends the history to Claude ahead of your message, so your message reads cached history instead of processing it again.
 - **A prompt Claude has already seen**: the system prompt and tool list are the same bytes in every session, so Claude caches them across sessions. Details that change, such as the working directory and git state, travel in messages.
 - **A quiet transcript**: each run of tool calls shows as a short tree, one line per call. Command output, diffs and errors wait behind `ctrl+o`. tmux copy mode keeps working.
 - **Your terminal knows the state**: clue reports when it is working, waiting for you, finished or failed through the [Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status) (OSC 7501). Terminals without support ignore it. clue also rings the terminal bell when it needs you, and when a turn ends after 30 seconds or more without input from you.
@@ -320,7 +320,7 @@ clue loads skills from `.clue/skills`, `~/.clue/skills`, `.claude/skills` and `.
 | Wait | What clue does about it |
 | --- | --- |
 | Start | One compiled binary with precompiled bytecode, laid out from a recorded launch so the code a launch needs is read first. No UI framework. The prompt appears before anything else loads. The API connection opens in the background. |
-| Resume | Bun parses the session file natively, and clue renders only the last screen, from the end. While you type, it sends the history with `max_tokens: 0`, which caches it without generating a reply. |
+| Resume | Bun parses the session file natively, and clue renders the conversation from the end, up to 1 MB. While you type, it sends the history with `max_tokens: 0`, which caches it without generating a reply. |
 | First token | The start of every request is identical, so Claude reads it from cache. MCP tools load only on demand. Replies and tool inputs stream as they are generated, and Claude's progress notes show while it thinks. |
 
 Warming the cache on resume costs a cache write even if you then quit without sending a message.

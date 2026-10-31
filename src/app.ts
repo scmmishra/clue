@@ -16,12 +16,12 @@ import { encodeImage } from "./tools/files";
 import { stopAllProcesses, warmShellEnv } from "./tools/shell";
 import { discoverSkills, type Skill } from "./tools/skills";
 import type { Question } from "./tools/types";
-import { duration, homePath, money, rows, style } from "./ui/ansi";
+import { duration, homePath, money, style } from "./ui/ansi";
 import { Editor, type Command } from "./ui/editor";
 import { clipboardImage, clipboardSupported } from "./ui/clipboard";
 import { findImagePaths } from "./ui/paste";
 import { pickSession } from "./ui/picker";
-import { detailLines, Pager, replay } from "./ui/replay";
+import { detailLines, Pager, replay, RESUME_SCROLLBACK_BYTES } from "./ui/replay";
 import { Keyboard, Screen, type Key, type LiveFrame } from "./ui/screen";
 import { turnStatus } from "./ui/status";
 import { BAR, header, promptLines, statusLine, TurnView } from "./ui/turn";
@@ -170,7 +170,7 @@ export class App {
   }
 
   private printResumed() {
-    const { lines, hidden } = replay(this.session, Math.max(6, rows() - 8));
+    const { lines, hidden } = replay(this.session, RESUME_SCROLLBACK_BYTES);
     this.print([
       `  ${style.faint(`session ${this.session.name ?? this.session.id} · ${this.session.turns.length} ${this.session.turns.length === 1 ? "prompt" : "prompts"}${hidden ? " · earlier turns hidden, ctrl+o shows all" : ""}`)}`,
       "",

@@ -1,7 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { projectKey } from "../src/session";
 import { statusReport, type ProgramStatus } from "../src/ui/status";
 import { requests, startMockApi } from "./mock-api";
 
@@ -433,4 +434,24 @@ test("good settings start without a warning", async () => {
   const clue = await startClue({ home });
   await Bun.sleep(200);
   expect(clue.screen()).not.toContain("clue config edit");
+}, 25_000);
+
+function seedSession(home: string, cwd: string, prompts: number) {
+  const dir = join(home, "sessions", projectKey(cwd));
+  mkdirSync(dir, { recursive: true });
+  const records: object[] = [{ t: "session", id: "seeded", cwd, created: 1, version: "0" }];
+  for (let index = 0; index < prompts; index++) {
+    records.push({ t: "message", message: { role: "user", content: `seeded prompt ${index}` } });
+    records.push({ t: "message", message: { role: "assistant", content: [{ type: "text", text: "A reply." }] } });
+  }
+  writeFileSync(join(dir, "seeded.jsonl"), `${records.map((record) => JSON.stringify(record)).join("\n")}\n`);
+}
+
+test("resume restores a session taller than the screen into the scrollback", async () => {
+  const [cwd, home] = [scratch("clue-tall-"), scratch("clue-tall-home-")];
+  seedSession(home, cwd, 60);
+  const clue = await startClue({ cwd, home, args: ["-c"] });
+  await clue.seen("seeded prompt 59");
+  expect(clue.screen()).toContain("seeded prompt 0");
+  expect(clue.screen()).not.toContain("earlier turns hidden");
 }, 25_000);

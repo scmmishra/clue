@@ -20,7 +20,7 @@ A seeded session of 120 prompts, each with two tool calls. The benchmark first c
 
 | | median | p90 |
 |---|---|---|
-| `clue -c` to ready prompt, last screen printed, inside the process | 8.7 ms | 10.1 ms |
+| `clue -c` to ready prompt, session printed, inside the process | 8.7 ms | 10.1 ms |
 | `clue -c` wall clock including exit | 14.9 ms | 16.7 ms |
 
 Warming the prompt cache runs after the prompt is ready, so it is not part of these numbers.
@@ -42,7 +42,7 @@ With the real API, the model's own time to first token is added on top.
 |---|---|---|
 | Render a Markdown reply (`Bun.markdown.ansi`) | 4.3 µs | 5.0 µs |
 | Load a 120-prompt session file (`Bun.JSONL`) | 39 µs | 49 µs |
-| Render the last screen of it for resume | 52 µs | 65 µs |
+| Render all of it for resume | 52 µs | 65 µs |
 
 A larger session, 610 KB and 120 prompts with long tool results, loads in about 0.65 ms.
 

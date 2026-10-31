@@ -4,6 +4,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- Resuming a session restores the conversation into your scrollback, up to the last 1 MB, instead of only the last screen.
 - `clue config unset` removes a setting, so it goes back to its default.
 
 ## 0.5.0
