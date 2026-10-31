@@ -5,6 +5,9 @@ export type PathToken = { start: number; end: number; path: string };
 
 const IMAGE_PATH = /\.(png|jpe?g|gif|webp)$/i;
 const SENTENCE_END = ",.;:!?";
+// Only the spaces a terminal escapes split words. macOS screenshot names put a narrow
+// no-break space before AM or PM, and the terminal leaves it as it is.
+const BREAK = /[ \t\n\r]/;
 
 // Where the word at `start` ends, reading quotes and backslash escapes.
 function wordEnd(text: string, start: number) {
@@ -14,7 +17,7 @@ function wordEnd(text: string, start: number) {
     if (char === "\\") index += 1;
     else if (quote) quote = char === quote ? "" : quote;
     else if (char === '"' || char === "'") quote = char;
-    else if (/\s/.test(char)) return index;
+    else if (BREAK.test(char)) return index;
   }
   return text.length;
 }
@@ -46,7 +49,7 @@ export function findImagePaths(text: string): PathToken[] {
   const found: PathToken[] = [];
   let index = 0;
   while (index < text.length) {
-    if (/\s/.test(text[index])) {
+    if (BREAK.test(text[index])) {
       index += 1;
       continue;
     }

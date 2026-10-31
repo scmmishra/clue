@@ -51,3 +51,10 @@ test("text without paths finds nothing", () => {
   expect(paths("@")).toEqual([]);
   expect(paths("@@/tmp/a.png")).toEqual([]);
 });
+
+test("a macOS screenshot name keeps its narrow space before PM", () => {
+  const name = "/Users/me/Desktop/Screenshot 2026-05-01 at 10.23.45\u202fPM.png";
+  const dragged = name.replaceAll(" ", "\\ ");
+  expect(paths(dragged)).toEqual([name]);
+  expect(spans(`see ${dragged} now`)).toEqual([dragged]);
+});

@@ -123,6 +123,30 @@ test("a path with escaped spaces, as a dragged file arrives, attaches", async ()
   await clue.seen("[Image #1]");
 }, 25_000);
 
+test("a macOS screenshot, with its narrow space before PM, attaches", async () => {
+  const clue = await startClue();
+  const name = "Screenshot 2026-05-01 at 10.23.45\u202fPM.png";
+  writeFileSync(join(clue.cwd, name), PNG);
+  await clue.type(paste(join(clue.cwd, name).replaceAll(" ", "\\ ")));
+  await clue.seen("[Image #1]");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(clue.wasSent("PM.png")).toBe(false);
+}, 25_000);
+
+test("a paste split over two reads still becomes one placeholder, without the path", async () => {
+  const clue = await startClue();
+  const file = join(clue.cwd, "shot.png");
+  writeFileSync(file, PNG);
+  await clue.type("\x1b[200~");
+  await clue.type(`${file}\x1b[201~`);
+  await clue.seen("[Image #1]");
+  await clue.type(` x${ENTER}`);
+  await clue.turns(1);
+  expect(imagesIn(promptBlocks("[Image #1] x"))).toHaveLength(1);
+  expect(clue.wasSent(file)).toBe(false);
+}, 25_000);
+
 test("a pasted path to a missing image stays as text", async () => {
   const clue = await startClue();
   await clue.type(paste("/tmp/clue-no-such-image.png"));

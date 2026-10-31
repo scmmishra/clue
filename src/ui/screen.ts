@@ -291,6 +291,17 @@ export function parseKeys(data: string): Key[] {
   return keys;
 }
 
+// A paste can arrive over several reads, the first sometimes holding only its start marker.
+// Splits input into what can be parsed now and an unfinished paste that waits for its end.
+export function readyInput(data: string): [ready: string, pending: string] {
+  const start = data.lastIndexOf(PASTE_START);
+  if (start === -1 || data.includes(PASTE_END, start)) return [data, ""];
+  return [data.slice(0, start), data.slice(start)];
+}
+
+// How long an unfinished paste waits for its end marker before it goes in as it is.
+const PASTE_WAIT_MS = 300;
+
 export type KeyHandler = (key: Key) => void;
 
 // Owns raw stdin. The app swaps the handler as focus moves between the editor,
@@ -299,6 +310,8 @@ export class Keyboard {
   private handler: KeyHandler = () => {};
   private started = false;
   private held: Key[] | null = null;
+  private pending = "";
+  private pendingTimer: ReturnType<typeof setTimeout> | undefined;
   private modes = keyModes(Boolean(process.env.TMUX));
 
   start() {
@@ -310,7 +323,11 @@ export class Keyboard {
     // These modes outlive clue, so any way out has to turn them off.
     process.once("exit", () => this.stop());
     process.stdin.on("data", (data: string) => {
-      for (const key of parseKeys(data)) this.deliver(key);
+      clearTimeout(this.pendingTimer);
+      const [ready, pending] = readyInput(this.pending + data);
+      this.pending = pending;
+      for (const key of parseKeys(ready)) this.deliver(key);
+      if (pending) this.pendingTimer = setTimeout(() => this.flushPending(), PASTE_WAIT_MS);
     });
     process.stdin.resume();
   }
@@ -318,6 +335,7 @@ export class Keyboard {
   stop() {
     if (!this.started) return;
     this.started = false;
+    clearTimeout(this.pendingTimer);
     process.stdout.write(term.bracketedPasteOff + this.modes.off + term.showCursor);
     process.stdin.setRawMode(false);
     process.stdin.pause();
@@ -335,6 +353,12 @@ export class Keyboard {
       this.held = null;
       for (const key of keys) this.deliver(key);
     });
+  }
+
+  private flushPending() {
+    const data = this.pending;
+    this.pending = "";
+    for (const key of parseKeys(data)) this.deliver(key);
   }
 
   private deliver(key: Key) {

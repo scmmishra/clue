@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { term } from "../src/ui/ansi";
-import { keyModes, parseKeys } from "../src/ui/screen";
+import { keyModes, parseKeys, readyInput } from "../src/ui/screen";
 
 const one = (data: string) => parseKeys(data)[0];
 const SHIFT = 2,
@@ -140,4 +140,14 @@ test.each([
 test("a modified key that has no action is dropped whole", () => {
   expect(parseKeys("\x1b[1;2A")).toEqual([]);
   expect(parseKeys("\x1b[1;2Ax")).toEqual([{ name: "char", text: "x" }]);
+});
+
+test("an unfinished paste waits for its end, and keys before it go now", () => {
+  const start = "\x1b[200~";
+  const end = "\x1b[201~";
+  expect(readyInput(`ab${start}`)).toEqual(["ab", start]);
+  expect(readyInput(`${start}/tmp/a.png`)).toEqual(["", `${start}/tmp/a.png`]);
+  expect(readyInput(`${start}/tmp/a.png${end}`)).toEqual([`${start}/tmp/a.png${end}`, ""]);
+  expect(readyInput(`${start}x${end}c${start}y`)).toEqual([`${start}x${end}c`, `${start}y`]);
+  expect(readyInput("plain")).toEqual(["plain", ""]);
 });
