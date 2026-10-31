@@ -2,7 +2,7 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
-## Unreleased
+## 0.7.1
 
 - `/compact` replaces the conversation with a summary when you ask. Images and file contents don't survive it, so Claude reads files again when it needs them.
 
