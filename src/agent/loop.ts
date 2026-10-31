@@ -10,6 +10,7 @@ import { buildContext } from "./context";
 import { msSince, now } from "../clock";
 import { cost } from "./models";
 import { dropRejectedFeature, stream } from "./provider";
+import { UndoStack } from "./undo";
 
 type ContentBlock = Anthropic.Beta.Messages.BetaContentBlock;
 type ToolUse = Anthropic.Beta.Messages.BetaToolUseBlock;
@@ -51,6 +52,7 @@ const ERROR_NOTE_CHARS = 60;
 export class Agent {
   readStamps = new Map<string, number>();
   seenInstructions = new Set<string>();
+  undo = new UndoStack();
 
   constructor(private options: AgentOptions) {}
 
@@ -78,6 +80,7 @@ export class Agent {
     let stop = "end_turn";
     let model = settings.model;
 
+    if (!this.options.subagent) this.undo.beginTurn();
     session.closeUnfinishedTools();
     if (session.isEmpty) {
       const context = await buildContext(this.options.cwd, this.options.skills(), this.options.mcp.configuredNames(), this.seenInstructions);
@@ -323,6 +326,7 @@ export class Agent {
       mcp: this.options.mcp,
       skills: this.options.skills,
       readStamps: this.readStamps,
+      undo: this.undo,
       seenInstructions: this.seenInstructions,
       ask: (question) => events.question(question),
       progress: (note) => events.toolUpdate(use.id, label, note),
@@ -362,6 +366,7 @@ export class Agent {
         notice: () => {},
       },
     });
+    agent.undo = this.undo;
     const turn = await agent.runTurn(task, signal);
     for (const key of Object.keys(usage) as (keyof Usage)[]) usage[key] += turn.usage[key];
     const last = child.messages.at(-1);

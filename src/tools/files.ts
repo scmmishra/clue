@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { nestedInstructions } from "../agent/context";
+import { snapshotFile } from "../agent/undo";
 import { checkFields, type Tool, type ToolContext } from "./types";
 
 const DEFAULT_READ_LINES = 2000;
@@ -333,8 +334,10 @@ export const writeFile: Tool<{ path: string; content: string }> = {
       return { content: `${input.path} changed since you last read it. Read it again first.`, isError: true };
     }
     const before = exists ? readFileSync(file, "utf8") : "";
+    const previous = snapshotFile(file);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, input.content);
+    context.undo.record(file, previous);
     context.readStamps.set(file, mtime(file));
     const added = input.content.split("\n").length;
     const removed = exists ? before.split("\n").length : 0;
@@ -384,7 +387,9 @@ export const editFile: Tool<{ path: string; old_string: string; new_string: stri
       return { content: `old_string appears ${count} times in ${input.path}. Add surrounding lines to make it unique, or set replace_all.`, isError: true };
     }
     const after = input.replace_all ? before.split(input.old_string).join(input.new_string) : before.replace(input.old_string, () => input.new_string);
+    const previous = snapshotFile(file);
     writeFileSync(file, after);
+    context.undo.record(file, previous);
     context.readStamps.set(file, mtime(file));
     const { diff, added, removed } = replacementDiff(before, after, first, input.old_string, input.new_string);
     const times = input.replace_all && count > 1 ? ` (${count} places)` : "";

@@ -3,6 +3,7 @@
 // straightforward way to do the same job.
 //   bun benchmarks/tools.ts [--runs 50]
 
+import { UndoStack } from "../src/agent/undo";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -88,6 +89,7 @@ const context = (): Ctx => {
     mcp: { settle: async () => {}, tools: () => [], servers: new Map(), configuredNames: () => [] } as never,
     skills: () => [],
     readStamps: new Map(),
+  undo: new UndoStack(),
     seenInstructions: new Set(),
     ask: async () => null,
     progress: () => {},

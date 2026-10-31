@@ -4,6 +4,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- `/undo` restores the files that clue changed in the last turn. It refuses if those files changed since, unless you run `/undo force`. It keeps the conversation, and it can't undo shell commands.
 - `shift+tab` switches between the `ask`, `auto` and `full-access` permission modes.
 - `/usage` shows how full the context is, plus cost, tokens and cache use. `/cost` shows the same report.
 - `clue doctor` checks the version, credentials, API access, settings, tools, terminal and MCP servers.

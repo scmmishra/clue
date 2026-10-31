@@ -85,8 +85,9 @@ export function startMockApi(port = 0, delay = DELAY) {
       const promptText = JSON.stringify(body.messages.filter((item) => item.role === "user").at(-1)?.content ?? "");
       if (!hasToolResult) {
         const wantsPush = promptText.includes("push");
-        const input = JSON.stringify(wantsPush ? { command: "deploy-preview --dry-run" } : { path: "package.json" });
-        const toolName = wantsPush ? "shell" : "read_file";
+        const wantsWrite = promptText.includes("create the note");
+        const input = JSON.stringify(wantsPush ? { command: "deploy-preview --dry-run" } : wantsWrite ? { path: "note.txt", content: "from clue" } : { path: "package.json" });
+        const toolName = wantsPush ? "shell" : wantsWrite ? "write_file" : "read_file";
         return sse([
           { type: "message_start", message: message([], "") },
           { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } },

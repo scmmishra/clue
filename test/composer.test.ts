@@ -626,3 +626,24 @@ test.each(["/usage", "/cost"])("%s reports context and cost after a reply", asyn
   await clue.seen("before compaction");
   await clue.seen("across 1 prompt");
 }, 25_000);
+
+test("/undo removes what the turn wrote and leaves the conversation alone", async () => {
+  const cwd = scratch("clue-undo-");
+  const clue = await startClue({ cwd, args: ["--permission-mode", "full-access"] });
+  const note = join(cwd, "note.txt");
+  await clue.type("create the note");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(existsSync(note)).toBe(true);
+  await clue.type("/undo");
+  await clue.type(ENTER);
+  await clue.seen("Deleted note.txt");
+  expect(existsSync(note)).toBe(false);
+  await clue.type("next");
+  await clue.type(ENTER);
+  await clue.turns(2);
+  const history = JSON.stringify((requests.at(-1) as { messages: unknown }).messages);
+  expect(history).toContain("create the note");
+  expect(history).not.toContain("/undo");
+  expect(history).not.toContain("Deleted note.txt");
+}, 25_000);

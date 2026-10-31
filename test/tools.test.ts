@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { commandIsRoutine, Permissions, ruleFor } from "../src/permissions";
 import { Session } from "../src/session";
 import { chmodSync, mkdirSync } from "node:fs";
+import { UndoStack } from "../src/agent/undo";
 import { editFile, globFiles, grepFiles, readFile } from "../src/tools/files";
 import { shell, stopAllProcesses } from "../src/tools/shell";
 import type { ToolContext } from "../src/tools/types";
@@ -17,6 +18,7 @@ const context = (): ToolContext => ({
   mcp: {} as never,
   skills: () => [],
   readStamps: new Map(),
+  undo: new UndoStack(),
   seenInstructions: new Set(),
   ask: async () => null,
   progress: () => {},

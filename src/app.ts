@@ -19,6 +19,7 @@ import type { Question } from "./tools/types";
 import { duration, homePath, style } from "./ui/ansi";
 import { Editor, type Command } from "./ui/editor";
 import { listPaths } from "./ui/file-mention";
+import { undoReport } from "./ui/undo";
 import { usageReport } from "./ui/usage";
 import { clipboardImage, clipboardSupported } from "./ui/clipboard";
 import { findImagePaths } from "./ui/paste";
@@ -38,6 +39,7 @@ const COMMANDS: Command[] = [
   { name: "new", description: "start a fresh session" },
   { name: "mcp", description: "manage MCP servers" },
   { name: "paste", description: "attach the image on the clipboard" },
+  { name: "undo", description: "restore the files changed in the last turn" },
   { name: "usage", description: "context, tokens and cost of this session" },
   { name: "cost", description: "same as /usage" },
   { name: "exit", description: "quit clue" },
@@ -498,6 +500,8 @@ export class App {
         this.keyboard.hold(work);
         return work;
       }
+      case "undo":
+        return this.print(undoReport(this.agent.undo.undo(args[0] === "force"), this.cwd));
       case "cost":
       case "usage":
         return this.print(usageReport(this.session.turns));

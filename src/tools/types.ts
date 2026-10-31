@@ -1,3 +1,4 @@
+import type { UndoStack } from "../agent/undo";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Session } from "../session";
 import type { McpManager } from "../mcp/manager";
@@ -27,6 +28,7 @@ export type ToolContext = {
   skills: () => Skill[];
   // Modification time of each file when the model last read it.
   readStamps: Map<string, number>;
+  undo: UndoStack;
   seenInstructions: Set<string>;
   ask: (question: Question) => Promise<string | null>;
   progress: (text: string) => void;
