@@ -307,7 +307,7 @@ async function askJev(model: string, state: object, signal: AbortSignal): Promis
   if (choice !== "clear" && choice !== "caution") throw new Error(`Jev answered ${choice}`);
   return {
     approved: choice === "clear",
-    reason: choice === "clear" ? undefined : "Jev flagged it as possible prompt injection or harmful activity",
+    reason: choice === "clear" ? undefined : "found possible prompt injection or harmful activity",
   };
 }
 

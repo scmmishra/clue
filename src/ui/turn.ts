@@ -152,7 +152,14 @@ export function footerLine(turn: Pick<TurnRecord, "ms" | "cost" | "stop" | "usag
 // ---------------------------------------------------------------------------
 
 type Prompt =
-  | { type: "confirm"; label: string; subject: string; pattern: string; resolve: (answer: ConfirmAnswer) => void }
+  | {
+      type: "confirm";
+      label: string;
+      subject: string;
+      pattern: string;
+      note?: string;
+      resolve: (answer: ConfirmAnswer) => void;
+    }
   | {
       type: "question";
       question: Question;
@@ -313,7 +320,13 @@ export class TurnView implements AgentEvents {
     if (shown.length) lines.push(...toolTree(shown, style.muted(duration(msSince(this.startedAt)))));
     if (this.prompt?.type === "confirm") {
       const dot = style.faint(" · ");
-      lines.push("", `${style.accent("?")} ${style.bold(this.prompt.label)}`);
+      // The command wraps rather than being cut, since it's what the user approves.
+      const wrapped = (text: string) => text.split("\n").flatMap((line) => wrapLine(line, columns() - 3));
+      lines.push("");
+      wrapped(this.prompt.label).forEach((line, index) =>
+        lines.push(`${index ? " " : style.accent("?")} ${style.bold(line)}`),
+      );
+      if (this.prompt.note) for (const line of wrapped(this.prompt.note)) lines.push(`  ${style.orange(line)}`);
       lines.push(
         `  ${style.accent("y")} ${style.muted("yes, once")}${dot}${style.accent("a")} ${style.muted(`always allow ${this.prompt.pattern} this session`)}${dot}${style.accent("n")} ${style.muted("no")}`,
       );
@@ -418,9 +431,9 @@ export class TurnView implements AgentEvents {
     this.screen.refresh();
   }
 
-  confirm(label: string, subject: string, pattern: string): Promise<ConfirmAnswer> {
+  confirm(label: string, subject: string, pattern: string, note?: string): Promise<ConfirmAnswer> {
     return new Promise((resolve) => {
-      this.prompt = { type: "confirm", label, subject, pattern, resolve };
+      this.prompt = { type: "confirm", label, subject, pattern, note, resolve };
       this.screen.status("blocked-permission");
       this.screen.refresh();
     });

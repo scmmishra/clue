@@ -138,7 +138,8 @@ export class App {
       toolUpdate: (id, label, note) => view()?.toolUpdate(id, label, note),
       toolEnd: (record) => view()?.toolEnd(record),
       review: (id, state, detail) => view()?.review(id, state, detail),
-      confirm: (label, subject, pattern) => view()?.confirm(label, subject, pattern) ?? Promise.resolve("no"),
+      confirm: (label, subject, pattern, note) =>
+        view()?.confirm(label, subject, pattern, note) ?? Promise.resolve("no"),
       question: (question: Question) => view()?.question(question) ?? Promise.resolve(null),
       notice: (text, tone) => view()?.notice(text, tone),
       steer: () => {

@@ -35,7 +35,8 @@ export type AgentEvents = {
   toolUpdate(id: string, label: string, note?: string): void;
   toolEnd(record: ToolRecord): void;
   review(id: string, state: "reviewing" | "approved" | "held", detail?: string): void;
-  confirm(label: string, subject: string, pattern: string): Promise<ConfirmAnswer>;
+  // `note` says why clue asks when it isn't the usual approval, such as a reviewer's flag.
+  confirm(label: string, subject: string, pattern: string, note?: string): Promise<ConfirmAnswer>;
   question(question: Question): Promise<string | null>;
   notice(text: string, tone?: "info" | "warn" | "error"): void;
   // A message the user typed to steer the running turn, taken once. The loop sends it with
@@ -431,7 +432,34 @@ export class Agent {
         "denied",
       );
     }
-    if (decision.action === "ask") {
+    // A flagged review asks the user, like an action that needs approval. Only an
+    // interrupt or a non-interactive run keeps it held.
+    let ask = decision.action === "ask";
+    let note: string | undefined;
+    if (decision.action === "review") {
+      events.review(use.id, "reviewing");
+      const verdict = await reviewAction(tool.name, input, prompt, this.options.settings.review, signal);
+      if (!verdict.approved) {
+        events.review(use.id, "held", `${verdict.reviewer}: ${verdict.reason ?? "held"}`);
+        if (!this.options.interactive || signal.aborted) {
+          return finish(
+            {
+              content: `clue held this action: ${verdict.reviewer} reviewed it and ${verdict.reason ?? "did not approve it"}. Tell the user what you wanted to do and why.`,
+              isError: true,
+            },
+            label,
+            kind,
+            `held by ${verdict.reviewer}`,
+          );
+        }
+        ask = true;
+        note = `not cleared by ${verdict.reviewer}${verdict.reason ? `: ${verdict.reason}` : ""}`;
+      } else {
+        events.review(use.id, "approved", verdict.reviewer);
+        review = `approved by ${verdict.reviewer}`;
+      }
+    }
+    if (ask) {
       if (!this.options.interactive) {
         return finish(
           {
@@ -448,6 +476,7 @@ export class Agent {
         approvalQuestion(tool, input),
         decision.subject,
         Permissions.grantPattern(tool, decision.subject),
+        note,
       );
       if (answer === "no")
         return finish(
@@ -458,24 +487,6 @@ export class Agent {
         );
       if (answer === "always") permissions.grant(tool.name, Permissions.grantPattern(tool, decision.subject));
       review = answer === "always" ? "allowed always" : "allowed once";
-    }
-    if (decision.action === "review") {
-      events.review(use.id, "reviewing");
-      const verdict = await reviewAction(tool.name, input, prompt, this.options.settings.review, signal);
-      if (!verdict.approved) {
-        events.review(use.id, "held", `${verdict.reviewer}: ${verdict.reason ?? "held"}`);
-        return finish(
-          {
-            content: `clue held this action: ${verdict.reviewer} reviewed it and ${verdict.reason ?? "did not approve it"}. Tell the user what you wanted to do and why.`,
-            isError: true,
-          },
-          label,
-          kind,
-          `held by ${verdict.reviewer}`,
-        );
-      }
-      events.review(use.id, "approved", verdict.reviewer);
-      review = `approved by ${verdict.reviewer}`;
     }
 
     const context: ToolContext = {
@@ -526,7 +537,7 @@ export class Agent {
         toolUpdate: () => {},
         toolEnd: () => parent.toolUpdate(parentId, `Subagent: ${description}`, `${++calls} tool calls`),
         review: () => {},
-        confirm: (label, subject, pattern) => parent.confirm(`subagent: ${label}`, subject, pattern),
+        confirm: (label, subject, pattern, note) => parent.confirm(`subagent: ${label}`, subject, pattern, note),
         question: async () => null,
         notice: () => {},
       },

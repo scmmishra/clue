@@ -9,6 +9,10 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - `clue -r` and `/resume` list only the sessions of the current folder, without a folder column. `clue -r <id or name>` still resumes a session from any folder.
 - `Enter` during a run steers the turn. clue sends the message with the next tool results, so Claude reads it before its next step, and the message shows where Claude got it. If the turn ends first, it goes as the next prompt. `Tab` still queues a message for after the turn. Before, both keys queued.
 - A pasted image path that the terminal sent in pieces, as Ghostty can for a CleanShot capture, showed the path after `[Image #1]`. clue now waits for the whole paste, so only the placeholder shows.
+- When the reviewer flags an action, or can't finish the review, clue asks you with the reviewer's reason instead of holding it. `clue ask` still holds it.
+- The reviewer treats deleting temporary files, such as `rm -rf` under `/tmp`, as routine cleanup.
+- The approval prompt shows the whole command, wrapped, instead of cutting it at the edge. A reviewer's reason shows on its own line.
+- Claude writes checks that exit 0 when they pass, such as `test ! -e` after a deletion, so a successful check no longer shows as failed.
 - A dragged macOS screenshot attaches. Its name has a narrow space before `AM` or `PM`, which cut the path short, so it stayed as text.
 
 ## 0.7.4

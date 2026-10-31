@@ -46,6 +46,6 @@ clue warns at startup if the file has a problem. If the JSON is broken, clue use
 
 Both keys are optional. With no `review`, clue uses Jev if `OPENROUTER_API_KEY` is set, and Haiku otherwise. With `"provider": "anthropic"`, reviews never reach OpenRouter.
 
-If the reviewer fails or the setting can't work, Claude Haiku at low effort reviews instead. The action is held only if that fails too.
+If the reviewer fails or the setting can't work, Claude Haiku at low effort reviews instead. If that fails too, clue asks you, or holds the action in `clue ask`.
 
 `CLUE_MODEL`, `CLUE_EFFORT` and `CLUE_PERMISSION_MODE` override the file for one process. Command-line flags override both.
