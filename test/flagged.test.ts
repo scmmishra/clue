@@ -42,20 +42,22 @@ test("a flagged action asks the user with the reviewer's reason, and a no reache
     env: env(),
     terminal,
   });
-  const until = async (status: Parameters<typeof statusReport>[0]) => {
+  const waitFor = async (text: string, read = () => output) => {
     const deadline = Date.now() + 8000;
-    while (!output.includes(statusReport(status)) && Date.now() < deadline) await Bun.sleep(10);
-    expect(output, `waiting for ${status}`).toContain(statusReport(status));
+    while (!read().includes(text) && Date.now() < deadline) await Bun.sleep(10);
+    expect(read()).toContain(text);
   };
+  const until = (status: Parameters<typeof statusReport>[0]) => waitFor(statusReport(status));
+  // The status goes out before the prompt is painted.
+  const onScreen = (text: string) => waitFor(text, () => Bun.stripANSI(output));
 
   await until("idle");
   terminal.write("please push");
   await Bun.sleep(50);
   terminal.write("\r");
   await until("blocked-permission");
-  const screen = Bun.stripANSI(output);
-  expect(screen).toContain("? Run deploy-preview --dry-run?");
-  expect(screen).toContain("  not cleared by haiku: the reviewer's reason");
+  await onScreen("? Run deploy-preview --dry-run?");
+  await onScreen("  not cleared by haiku: the reviewer's reason");
   terminal.write("n");
   await until("done");
   terminal.write("\x04");
