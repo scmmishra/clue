@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import type { PermissionMode, PermissionRules, ReviewSetting, RuleValue } from "./config";
 import { KNOWN_MODELS, modelLabel, resolveModel, REVIEW_FALLBACK_MODEL } from "./agent/models";
 import { getClient } from "./agent/provider";
@@ -33,14 +33,21 @@ const forEach = (programs: string, commands: string) =>
 const GIT_READ = anyArg(/^(--ou|--ext|--op|-O)/);
 const PACKAGE_NAME = anyArg(/^[^-]/);
 const NOT_A_SCRIPT_NAME: UnsafeArgs = ([name = ""]) => !/^\w[\w:-]*$/.test(name);
+// A line range to print, such as sed -n '1,20p' a.ts. GNU sed reads a later -i as an option.
+const NOT_A_LINE_RANGE: UnsafeArgs = ([script = "", ...files]) =>
+  !/^(\d+|\$)(,(\d+|\$))?p$/.test(script) || files.some((file) => file.startsWith("-"));
 
 // Commands that only read, or that are a normal part of working on a project, keyed by
 // their leading words. Everything else goes to review, so this list stays short.
-// Programs that run other programs, such as env, find, awk, node or xargs, stay off it.
+// Programs that run other programs, such as awk, node or xargs, stay off it.
 const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
   ...routine(
-    "ls,pwd,cat,head,tail,wc,echo,printf,which,file,stat,du,df,true,false,cut,tr,cmp,basename,dirname,realpath,grep,egrep,fgrep,jq",
+    "ls,pwd,cat,head,tail,wc,echo,printf,which,file,stat,du,df,true,false,cut,tr,cmp,basename,dirname,realpath,readlink,grep,egrep,fgrep,jq",
   ),
+  ...routine("nl,rev,seq,paste,column,od,hexdump,md5,md5sum,shasum,sha1sum,sha256sum,id,uname,whoami,test,["),
+  ...routine("find", anyArg(/^-(exec|execdir|ok|okdir|delete|fls|fprint|fprint0|fprintf)$/)),
+  ...routine("sed -n", NOT_A_LINE_RANGE),
+  ...routine("base64", anyArg(/^(-[a-zA-Z]*o|--o)/)),
   ...routine("sort", anyArg(/^(-[a-zA-Z]*o|--o|--c)/)),
   ...routine("uniq", (args) => args.filter((arg) => !arg.startsWith("-")).length > 1),
   ...routine("diff", anyArg(/^--o/)),
@@ -62,7 +69,11 @@ const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
   ...routine("git restore --staged", anyArg(/^(-W|--w)/)),
   ...routine("git fetch", anyArg(/^-(?!-all$|-tags$)/)),
 
+  ...routine(forEach("node bun deno npm pnpm yarn python python3 ruby cargo rustc git", "--version"), anyArg(/./)),
+  ...routine("node -v,bun -v,npm -v,pnpm -v,yarn -v,go version,zig version", anyArg(/./)),
+
   ...routine(forEach("npm pnpm yarn bun", "test outdated ls list why")),
+  ...routine("bun check,bun fmt"),
   ...routine(forEach("npm pnpm yarn bun", "install i ci"), PACKAGE_NAME),
   ...routine(forEach("npm pnpm yarn bun", "run"), NOT_A_SCRIPT_NAME),
   ...routine(forEach("pnpm yarn", "build lint typecheck format")),
@@ -82,17 +93,52 @@ const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
 const SENSITIVE_PATH =
   /(^|\/)(\.env(\..*)?|\.git\/|\.ssh\/|\.aws\/|\.npmrc|\.netrc|\.gnupg\/|id_rsa|\.clue\/settings\.json|credentials)/;
 
-function wordsAreRoutine(words: string[]) {
-  for (let length = words.length; length > 0; length--) {
-    const prefix = words.slice(0, length).join(" ");
-    if (ROUTINE_COMMANDS.has(prefix)) return !ROUTINE_COMMANDS.get(prefix)?.(words.slice(length));
+// Variables that change how a command prints or which mode it runs in, never what it runs.
+// The value can't hold a path, so LANG or TZ can't point at a file.
+const SAFE_VARIABLE =
+  /^(CI|NODE_ENV|BUN_ENV|DENO_ENV|RUST_LOG|RUST_BACKTRACE|PYTHONUNBUFFERED|PYTHONDONTWRITEBYTECODE|TERM|COLORTERM|NO_COLOR|FORCE_COLOR|CLICOLOR|CLICOLOR_FORCE|LANG|LC_ALL|LC_CTYPE|TZ)=[\w.,:@=+-]*$/;
+const DURATION = /^\d+(\.\d+)?[smhd]?$/;
+
+// The command without the words in front that only set how it runs: safe variables,
+// `env` with those or with `-u NAME`, `time`, and `timeout <duration>`.
+function unwrap(words: string[]) {
+  let start = 0;
+  for (;;) {
+    const word = words[start];
+    if (word === "time" || SAFE_VARIABLE.test(word ?? "")) start += 1;
+    else if (word === "timeout" && DURATION.test(words[start + 1] ?? "")) start += 2;
+    else if (word === "env") {
+      start += 1;
+      while (words[start] === "-u" && start + 1 < words.length) start += 2;
+    } else return words.slice(start);
+  }
+}
+
+// `cd` to the project or a folder in it. A relative path can't climb, so this holds
+// after an earlier `cd` in the same line too.
+function cdStaysInProject(args: string[], cwd?: string) {
+  const [path = ""] = args;
+  if (args.length !== 1 || path === "" || /^[-+]|[*?[]/.test(path)) return false;
+  if (!path.startsWith("/")) return !path.split("/").includes("..");
+  if (!cwd) return false;
+  const rel = relative(cwd, path);
+  return !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+function wordsAreRoutine(words: string[], cwd?: string) {
+  const command = unwrap(words);
+  if (command[0] === "cd") return cdStaysInProject(command.slice(1), cwd);
+  for (let length = command.length; length > 0; length--) {
+    const prefix = command.slice(0, length).join(" ");
+    if (ROUTINE_COMMANDS.has(prefix)) return !ROUTINE_COMMANDS.get(prefix)?.(command.slice(length));
   }
   return false;
 }
 
-export function commandIsRoutine(command: string) {
+// cwd is the project folder, for `cd` with an absolute path.
+export function commandIsRoutine(command: string, cwd?: string) {
   const commands = parseCommand(command);
-  return commands !== null && commands.length > 0 && commands.every(wordsAreRoutine);
+  return commands !== null && commands.length > 0 && commands.every((words) => wordsAreRoutine(words, cwd));
 }
 
 function insideProject(cwd: string, path: string) {
@@ -231,7 +277,7 @@ export class Permissions {
     }
     if (tool.name === "shell") {
       if (action === "interact" || action === "stop") return { action: "run", subject };
-      return commandIsRoutine(subject)
+      return commandIsRoutine(subject, this.cwd)
         ? { action: "run", subject }
         : { action: "review", subject, reason: "unrecognized command" };
     }

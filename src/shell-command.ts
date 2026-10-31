@@ -1,8 +1,13 @@
 // Reads a shell command the way the shell does, for the permission check. It handles
-// only plain words, quotes and the separators below. Anything else, such as a redirect
-// or a substitution, returns null: the check can't know what such a command does.
+// only plain words, quotes, the separators below and redirects that discard output.
+// Anything else, such as a redirect to a file or a substitution, returns null: the
+// check can't know what such a command does.
 
 const SEPARATORS = ["&&", "||", ";", "|"];
+
+// 2>&1, >&2, >/dev/null, 2>/dev/null and &>/dev/null. They only move output to the
+// screen or drop it, so they're left out of the words.
+const HARMLESS_REDIRECT = /(?:[12]?>&[12]|(?:[12]|&)?>>?[ \t]*\/dev\/null)(?=[ \t;&|]|$)/y;
 
 // Outside quotes. Includes zsh's ^ and # globs and a single &, which runs what follows.
 const UNSUPPORTED = /[\x00-\x08\x0a-\x1f\x7f<>()$`\\{}^#!&]/;
@@ -35,6 +40,11 @@ export function parseCommand(text: string): string[][] | null {
     }
     if (char === " " || char === "\t") {
       endWord();
+      continue;
+    }
+    HARMLESS_REDIRECT.lastIndex = index;
+    if (!inWord && HARMLESS_REDIRECT.test(text)) {
+      index = HARMLESS_REDIRECT.lastIndex - 1;
       continue;
     }
     if (text.startsWith(EXIT_CODE, index)) {

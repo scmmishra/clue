@@ -20,7 +20,7 @@ clue runs these directly:
 
 It has these reviewed first:
 
-- Any other shell command, including one with a redirect, a substitution, a variable or a background `&`.
+- Any other shell command, including one with a redirect to a file, a substitution, a variable or a background `&`.
 - Writing files outside the project.
 - Changing sensitive configuration.
 - Calling an MCP tool.

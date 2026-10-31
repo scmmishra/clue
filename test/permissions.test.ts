@@ -48,6 +48,19 @@ test("$? does not let other expansions through", () => {
   expect(parseCommand("echo $?(x)")).toBeNull();
 });
 
+test("redirects that keep output on the screen or drop it are left out", () => {
+  expect(parseCommand("bun test 2>&1 | tail -5")).toEqual([
+    ["bun", "test"],
+    ["tail", "-5"],
+  ]);
+  expect(parseCommand("ls >/dev/null 2>&1")).toEqual([["ls"]]);
+  expect(parseCommand("rg foo 2> /dev/null; echo none >&2")).toEqual([
+    ["rg", "foo"],
+    ["echo", "none"],
+  ]);
+  expect(parseCommand("cat a &>/dev/null&&ls")).toEqual([["cat", "a"], ["ls"]]);
+});
+
 test("nothing to run is no commands", () => {
   expect(parseCommand("")).toEqual([]);
   expect(parseCommand("   ")).toEqual([]);
@@ -60,6 +73,9 @@ test.each([
   ["a newline", "ls\nrm -rf x"],
   ["a carriage return", "ls\rrm"],
   ["output redirection", "echo x >> file"],
+  ["a redirect of both outputs to a file", "ls >&out"],
+  ["a redirect to a file named like /dev/null", "ls >/dev/null.txt"],
+  ["a background & after a redirect", "server 2>/dev/null &"],
   ["input redirection", "cat < file"],
   ["command substitution", "echo $(id)"],
   ["backticks", "echo `id`"],
@@ -148,6 +164,29 @@ test.each([
   "git status; git diff",
   "bun test || git status",
   `git status; echo "exit=$?"`,
+  "bun test 2>&1 | tail -20",
+  "ls missing 2>/dev/null || echo none",
+  "env -u NO_COLOR -u FORCE_COLOR bun test",
+  "NO_COLOR=1 bun test",
+  "CI=true LANG=C npm test",
+  "timeout 120 bun test",
+  "time bun run build",
+  "cd src && ls",
+  "cd packages/app && bun test",
+  "sed -n '1,80p' src/a.ts",
+  "sed -n '$p' a.txt",
+  "find src -name '*.ts' -newer a.ts",
+  "test -f a.ts && echo yes",
+  "[ -d src ] || echo none",
+  "seq 1 5 | paste -sd+ -",
+  "uname -a",
+  "shasum -a 256 a.tgz",
+  "base64 a.png",
+  "node --version",
+  "bun -v",
+  "go version",
+  "bun check",
+  "bun fmt src",
 ])("routine: %s", (command) => {
   expect(commandIsRoutine(command)).toBe(true);
 });
@@ -228,6 +267,31 @@ test.each([
   "go run evil.go",
   "rails runner evil",
   "constructor",
+  "ls > out.txt",
+  "env -i ls",
+  "env -S 'rm -rf project'",
+  "env -u HOME rm -rf project",
+  "env PATH=./evil ls",
+  "NO_COLOR=1 rm -rf project",
+  "LANG=/tmp/evil ls",
+  "timeout 5 rm -rf project",
+  "timeout -s KILL 5 bun test",
+  "time rm -rf project",
+  "cd",
+  "cd -",
+  "cd src lib",
+  "cd .. && make",
+  "cd src/../.. && make",
+  "cd s* && make",
+  "cd /etc && ls",
+  "sed -i 's/a/b/' a.txt",
+  "sed -n 1p -i a.txt",
+  "sed -n '1p;w out' a.txt",
+  "find . -execdir rm x +",
+  "find . -fprint out",
+  "base64 -o out a.txt",
+  "base64 -Do out a.txt",
+  "node --version; node evil.js",
 ])("needs review: %s", (command) => {
   expect(commandIsRoutine(command)).toBe(false);
 });
@@ -240,6 +304,16 @@ test("a deny rule applies to every command in a chain", () => {
   expect(action(permissions, "git push origin main")).toBe("deny");
   expect(action(permissions, "cd . && git push origin main")).toBe("deny");
   expect(action(permissions, "git status; git push origin main")).toBe("deny");
+});
+
+test("cd with an absolute path is routine only into the project", () => {
+  const permissions = new Permissions("auto", {}, "/tmp/project");
+  expect(action(permissions, "cd /tmp/project && bun test")).toBe("run");
+  expect(action(permissions, "cd /tmp/project/src && ls")).toBe("run");
+  expect(action(permissions, "cd /tmp/project2 && make")).toBe("review");
+  expect(action(permissions, "cd /tmp/project/../other && make")).toBe("review");
+  expect(action(permissions, "cd /tmp && make")).toBe("review");
+  expect(action(permissions, "cd /tmp/project/src && cd .. && make")).toBe("review");
 });
 
 test("a deny rule still applies in full-access", () => {
