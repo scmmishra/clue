@@ -11,5 +11,5 @@ title: Slash commands
 | `/rename` | Shows or changes the session name. |
 | `/paste` | Attaches the clipboard image. |
 | `/mcp` | Manages MCP servers. |
-| `/cost` | Shows this session's tokens and cost. |
+| `/usage`, `/cost` | Show how full the context is, and this session's cost and tokens. |
 | `/exit` | Quits clue. |

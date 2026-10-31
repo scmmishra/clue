@@ -615,3 +615,14 @@ test("shift+tab doesn't accept a pick in the file picker", async () => {
   await clue.turns(1);
   expect(clue.wasSent("@notes.md go")).toBe(true);
 }, 25_000);
+
+test.each(["/usage", "/cost"])("%s reports context and cost after a reply", async (command) => {
+  const clue = await startClue();
+  await clue.type("hello");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  await clue.type(command);
+  await clue.type(ENTER);
+  await clue.seen("before compaction");
+  await clue.seen("across 1 prompt");
+}, 25_000);

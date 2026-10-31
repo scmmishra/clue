@@ -28,6 +28,9 @@ export const KNOWN_MODELS = Object.keys(MODELS);
 
 export const REVIEW_FALLBACK_MODEL = "claude-haiku-5-5";
 
+// The context size where the API compacts a conversation by default.
+export const COMPACTION_TRIGGER_TOKENS = 150_000;
+
 // Cost of one web search, in dollars.
 const WEB_SEARCH_COST = 0.01;
 

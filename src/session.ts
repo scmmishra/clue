@@ -46,6 +46,8 @@ export type TurnRecord = {
   cost: number | null;
   model: string;
   stop: string;
+  // Tokens in the last request. Sessions from before 0.7 don't have it.
+  context?: number;
 };
 
 export type SessionRecord =

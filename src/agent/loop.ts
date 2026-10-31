@@ -73,6 +73,7 @@ export class Agent {
     const clock = now();
     let firstTokenMs: number | null = null;
     const usage = emptyUsage();
+    let context: number | undefined;
     let toolCount = 0;
     let stop = "end_turn";
     let model = settings.model;
@@ -120,6 +121,7 @@ export class Agent {
       }
 
       addUsage(usage, message.usage);
+      context = contextTokens(message.usage);
       session.appendMessage({ role: "assistant", content: message.content as Anthropic.Beta.Messages.BetaContentBlockParam[] });
       stop = message.stop_reason ?? "end_turn";
 
@@ -164,6 +166,7 @@ export class Agent {
       cost: cost(model, usage),
       model,
       stop,
+      context,
     };
     session.append({ t: "turn", turn });
     return turn;
@@ -368,6 +371,12 @@ export class Agent {
         : text;
     return { content: finalText.trim() || "The subagent finished without an answer.", note: `${calls} tool calls`, isError: turn.stop === "interrupted" };
   }
+}
+
+// The size of the context in a response. After a compaction, the last `message` entry has the new size.
+export function contextTokens(usage: Anthropic.Beta.Messages.BetaUsage) {
+  const last = usage.iterations?.findLast((entry) => entry.type === "message") ?? usage;
+  return (last.input_tokens ?? 0) + (last.cache_read_input_tokens ?? 0) + (last.cache_creation_input_tokens ?? 0);
 }
 
 function addUsage(total: Usage, usage: Anthropic.Beta.Messages.BetaUsage) {

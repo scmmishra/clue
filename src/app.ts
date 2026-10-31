@@ -16,9 +16,10 @@ import { encodeImage } from "./tools/files";
 import { stopAllProcesses, warmShellEnv } from "./tools/shell";
 import { discoverSkills, type Skill } from "./tools/skills";
 import type { Question } from "./tools/types";
-import { duration, homePath, money, style } from "./ui/ansi";
+import { duration, homePath, style } from "./ui/ansi";
 import { Editor, type Command } from "./ui/editor";
 import { listPaths } from "./ui/file-mention";
+import { usageReport } from "./ui/usage";
 import { clipboardImage, clipboardSupported } from "./ui/clipboard";
 import { findImagePaths } from "./ui/paste";
 import { pickSession } from "./ui/picker";
@@ -37,7 +38,8 @@ const COMMANDS: Command[] = [
   { name: "new", description: "start a fresh session" },
   { name: "mcp", description: "manage MCP servers" },
   { name: "paste", description: "attach the image on the clipboard" },
-  { name: "cost", description: "tokens and cost of this session" },
+  { name: "usage", description: "context, tokens and cost of this session" },
+  { name: "cost", description: "same as /usage" },
   { name: "exit", description: "quit clue" },
 ];
 
@@ -496,15 +498,9 @@ export class App {
         this.keyboard.hold(work);
         return work;
       }
-      case "cost": {
-        const total = this.session.turns.reduce(
-          (sum, turn) => ({ cost: sum.cost + (turn.cost ?? 0), input: sum.input + turn.usage.input, cacheRead: sum.cacheRead + turn.usage.cacheRead, cacheWrite: sum.cacheWrite + turn.usage.cacheWrite, output: sum.output + turn.usage.output }),
-          { cost: 0, input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
-        );
-        return say(
-          `${style.bold(money(total.cost))}  ${style.faint(`${this.session.turns.length} prompts   in ${total.input}   cache read ${total.cacheRead}   cache write ${total.cacheWrite}   out ${total.output}`)}`,
-        );
-      }
+      case "cost":
+      case "usage":
+        return this.print(usageReport(this.session.turns));
       case "exit":
       case "quit":
         return this.exit(0);
