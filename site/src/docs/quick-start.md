@@ -33,3 +33,6 @@ clue
 
 Type what you want done and press Enter. You can also pass the first prompt: `clue "fix the flaky spec"`.
 
+## If something looks wrong
+
+`clue doctor` checks your version, credentials, API access, settings, tools, terminal and MCP servers. It exits with a nonzero status if a check fails.

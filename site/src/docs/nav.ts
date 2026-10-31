@@ -12,6 +12,7 @@ export const NAV = [
 			{ title: 'Steer a run', slug: 'steer-a-run' },
 			{ title: 'Images and files', slug: 'images-and-files' },
 			{ title: 'Sessions', slug: 'sessions' },
+			{ title: 'Compaction', slug: 'compaction' },
 			{ title: 'Scripts', slug: 'scripts' },
 		],
 	},

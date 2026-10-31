@@ -11,7 +11,7 @@ title: Slash commands
 | `/rename` | Shows or changes the session name. |
 | `/paste` | Attaches the clipboard image. |
 | `/mcp` | Manages MCP servers. |
-| `/compact` | Replaces the conversation with a summary. Claude reads files again when it needs them. Earlier messages stay visible on resume. |
+| `/compact` | Replaces the conversation with a summary. See [Compaction](/docs/compaction). |
 | `/undo` | Restores the files changed in the last turn that changed files. `/undo force` overwrites later changes to them. Shell commands aren't undone, and the conversation stays as it is. |
 | `/usage`, `/cost` | Show how full the context is, and this session's cost and tokens. |
 | `/exit` | Quits clue. |
