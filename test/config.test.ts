@@ -199,3 +199,81 @@ test("clue ask warns about broken settings on stderr, and keeps stdout clean", a
 test("a shell command that changes settings is never routine", () => {
   expect(commandIsRoutine("clue config set permission_mode full-access")).toBe(false);
 });
+
+test("config unset removes a setting and keeps the others", async () => {
+  const { run, saved } = setup({ effort: "high", bell: false });
+  const { stdout, code } = await run(["config", "unset", "effort"]);
+  expect(code).toBe(0);
+  expect(stdout).toContain("Unset effort.");
+  expect(saved()).toEqual({ bell: false });
+});
+
+test("config unset reaches nested settings, and keeps what's left beside them", async () => {
+  const { run, saved } = setup({ review: { provider: "anthropic", model: "haiku" } });
+  await run(["config", "unset", "review.model"]);
+  expect(saved()).toEqual({ review: { provider: "anthropic" } });
+});
+
+test("config unset removes a parent it leaves empty", async () => {
+  const { run, saved } = setup({ review: { provider: "anthropic" }, bell: true });
+  await run(["config", "unset", "review.provider"]);
+  expect(saved()).toEqual({ bell: true });
+});
+
+test("config unset can remove a whole group", async () => {
+  const { run, saved } = setup({ permission: { "*": "ask" }, review: { model: "haiku" } });
+  await run(["config", "unset", "permission"]);
+  await run(["config", "unset", "review"]);
+  expect(saved()).toEqual({});
+});
+
+test("config unset can clear the old review_model", async () => {
+  const { run, saved } = setup({ review_model: "typesafe/jev-1.14" });
+  const { code } = await run(["config", "unset", "review_model"]);
+  expect(code).toBe(0);
+  expect(saved()).toEqual({});
+});
+
+test("the value falls back once it's unset", async () => {
+  const { run } = setup({ effort: "high" });
+  await run(["config", "unset", "effort"]);
+  const { stdout } = await run(["config", "show", "--json"]);
+  expect(JSON.parse(stdout).settings.effort).toEqual({ value: "medium", source: "default" });
+});
+
+test("config unset of something not set changes nothing", async () => {
+  const { run, file } = setup({ bell: true });
+  const before = readFileSync(file, "utf8");
+  const { stdout, code } = await run(["config", "unset", "effort"]);
+  expect(code).toBe(0);
+  expect(stdout).toContain("effort isn't set.");
+  expect(readFileSync(file, "utf8")).toBe(before);
+});
+
+test("config unset with no file creates none", async () => {
+  const { run, file } = setup();
+  const { code } = await run(["config", "unset", "effort"]);
+  expect(code).toBe(0);
+  expect(existsSync(file)).toBe(false);
+});
+
+test.each([
+  [["config", "unset", "modle"], "modle isn't a setting"],
+  [["config", "unset", "constructor"], "constructor isn't a setting"],
+  [["config", "unset"], "Usage:"],
+  [["config", "unset", "bell", "extra"], "Usage:"],
+])("%j is refused", async (args, expected) => {
+  const { run, file } = setup({ bell: true });
+  const { stderr, code } = await run(args);
+  expect(code).toBe(2);
+  expect(stderr).toContain(expected);
+  expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ bell: true });
+});
+
+test("config unset won't overwrite a file it can't read", async () => {
+  const { run, file } = setup("{ nope");
+  const { stderr, code } = await run(["config", "unset", "bell"]);
+  expect(code).toBe(2);
+  expect(stderr).toContain("Fix it with clue config edit");
+  expect(readFileSync(file, "utf8")).toBe("{ nope");
+});

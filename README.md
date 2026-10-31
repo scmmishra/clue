@@ -342,6 +342,7 @@ Warming the cache on resume costs a cache write even if you then quit without se
 | `clue config path` | Prints the path of `settings.json`. |
 | `clue config edit [editor]` | Opens the file, then checks it. |
 | `clue config set <key> <value>` | Changes one setting, such as `clue config set review.provider anthropic`. |
+| `clue config unset <key>` | Removes a setting, so it goes back to its default. |
 
 clue warns at startup if `settings.json` has a problem. If its JSON is broken, clue uses its defaults, so your permission rules don't apply until you fix it.
 

@@ -4,6 +4,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- `clue config unset` removes a setting, so it goes back to its default.
+
 ## 0.5.0
 
 - `clue config` shows, opens and changes settings, with `show`, `path`, `edit` and `set`.

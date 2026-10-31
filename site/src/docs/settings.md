@@ -10,6 +10,7 @@ Settings live in `~/.clue/settings.json`. Every key is optional.
 | `clue config path` | Prints the path of the file. |
 | `clue config edit [editor]` | Opens the file, then checks it. Without a name, it uses `$VISUAL`, then `$EDITOR`, then `vi`. |
 | `clue config set <key> <value>` | Changes one setting, such as `clue config set review.provider anthropic`. |
+| `clue config unset <key>` | Removes a setting, so it goes back to its default. |
 
 clue warns at startup if the file has a problem. If the JSON is broken, clue uses its defaults, so your permission rules don't apply until you fix it.
 

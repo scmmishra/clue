@@ -102,6 +102,8 @@ const SETTING_CHECKS = new Map<string, (value: unknown) => string | null>([
   ["review.model", aString],
 ]);
 
+export const isSetting = (key: string) => SETTING_CHECKS.has(key);
+
 // What's wrong with one setting, or null.
 export function checkSetting(key: string, value: unknown) {
   if (key === "review_model") return "review_model was replaced by review";

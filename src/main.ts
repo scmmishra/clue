@@ -15,7 +15,7 @@ Usage
   clue ask [prompt]          one request; prompt from arguments or stdin
   clue login | logout        save or remove Claude credentials
   clue mcp <command>         manage MCP servers (list, add, remove, login, ...)
-  clue config <command>      show or change settings (show, path, edit, set)
+  clue config <command>      show or change settings (show, path, edit, set, unset)
   clue upgrade               install the latest release
 
 Options
