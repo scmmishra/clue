@@ -1,8 +1,11 @@
+import { basename } from "node:path";
 import { listSessions, type SessionMeta } from "../session";
-import { columns, homePath, pad, rows, style, truncate, width } from "./ansi";
+import { columns, pad, rows, style, truncate, width } from "./ansi";
 import type { Key, Keyboard, Screen } from "./screen";
 
 const MAX_ROWS = 12;
+const LABEL_WIDTH = 24;
+const FOLDER_WIDTH = 16;
 
 export function ago(at: number) {
   const minutes = Math.round((Date.now() - at) / 60_000);
@@ -13,6 +16,19 @@ export function ago(at: number) {
   const days = Math.round(hours / 24);
   if (days < 14) return `${days}d ago`;
   return new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+// One row of the list. The name or ID comes first, because it is what tells sessions apart, and
+// what `clue -r <id or name>` takes. The folder is only its last part, so the title gets the room.
+export function sessionRow(meta: SessionMeta, widths: { label: number; folder: number }, max: number, active: boolean) {
+  const label = pad(truncate(meta.name ?? meta.id, widths.label), widths.label);
+  const folder = pad(truncate(basename(meta.cwd), widths.folder), widths.folder);
+  const right = `${pad(ago(meta.updated), 9)} ${String(meta.prompts).padStart(4)}`;
+  const titleWidth = Math.max(10, max - widths.label - widths.folder - width(right) - 10);
+  const title = pad(truncate(meta.title || "(empty)", titleWidth), titleWidth);
+  const marker = active ? style.accent("›") : " ";
+  const shown = active ? style.bold(label) : style.muted(label);
+  return ` ${marker} ${shown}  ${active ? title : style.muted(title)}  ${style.muted(folder)}  ${style.faint(right)}`;
 }
 
 // Lists every past session, current folder first. Typing searches folders,
@@ -39,27 +55,13 @@ export function pickSession(screen: Screen, keyboard: Keyboard, cwd: string): Pr
       const height = visible();
       if (selected < offset) offset = selected;
       if (selected >= offset + height) offset = selected - height + 1;
-      const folderWidth = Math.min(
-        28,
-        Math.max(...items.slice(offset, offset + height).map((meta) => width(homePath(meta.cwd))), 8),
-      );
-      for (const [index, meta] of items.slice(offset, offset + height).entries()) {
-        const active = offset + index === selected;
-        // Cut long folders from the left, so the project name stays visible.
-        const path = homePath(meta.cwd);
-        const folder = pad(
-          width(path) > folderWidth ? Bun.sliceAnsi(path, -folderWidth, undefined, "…") : path,
-          folderWidth,
-        );
-        const right = `${pad(ago(meta.updated), 9)} ${String(meta.prompts).padStart(4)}`;
-        const titleWidth = Math.max(10, max - folderWidth - width(right) - 8);
-        const title = pad(
-          truncate(meta.name ? `${meta.name} · ${meta.title}` : meta.title || "(empty)", titleWidth),
-          titleWidth,
-        );
-        const line = `${active ? style.accent("›") : " "} ${active ? style.bold(folder) : style.muted(folder)}  ${active ? title : style.muted(title)}  ${style.faint(right)}`;
-        lines.push(` ${line}`);
-      }
+      const shown = items.slice(offset, offset + height);
+      const widths = {
+        label: Math.min(LABEL_WIDTH, Math.max(...shown.map((meta) => width(meta.name ?? meta.id)), 8)),
+        folder: Math.min(FOLDER_WIDTH, Math.max(...shown.map((meta) => width(basename(meta.cwd))), 6)),
+      };
+      for (const [index, meta] of shown.entries())
+        lines.push(sessionRow(meta, widths, max, offset + index === selected));
       if (items.length > height) lines.push(`  ${style.faint(`${items.length - height} more`)}`);
       lines.push("", `  ${style.faint("↑↓ pick   type to filter   enter resume   esc cancel")}`);
       return { lines };

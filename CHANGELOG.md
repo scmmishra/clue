@@ -5,6 +5,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 ## Unreleased
 
 - `/model`, `/effort` and `/permissions` with no argument open a list you can choose from.
+- `clue -r` leads each row with the session's name or ID, and shows only the folder's name.
 
 ## 0.7.3
 
