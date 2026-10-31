@@ -870,3 +870,54 @@ test("esc esc during a run interrupts instead of rewinding", async () => {
   await clue.seen("Interrupting");
   expect(clue.screen()).not.toContain("Rewind to before:");
 }, 25_000);
+
+test("/model with no argument opens a list, and enter selects", async () => {
+  const clue = await startClue();
+  await clue.type("/model");
+  await clue.type(ENTER);
+  await clue.seen("enter select · esc cancel");
+  await clue.type(UP);
+  await clue.type(ENTER);
+  await clue.seen("Model is now");
+  await clue.type("hello");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect((requests.at(-1) as { model: string }).model).toBe("claude-fable-5");
+}, 25_000);
+
+test("esc leaves the model as it was, and the input works again", async () => {
+  const clue = await startClue();
+  await clue.type("/model");
+  await clue.type(ENTER);
+  await clue.seen("enter select · esc cancel");
+  await clue.type("\x1b");
+  await clue.type("hello");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(clue.screen()).not.toContain("Model is now");
+  expect((requests.at(-1) as { model: string }).model).toBe("claude-opus-5-5");
+}, 25_000);
+
+test("/model <name> still switches straight away", async () => {
+  const clue = await startClue();
+  await clue.type("/model sonnet");
+  await clue.type(ENTER);
+  await clue.seen("Model is now");
+  expect(clue.screen()).not.toContain("enter select");
+}, 25_000);
+
+test("/effort and /permissions open a list too", async () => {
+  const clue = await startClue({ args: ["--permission-mode", "ask"] });
+  await clue.type("/effort");
+  await clue.type(ENTER);
+  await clue.seen("Effort:");
+  await clue.type(UP);
+  await clue.type(ENTER);
+  await clue.seen("Effort is now low.");
+  await clue.type("/permissions");
+  await clue.type(ENTER);
+  await clue.seen("Permission mode:");
+  await clue.type("\x1b[B");
+  await clue.type(ENTER);
+  await clue.seen("Permission mode is now auto.");
+}, 25_000);

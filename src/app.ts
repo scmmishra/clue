@@ -20,6 +20,7 @@ import type { Question } from "./tools/types";
 import { duration, homePath, style, tokens } from "./ui/ansi";
 import { Editor, type Command } from "./ui/editor";
 import { listPaths } from "./ui/file-mention";
+import { OptionPicker, type Option } from "./ui/option-picker";
 import { RewindPicker, rewindReport } from "./ui/rewind";
 import { undoReport } from "./ui/undo";
 import { usageReport } from "./ui/usage";
@@ -83,6 +84,8 @@ export class App {
   private pager: Pager | null = null;
   private lastEscape = 0;
   private rewindPicker: RewindPicker | null = null;
+  private optionPicker: OptionPicker | null = null;
+  private onChosen: (value: string) => void = () => {};
   private lastInterrupt = 0;
   private hint = "";
   private warming: AbortController | null = null;
@@ -224,9 +227,10 @@ export class App {
 
   // The input, with the queued message above it.
   private composer = (): LiveFrame => {
-    if (this.rewindPicker) {
+    const panel = this.rewindPicker ?? this.optionPicker;
+    if (panel) {
       const { lines, cursor } = this.editor.frame("");
-      return { lines: [...lines.slice(0, -1), ...this.rewindPicker.frame()], cursor };
+      return { lines: [...lines.slice(0, -1), ...panel.frame()], cursor };
     }
     const frame = this.editor.frame(
       this.hint
@@ -357,6 +361,40 @@ export class App {
     this.screen.refresh();
   }
 
+  private choose(title: string, options: Option[], current: string, onChosen: (value: string) => void) {
+    this.editor.closePicker();
+    this.optionPicker = new OptionPicker(title, options, current);
+    this.onChosen = onChosen;
+    this.screen.refresh();
+  }
+
+  private optionKey(key: Key) {
+    const value = this.optionPicker!.handle(key);
+    if (value !== null) this.optionPicker = null;
+    if (value) this.onChosen(value);
+    this.screen.refresh();
+  }
+
+  private setModel(model: string) {
+    this.settings.model = model;
+    this.agent.setModel(model);
+    this.print([
+      `  Model is now ${style.bold(modelLabel(model))} ${style.faint(`(${model}). The next request starts a fresh cache.`)}`,
+      "",
+    ]);
+  }
+
+  private setEffort(effort: Effort) {
+    this.settings.effort = effort;
+    this.agent.setEffort(effort);
+    this.print([`  Effort is now ${style.bold(effort)}.`, ""]);
+  }
+
+  private announcePermissionMode(mode: PermissionMode) {
+    this.setPermissionMode(mode);
+    this.print([`  Permission mode is now ${mode === "full-access" ? style.orange(mode) : style.bold(mode)}.`, ""]);
+  }
+
   private rewindKey(key: Key) {
     const picker = this.rewindPicker!;
     const choice = picker.handle(key);
@@ -377,6 +415,7 @@ export class App {
   private onIdleKey(key: Key) {
     if (this.pager) return this.pager.handle(key);
     if (this.rewindPicker) return this.rewindKey(key);
+    if (this.optionPicker) return this.optionKey(key);
     if (key.ctrl && key.name === "o") return this.openDetail();
     if (key.ctrl && key.name === "c") {
       if (this.editor.text) {
@@ -530,38 +569,31 @@ export class App {
         ]);
         return;
       case "model": {
-        if (!args[0]) {
-          this.print([
-            ...KNOWN_MODELS.map(
-              (id) => `  ${id === this.settings.model ? style.accent(`› ${id}`) : `  ${style.muted(id)}`}`,
-            ),
-            `  ${style.faint("Switch with /model <name>, such as /model sonnet.")}`,
-            "",
-          ]);
-          return;
-        }
-        const model = resolveModel(args.join(" "));
-        this.settings.model = model;
-        this.agent.setModel(model);
-        say(
-          `Model is now ${style.bold(modelLabel(model))} ${style.faint(`(${model}). The next request starts a fresh cache.`)}`,
-        );
-        return;
+        if (args[0]) return this.setModel(resolveModel(args.join(" ")));
+        const options = KNOWN_MODELS.map((id) => ({ value: id, label: modelLabel(id), detail: id }));
+        return this.choose("Model:", options, this.settings.model, (model) => this.setModel(model));
       }
       case "effort": {
         const effort = args[0] as Effort;
+        if (!args[0]) {
+          const options = EFFORTS.map((value) => ({ value, label: value }));
+          return this.choose("Effort:", options, this.settings.effort, (value) => this.setEffort(value as Effort));
+        }
         if (!EFFORTS.includes(effort))
           return say(style.muted(`Effort is ${this.settings.effort}. Choose one of ${EFFORTS.join(", ")}.`));
-        this.settings.effort = effort;
-        this.agent.setEffort(effort);
-        return say(`Effort is now ${style.bold(effort)}.`);
+        return this.setEffort(effort);
       }
       case "permissions": {
         const mode = args[0] as PermissionMode;
+        if (!args[0]) {
+          const options = PERMISSION_MODES.map((value) => ({ value, label: value }));
+          return this.choose("Permission mode:", options, this.permissions.mode, (value) =>
+            this.announcePermissionMode(value as PermissionMode),
+          );
+        }
         if (!PERMISSION_MODES.includes(mode))
           return say(style.muted(`Permission mode is ${this.permissions.mode}. Choose ask, auto or full-access.`));
-        this.setPermissionMode(mode);
-        return say(`Permission mode is now ${mode === "full-access" ? style.orange(mode) : style.bold(mode)}.`);
+        return this.announcePermissionMode(mode);
       }
       case "resume": {
         const choice = await pickSession(this.screen, this.keyboard, this.cwd);
