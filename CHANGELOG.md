@@ -2,6 +2,10 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- Pasting an image from the clipboard is about 9x faster, around 30 ms instead of 290 ms. clue reads the image directly instead of starting `osascript`.
+
 ## 0.8.0
 
 - Rewind lists prompts oldest first, like the scrollback. The cursor starts on the newest prompt at the bottom, and `up` goes further back.

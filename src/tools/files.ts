@@ -9,7 +9,7 @@ const DEFAULT_READ_LINES = 2000;
 const MAX_LINE_CHARS = 2000;
 const MAX_GLOB_RESULTS = 400;
 const MAX_IMAGE_EDGE = 1568;
-const MAX_IMAGE_BYTES = 3_500_000;
+export const MAX_IMAGE_BYTES = 3_500_000;
 const MAX_GREP_LINES = 400;
 const IMAGE_TYPES: Record<string, "image/png" | "image/jpeg" | "image/gif" | "image/webp"> = {
   ".png": "image/png",
@@ -40,18 +40,20 @@ export const display = (cwd: string, path: string) => {
 
 const mtime = (file: string) => statSync(file).mtimeMs;
 
-// An image as Claude receives it. Claude scales images above about 1568 px anyway,
-// so shrinking here sends fewer bytes and tokens.
+// Claude scales images above about 1568 px anyway, so shrinking here sends fewer bytes and tokens.
+export const isLargeImage = (width: number, height: number) => Math.max(width, height) > MAX_IMAGE_EDGE;
+export const shrinkImage = (image: Bun.Image) =>
+  image
+    .resize(MAX_IMAGE_EDGE, MAX_IMAGE_EDGE, { fit: "inside", withoutEnlargement: true })
+    .webp({ quality: 85 })
+    .toBase64();
+
+// An image as Claude receives it.
 export async function encodeImage(file: string, size: number) {
   const image = Bun.file(file).image();
   const { width, height } = await image.metadata();
-  const large = Math.max(width, height) > MAX_IMAGE_EDGE || size > MAX_IMAGE_BYTES;
-  const data = large
-    ? await image
-        .resize(MAX_IMAGE_EDGE, MAX_IMAGE_EDGE, { fit: "inside", withoutEnlargement: true })
-        .webp({ quality: 85 })
-        .toBase64()
-    : Buffer.from(await Bun.file(file).bytes()).toString("base64");
+  const large = isLargeImage(width, height) || size > MAX_IMAGE_BYTES;
+  const data = large ? await shrinkImage(image) : Buffer.from(await Bun.file(file).bytes()).toString("base64");
   const block = {
     type: "image" as const,
     source: {

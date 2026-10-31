@@ -197,23 +197,15 @@ test("enter right after pasting an image sends the image", async () => {
   expect(imagesIn(promptBlocks("[Image #1]"))).toHaveLength(1);
 }, 25_000);
 
-// Stand-ins for osascript and pbpaste. osascript writes the PNG to the path in the script,
-// like the real one. pbpaste prints `text`, so the test machine's clipboard stays out of it.
-function fakeOsascript(succeeds: boolean, delay = 0, text = "") {
+// The clipboard image comes from a fixture file, or a missing one when there's none.
+// A fake pbpaste prints `text`, so the test machine's clipboard stays out of it.
+function fakeClipboard(image: boolean, text = "") {
   const bin = mkdtempSync(join(tmpdir(), "clue-fake-bin-"));
   const png = join(bin, "fixture.png");
-  writeFileSync(png, PNG);
-  const wait = delay ? `sleep ${delay}\n` : "";
-  const body =
-    wait +
-    (succeeds
-      ? `path=$(printf '%s' "$2" | sed -n 's/.*POSIX file "\\(.*\\)".*/\\1/p' | head -n 1)\ncp "${png}" "$path"\n`
-      : "exit 1\n");
-  writeFileSync(join(bin, "osascript"), `#!/bin/sh\n${body}`);
-  chmodSync(join(bin, "osascript"), 0o755);
+  if (image) writeFileSync(png, PNG);
   writeFileSync(join(bin, "pbpaste"), `#!/bin/sh\nprintf '%s' '${text}'\n`);
   chmodSync(join(bin, "pbpaste"), 0o755);
-  return { PATH: `${bin}:${process.env.PATH}` };
+  return { PATH: `${bin}:${process.env.PATH}`, CLUE_TEST_CLIPBOARD_IMAGE: png };
 }
 
 const macOnly = test.if(process.platform === "darwin");
@@ -225,7 +217,7 @@ macOnly.each([
 ])(
   "%s attaches the image on the clipboard",
   async (_name, keys) => {
-    const clue = await startClue({ env: fakeOsascript(true) });
+    const clue = await startClue({ env: fakeClipboard(true) });
     await clue.type(keys);
     await clue.seen("[Image #1]");
     await clue.type(" what is this");
@@ -239,7 +231,7 @@ macOnly.each([
 macOnly(
   "keys typed while the clipboard is read stay in order, and enter waits for the image",
   async () => {
-    const clue = await startClue({ env: fakeOsascript(true, 0.3) });
+    const clue = await startClue({ env: fakeClipboard(true) });
     await clue.type(`${CTRL_V}what is this${ENTER}`);
     await clue.turns(1);
     expect(imagesIn(promptBlocks("[Image #1]what is this"))).toHaveLength(1);
@@ -253,7 +245,7 @@ macOnly.each([
 ])(
   "%s pastes the clipboard's text when it holds no image",
   async (_name, keys) => {
-    const clue = await startClue({ env: fakeOsascript(false, 0, "copied words") });
+    const clue = await startClue({ env: fakeClipboard(false, "copied words") });
     await clue.type(keys);
     await clue.type(ENTER);
     await clue.turns(1);
@@ -265,7 +257,7 @@ macOnly.each([
 macOnly(
   "a paste of only spaces keeps them when the clipboard has no image",
   async () => {
-    const clue = await startClue({ env: fakeOsascript(false, 0, "should not appear") });
+    const clue = await startClue({ env: fakeClipboard(false, "should not appear") });
     await clue.type(`a${paste("   ")}b${ENTER}`);
     await clue.turns(1);
     const blocks = JSON.stringify(promptBlocks("a   b"));
@@ -278,7 +270,7 @@ macOnly(
 macOnly(
   "clue says so when the clipboard is empty",
   async () => {
-    const clue = await startClue({ env: fakeOsascript(false) });
+    const clue = await startClue({ env: fakeClipboard(false) });
     await clue.type(CTRL_V);
     await clue.seen("The clipboard is empty.");
   },
