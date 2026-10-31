@@ -1,38 +1,87 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { CLUE_HOME, ensureDir } from "../config";
 import { checkFields, type Tool } from "./types";
 
-// Commands run in the user's shell with the environment their startup files
-// produce. Startup files run once; the result is cached until one changes,
+// Commands run in the user's shell with the environment, aliases and functions their
+// startup files produce. Startup files run once. The result is cached until one changes,
 // so a slow .zshrc doesn't slow every command.
 
 const SHELL = process.env.SHELL || "/bin/sh";
+const SHELL_NAME = basename(SHELL);
 const IGNORE_HUP = "trap '' HUP";
 const ENV_CACHE = join(CLUE_HOME, "shell-env.json");
-const STARTUP_FILES = [".zshenv", ".zprofile", ".zshrc", ".bash_profile", ".bashrc", ".profile"].map((name) =>
-  join(homedir(), name),
-);
+const SNAPSHOT = join(CLUE_HOME, "shell-snapshot.sh");
+const MAX_SNAPSHOT_BYTES = 1_000_000;
+const USER_STARTUP_FILES = [
+  ".zshenv",
+  ".zprofile",
+  ".zshrc",
+  ".zlogin",
+  ".bash_profile",
+  ".bash_login",
+  ".bashrc",
+  ".profile",
+];
+const SYSTEM_STARTUP_FILES = [
+  "/etc/zshenv",
+  "/etc/zprofile",
+  "/etc/zshrc",
+  "/etc/zlogin",
+  "/etc/profile",
+  "/etc/bashrc",
+];
+// Prints aliases and functions as shell code. Names starting with _ are completions. A name that
+// is also a program stays out: Claude writes `grep` and `ls` for the standard tools, and an alias
+// to rg or exa would quietly change their flags and output.
+const DUMP_DEFINITIONS: Record<string, string> = {
+  zsh: 'for name in ${(k)aliases}; do (( ${+commands[$name]} )) || alias -L -- "$name"; done; for name in ${(k)functions:#_*}; do (( ${+commands[$name]} )) || functions -- "$name"; done',
+  bash: 'for name in $(compgen -a); do type -P "$name" >/dev/null || alias "$name"; done; for name in $(compgen -A function | grep -v \'^_\'); do type -P "$name" >/dev/null || declare -f "$name"; done',
+};
+// An alias takes effect on code parsed after it is defined, and `-c` parses its whole string at
+// once. So the command goes through eval, which parses it after the snapshot has loaded.
+const LOAD_DEFINITIONS: Record<string, string> = {
+  zsh: `. ${SNAPSHOT} 2>/dev/null`,
+  bash: `shopt -s expand_aliases\n. ${SNAPSHOT} 2>/dev/null`,
+};
 const DEFAULT_WAIT_MS = 120_000;
 const MAX_BUFFER = 2_000_000;
 const DRAIN_MAX_TURNS = 40;
 
-let shellEnv: Promise<Record<string, string>> | null = null;
+let shellState: Promise<ShellState> | null = null;
 
-function startupStamp() {
-  return STARTUP_FILES.map((file) => (existsSync(file) ? `${file}:${statSync(file).mtimeMs}` : "")).join("|") + SHELL;
+// A change to any of these files means the cached result may be out of date. A file that one of
+// them sources isn't covered, because finding those would mean running the shell.
+function startupStamp(zdotdir?: string) {
+  const folders = new Set([homedir(), process.env.ZDOTDIR, zdotdir].filter((folder) => folder !== undefined));
+  const files = [
+    ...[...folders].flatMap((folder) => USER_STARTUP_FILES.map((name) => join(folder, name))),
+    ...SYSTEM_STARTUP_FILES,
+  ];
+  const stamps = files.map((file) => {
+    if (!existsSync(file)) return "";
+    const { mtimeMs, size } = statSync(file);
+    return `${file}:${mtimeMs}:${size}`;
+  });
+  return stamps.join("|") + SHELL;
 }
 
-async function captureEnv(): Promise<Record<string, string>> {
-  const stamp = startupStamp();
+const shellCode = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
+
+type ShellState = { env: Record<string, string>; hasSnapshot: boolean };
+
+async function captureState(): Promise<ShellState> {
   try {
     const cached = JSON.parse(readFileSync(ENV_CACHE, "utf8"));
-    if (cached.stamp === stamp) return cached.env;
+    if (cached.stamp === startupStamp(cached.env?.ZDOTDIR) && (!cached.hasSnapshot || existsSync(SNAPSHOT))) {
+      return { env: cached.env, hasSnapshot: Boolean(cached.hasSnapshot) };
+    }
   } catch {}
   try {
     const marker = "__CLUE_ENV__";
-    const proc = Bun.spawn([SHELL, "-ilc", `printf '${marker}'; env -0`], {
+    const dump = DUMP_DEFINITIONS[SHELL_NAME];
+    const proc = Bun.spawn([SHELL, "-ilc", `printf '${marker}'; env -0; printf '${marker}'; ${dump ?? ""}`], {
       stdout: "pipe",
       stderr: "ignore",
       stdin: "ignore",
@@ -40,7 +89,7 @@ async function captureEnv(): Promise<Record<string, string>> {
     const timer = setTimeout(() => proc.kill(), 10_000);
     const text = await new Response(proc.stdout).text();
     clearTimeout(timer);
-    const body = text.slice(text.indexOf(marker) + marker.length);
+    const [, body = "", definitions = ""] = text.split(marker);
     const env: Record<string, string> = {};
     for (const entry of body.split("\0")) {
       const split = entry.indexOf("=");
@@ -48,15 +97,18 @@ async function captureEnv(): Promise<Record<string, string>> {
     }
     if (Object.keys(env).length > 3) {
       ensureDir(CLUE_HOME);
-      writeFileSync(ENV_CACHE, JSON.stringify({ stamp, env }), { mode: 0o600 });
-      return env;
+      const hasSnapshot = Boolean(dump) && definitions.trim().length > 0 && definitions.length <= MAX_SNAPSHOT_BYTES;
+      if (hasSnapshot) writeFileSync(SNAPSHOT, definitions, { mode: 0o600 });
+      const stamp = startupStamp(env.ZDOTDIR);
+      writeFileSync(ENV_CACHE, JSON.stringify({ stamp, env, hasSnapshot }), { mode: 0o600 });
+      return { env, hasSnapshot };
     }
   } catch {}
-  return { ...process.env } as Record<string, string>;
+  return { env: { ...process.env } as Record<string, string>, hasSnapshot: false };
 }
 
 // Starts capturing the shell environment in the background.
-export const warmShellEnv = () => (shellEnv ??= captureEnv());
+export const warmShellEnv = () => (shellState ??= captureState());
 
 type Running = {
   id: string;
@@ -92,8 +144,9 @@ function plain(chunk: string) {
 // `terminal: { ... }` option makes every spawn wait about 16 ms for the PTY to
 // close; a Terminal object costs 0.4 ms to build and spawns as fast as pipes.
 async function start(command: string, cwd: string): Promise<Running> {
+  const { env: shellEnv, hasSnapshot } = await warmShellEnv();
   const env = {
-    ...(await warmShellEnv()),
+    ...shellEnv,
     AI_AGENT: "clue",
     PAGER: "cat",
     GIT_PAGER: "cat",
@@ -131,7 +184,9 @@ async function start(command: string, cwd: string): Promise<Running> {
     // background children from it, so `npm run dev &` would die with the shell. The trap
     // makes the children ignore SIGHUP. It has to run inside the user's shell: zsh restores
     // SIGHUP for its children when it starts with the signal already ignored. stop uses SIGTERM.
-    running.proc = Bun.spawn([SHELL, "-c", `${IGNORE_HUP}\n${command}`], { cwd, env, terminal, detached: true });
+    const load = hasSnapshot ? LOAD_DEFINITIONS[SHELL_NAME] : undefined;
+    const script = load ? `${load}\neval ${shellCode(command)}` : command;
+    running.proc = Bun.spawn([SHELL, "-c", `${IGNORE_HUP}\n${script}`], { cwd, env, terminal, detached: true });
   } catch (error) {
     terminal.close();
     running.output = (error as Error).message;
