@@ -9,6 +9,22 @@ const HISTORY_LIMIT = 500;
 const PASTE_FOLD_LINES = 12;
 const IMAGE_PLACEHOLDER = /\[Image #(\d+)\]/g;
 
+// Splits a line into rows of at most `room` columns. An escape code in pasted text can make
+// the native slice differ from the source, and then one character moves on instead.
+export function splitRows(text: string, room: number) {
+  const rows: string[] = [];
+  let rest = text;
+  do {
+    let row = Bun.sliceAnsi(rest, 0, room);
+    // A wide character across the limit stays in the slice, so it moves to the next row.
+    if (width(row) > room) row = Bun.sliceAnsi(rest, 0, room - 1);
+    const take = row && rest.startsWith(row) ? row.length : 1;
+    rows.push(rest.slice(0, take));
+    rest = rest.slice(take);
+  } while (rest.length);
+  return rows;
+}
+
 export type Command = { name: string; description: string };
 
 // A small line editor: multi-line input, history, paste, word movement.
@@ -297,18 +313,7 @@ export class Editor {
       const lead = prompt;
       const leadWidth = width(PROMPT);
       const room = Math.max(10, max - leadWidth);
-      const pieces: string[] = [];
-      let rest = line;
-      do {
-        let take = 0;
-        let used = 0;
-        while (take < rest.length && used + width(rest[take]) <= room) {
-          used += width(rest[take]);
-          take += 1;
-        }
-        pieces.push(rest.slice(0, take));
-        rest = rest.slice(take);
-      } while (rest.length);
+      const pieces = splitRows(line, room);
       const isFoldMarker = folded && index === 3;
       const lineStart = offset;
       pieces.forEach((piece, pieceIndex) => {

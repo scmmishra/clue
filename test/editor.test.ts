@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Session } from "../src/session";
-import { Editor } from "../src/ui/editor";
+import { Editor, splitRows } from "../src/ui/editor";
 import { sessionEntries } from "../src/ui/replay";
 
 const image = (data: string) => ({ type: "image" as const, source: { type: "base64" as const, media_type: "image/png" as const, data } });
@@ -105,4 +105,33 @@ test("tool results are still not prompts", () => {
   session.ephemeral = true;
   session.appendMessage({ role: "user", content: [{ type: "tool_result", tool_use_id: "t", content: [image("a")] }] });
   expect(sessionEntries(session).filter((entry) => entry.type === "prompt")).toEqual([]);
+});
+
+test.each([
+  ["plain text", "hello world from clue", 8],
+  ["an exact multiple", "abcdefgh", 4],
+  ["wide characters", "日本語のテキストです", 6],
+  ["wide characters at an odd width", "日本語のテキストです", 5],
+  ["emoji", "ab😀cd😀ef", 4],
+  ["an escape code", "ab\x1b[31mcdefgh", 4],
+])("wrapping %s loses nothing and stays within the width", (_name, text, room) => {
+  const rows = splitRows(text, room);
+  expect(rows.join("")).toBe(text);
+  expect(rows.every((row) => Bun.stringWidth(row) <= room)).toBe(true);
+});
+
+test("an empty line is one empty row", () => {
+  expect(splitRows("", 10)).toEqual([""]);
+});
+
+test("an exact fit leaves no empty row behind", () => {
+  expect(splitRows("abcd", 4)).toEqual(["abcd"]);
+});
+
+test("a character wider than the room still moves forward", () => {
+  expect(splitRows("日本", 1).join("")).toBe("日本");
+});
+
+test("an emoji isn't split across rows", () => {
+  expect(splitRows("abc😀", 4)).toEqual(["abc", "😀"]);
 });
