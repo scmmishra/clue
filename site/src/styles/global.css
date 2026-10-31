@@ -87,6 +87,9 @@ p code {
 }
 
 .name {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
 	color: var(--ink);
 	font-weight: 600;
 	text-decoration: none;

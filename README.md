@@ -1,3 +1,5 @@
+<img src="site/public/logo.svg" width="96" height="96" alt="The clue logo: a blue pixel prompt bar and dot on a dark screen, inside a blue bevelled icon.">
+
 # clue
 
 [![CI](https://github.com/scmmishra/clue/actions/workflows/ci.yml/badge.svg)](https://github.com/scmmishra/clue/actions/workflows/ci.yml)

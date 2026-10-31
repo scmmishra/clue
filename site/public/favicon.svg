@@ -1,1 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#0e0f12"/><path d="M11 10l7 6-7 6" fill="none" stroke="#e6e7ea" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none" role="img" aria-label="clue">
+<defs>
+<linearGradient id="clue-shell" x1="170" y1="112" x2="854" y2="886" gradientUnits="userSpaceOnUse"><stop stop-color="#CFE0FF"/><stop offset=".48" stop-color="#82AAFF"/><stop offset="1" stop-color="#4B74D6"/></linearGradient>
+<filter id="clue-shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#050A18" flood-opacity=".42"/></filter>
+<clipPath id="clue-clip"><rect x="150" y="132" width="724" height="708" rx="146"/></clipPath>
+</defs>
+<g filter="url(#clue-shadow)">
+<rect x="72" y="72" width="880" height="868" rx="220" fill="#2C50AE"/>
+<rect x="72" y="48" width="880" height="868" rx="220" fill="url(#clue-shell)" stroke="#E1EBFF" stroke-width="4" stroke-opacity=".52"/>
+<rect x="126" y="108" width="772" height="756" rx="174" fill="#23438F"/>
+<rect x="142" y="124" width="740" height="724" rx="156" fill="#5C84DA"/>
+<rect x="150" y="132" width="724" height="708" rx="146" fill="#0B1320"/>
+<g clip-path="url(#clue-clip)"><g transform="translate(0 -26)"><g transform="translate(512 512) scale(1.296) translate(-512 -512)"><g fill="#A9C4FF" shape-rendering="crispEdges"><rect x="296" y="296" width="48" height="48"/><rect x="344" y="296" width="48" height="48"/><rect x="296" y="344" width="48" height="48"/><rect x="344" y="344" width="48" height="48"/><rect x="296" y="392" width="48" height="48"/><rect x="344" y="392" width="48" height="48"/><rect x="536" y="392" width="48" height="48"/><rect x="584" y="392" width="48" height="48"/><rect x="632" y="392" width="48" height="48"/><rect x="296" y="440" width="48" height="48"/><rect x="344" y="440" width="48" height="48"/><rect x="488" y="440" width="48" height="48"/><rect x="536" y="440" width="48" height="48"/><rect x="584" y="440" width="48" height="48"/><rect x="632" y="440" width="48" height="48"/><rect x="680" y="440" width="48" height="48"/><rect x="296" y="488" width="48" height="48"/><rect x="344" y="488" width="48" height="48"/><rect x="488" y="488" width="48" height="48"/><rect x="536" y="488" width="48" height="48"/><rect x="584" y="488" width="48" height="48"/><rect x="632" y="488" width="48" height="48"/><rect x="680" y="488" width="48" height="48"/><rect x="296" y="536" width="48" height="48"/><rect x="344" y="536" width="48" height="48"/><rect x="488" y="536" width="48" height="48"/><rect x="536" y="536" width="48" height="48"/><rect x="584" y="536" width="48" height="48"/><rect x="632" y="536" width="48" height="48"/><rect x="680" y="536" width="48" height="48"/><rect x="296" y="584" width="48" height="48"/><rect x="344" y="584" width="48" height="48"/><rect x="536" y="584" width="48" height="48"/><rect x="584" y="584" width="48" height="48"/><rect x="632" y="584" width="48" height="48"/><rect x="296" y="632" width="48" height="48"/><rect x="344" y="632" width="48" height="48"/><rect x="296" y="680" width="48" height="48"/><rect x="344" y="680" width="48" height="48"/></g><g fill="#F4F7FF"></g></g></g></g>
+<rect x="150" y="132" width="724" height="708" rx="146" stroke="#E1EBFF" stroke-width="4" stroke-opacity=".22"/>
+</g>
+</svg>
