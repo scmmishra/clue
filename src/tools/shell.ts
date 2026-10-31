@@ -85,6 +85,9 @@ async function captureState(): Promise<ShellState> {
       stdout: "pipe",
       stderr: "ignore",
       stdin: "ignore",
+      // An interactive shell takes the terminal's foreground while it starts. Without its own
+      // session it would do that to clue's terminal, and a key pressed then would suspend clue.
+      detached: true,
     });
     const timer = setTimeout(() => proc.kill(), 10_000);
     const text = await new Response(proc.stdout).text();

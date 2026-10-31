@@ -2,6 +2,10 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- A key pressed while clue read your shell startup files could suspend it with `suspended (tty input)`. The read no longer touches your terminal.
+
 ## 0.7.2
 
 - Shell commands can use your aliases and functions in zsh and bash. An alias or function named after a real program, such as `grep`, stays out, so standard tools behave the same.
