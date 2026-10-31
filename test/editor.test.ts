@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { CLUE_HOME, paths } from "../src/config";
 import { Session } from "../src/session";
 import { Editor, splitRows } from "../src/ui/editor";
 import { sessionEntries } from "../src/ui/replay";
@@ -134,4 +136,45 @@ test("a character wider than the room still moves forward", () => {
 
 test("an emoji isn't split across rows", () => {
   expect(splitRows("abc😀", 4)).toEqual(["abc", "😀"]);
+});
+
+function withHistory(text: string, check: (editor: Editor) => void) {
+  mkdirSync(CLUE_HOME, { recursive: true });
+  writeFileSync(paths.history, text);
+  try {
+    check(new Editor([]));
+  } finally {
+    rmSync(paths.history, { force: true });
+  }
+}
+const previous = (editor: Editor) => {
+  editor.handle({ name: "up" });
+  return editor.text;
+};
+
+test("saved prompts come back, newest first", () => {
+  withHistory('"first"\n"second"\n', (editor) => {
+    expect(previous(editor)).toBe("second");
+    expect(previous(editor)).toBe("first");
+  });
+});
+
+test("a multi-line prompt comes back whole", () => {
+  withHistory(`${JSON.stringify("one\ntwo")}\n`, (editor) => expect(previous(editor)).toBe("one\ntwo"));
+});
+
+test("a half-written last line doesn't lose the history before it", () => {
+  withHistory('"first"\n"second"\n"thi', (editor) => expect(previous(editor)).toBe("second"));
+});
+
+test("a broken line doesn't lose the prompts before it", () => {
+  withHistory('"first"\n{nope\n"third"\n', (editor) => expect(previous(editor)).toBe("first"));
+});
+
+test("only the newest 500 prompts are kept", () => {
+  const text = Array.from({ length: 510 }, (_, index) => JSON.stringify(`p${index}`)).join("\n");
+  withHistory(`${text}\n`, (editor) => {
+    for (let index = 0; index < 600; index++) previous(editor);
+    expect(editor.text).toBe("p10");
+  });
 });

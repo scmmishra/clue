@@ -43,11 +43,9 @@ export class Editor {
   constructor(private commands: Command[]) {
     try {
       if (existsSync(paths.history)) {
-        this.history = readFileSync(paths.history, "utf8")
-          .split("\n")
-          .filter(Boolean)
-          .map((line) => JSON.parse(line) as string)
-          .slice(-HISTORY_LIMIT);
+        // parseChunk keeps what comes before a damaged line.
+        const { values } = Bun.JSONL.parseChunk(readFileSync(paths.history, "utf8"));
+        this.history = (values as string[]).slice(-HISTORY_LIMIT);
       }
     } catch {
       this.history = [];
