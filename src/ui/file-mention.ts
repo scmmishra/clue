@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { walk } from "../walk";
 
 export type Mention = { start: number; end: number; query: string };
 
@@ -97,19 +97,14 @@ async function gitPaths(cwd: string) {
   }
 }
 
-// Reads one folder at a time, so a large folder such as a home directory stops at the limit.
 async function walkPaths(cwd: string) {
   const found: string[] = [];
-  const folders = [""];
-  for (let index = 0; index < folders.length && found.length < MAX_PATHS; index++) {
-    const folder = folders[index];
-    const entries = await readdir(`${cwd}/${folder}`, { withFileTypes: true }).catch(() => []);
-    for (const entry of entries) {
-      if (WALK_SKIPS.has(entry.name)) continue;
-      if (entry.isDirectory()) folders.push(`${folder}${entry.name}/`);
-      else found.push(folder + entry.name);
-    }
-  }
+  await walk(cwd, (path, entry) => {
+    if (WALK_SKIPS.has(entry.name)) return;
+    if (entry.isDirectory()) return "enter";
+    found.push(path);
+    if (found.length >= MAX_PATHS) return "stop";
+  });
   return found;
 }
 

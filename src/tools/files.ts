@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { nestedInstructions } from "../agent/context";
 import { snapshotFile } from "../agent/undo";
+import { walk } from "../walk";
 import { checkFields, type Tool, type ToolContext } from "./types";
 
 const DEFAULT_READ_LINES = 2000;
@@ -30,7 +31,6 @@ const IGNORED_DIRS = new Set([
 ]);
 // Stops collecting matches here. Past this, the answer is "narrow the pattern" either way.
 const MAX_WALK_FILES = 20_000;
-const YIELD_EVERY = 2048;
 
 export const absolute = (cwd: string, path: string) => (isAbsolute(path) ? path : resolve(cwd, path));
 export const display = (cwd: string, path: string) => {
@@ -219,34 +219,21 @@ async function walkGlob(root: string, pattern: string, signal: AbortSignal) {
     return { files, capped: false };
   }
   const start = fixedPrefix(pattern);
-  const stack: [path: string, depth: number][] = [[start, start ? start.split("/").length : 0]];
-  let visited = 0;
-  while (stack.length) {
-    const [folder, depth] = stack.pop()!;
-    let entries: import("node:fs").Dirent[];
-    try {
-      entries = readdirSync(folder ? join(root, folder) : root, { withFileTypes: true });
-    } catch {
-      continue; // Missing or unreadable folder.
-    }
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
-      const path = folder ? `${folder}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        if (!IGNORED_DIRS.has(entry.name) && depth < maxDepth) stack.push([path, depth + 1]);
-      } else if (entry.isFile() && glob.match(path)) {
-        files.push(path);
-        if (files.length >= MAX_WALK_FILES) return { files, capped: true };
-      }
-    }
-    // A large tree must not freeze the spinner.
-    if ((visited += entries.length) >= YIELD_EVERY) {
-      visited = 0;
-      await Bun.sleep(0);
-      if (signal.aborted) break;
-    }
-  }
-  return { files, capped: false };
+  let capped = false;
+  await walk(
+    root,
+    (path, entry, depth) => {
+      if (entry.name.startsWith(".")) return;
+      if (entry.isDirectory()) return !IGNORED_DIRS.has(entry.name) && depth < maxDepth ? "enter" : undefined;
+      if (!entry.isFile() || !glob.match(path)) return;
+      files.push(path);
+      if (files.length < MAX_WALK_FILES) return;
+      capped = true;
+      return "stop";
+    },
+    { start, depth: start ? start.split("/").length : 0, signal },
+  );
+  return { files, capped };
 }
 
 export const grepFiles: Tool<{
