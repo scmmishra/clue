@@ -4,6 +4,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- `shift+enter` adds a new line in terminals that can report it.
+
 ## 0.5.1
 
 - The stream an MCP server keeps open while clue is idle is no longer compressed. A broken compressed stream could print a `ZlibError` line over your input.

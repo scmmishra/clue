@@ -67,6 +67,11 @@ export const term = {
   column: (n: number) => `\x1b[${n + 1}G`,
   bracketedPasteOn: "\x1b[?2004h",
   bracketedPasteOff: "\x1b[?2004l",
+  // Terminals send shift+enter as plain enter unless asked to report modifiers.
+  kittyKeysOn: "\x1b[>1u",
+  kittyKeysOff: "\x1b[<u",
+  modifyKeysOn: "\x1b[>4;2m",
+  modifyKeysOff: "\x1b[>4;0m",
 };
 
 export const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];

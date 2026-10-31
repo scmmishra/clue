@@ -411,7 +411,7 @@ export class App {
         this.print([
           ...COMMANDS.map((command) => `  ${style.accent(`/${command.name}`.padEnd(14))}${style.muted(command.description)}`),
           "",
-          `  ${style.muted("enter send · alt+enter or \\ newline · ↑↓ history · tab complete · ctrl+v paste image")}`,
+          `  ${style.muted("enter send · shift+enter, alt+enter or \\ newline · ↑↓ history · tab complete · ctrl+v paste image")}`,
           `  ${style.muted("while clue works: tab queue a message · ↑ edit it")}`,
           `  ${style.muted("esc esc or ctrl+c interrupt · ctrl+o detail · ctrl+d exit")}`,
           "",

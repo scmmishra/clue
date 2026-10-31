@@ -176,6 +176,36 @@ const SEQUENCES: Record<string, Key> = {
 const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
 
+// tmux negotiates the kitty protocol with the outer terminal itself.
+export const keyModes = (tmux: boolean) => ({
+  on: (tmux ? "" : term.kittyKeysOn) + term.modifyKeysOn,
+  off: (tmux ? "" : term.kittyKeysOff) + term.modifyKeysOff,
+});
+
+const KITTY_KEY = /^\x1b\[(\d+)(?::\d+)*(?:;(\d+)(?::(\d+))?)?(?:;[\d:]*)?u/;
+const MODIFIED_KEY = /^\x1b\[27;(\d+);(\d+)~/;
+const KEYPAD_ENTER = 57414;
+// Keys with no character, such as caps lock, use this Unicode private range.
+const PRIVATE_KEYS = [57344, 63743];
+const KEY_RELEASE = 3;
+
+// A key reported with its modifiers. Ctrl and alt become the sequences terminals send
+// without these reports, so every key keeps one meaning.
+function reportedKey(code: number, mods: number, event: number): Key[] {
+  const flags = mods - 1;
+  const [shift, alt, ctrl, command] = [flags & 1, flags & 2, flags & 4, flags & 8];
+  if (event === KEY_RELEASE || command) return [];
+  if (code === 13 || code === KEYPAD_ENTER) return [{ name: flags ? "newline" : "enter" }];
+  if (code >= PRIVATE_KEYS[0] && code <= PRIVATE_KEYS[1]) return [];
+  if (code === 27) return [{ name: "escape" }];
+  if (code === 9) return [shift ? { name: "tab", shift: true } : { name: "tab" }];
+  if (code === 127 || code === 8) return [alt || ctrl ? { name: "backspace", meta: true } : { name: "backspace" }];
+  const char = String.fromCodePoint(code);
+  if (ctrl && /[a-z]/i.test(char)) return parseKeys(String.fromCharCode(code & 31));
+  if (alt) return parseKeys(`\x1b${char}`);
+  return [{ name: "char", text: shift ? char.toUpperCase() : char }];
+}
+
 export function parseKeys(data: string): Key[] {
   const keys: Key[] = [];
   let index = 0;
@@ -186,6 +216,21 @@ export function parseKeys(data: string): Key[] {
       keys.push({ name: "paste", text: text.replace(/\r\n?/g, "\n") });
       index = end === -1 ? data.length : end + PASTE_END.length;
       continue;
+    }
+    if (data[index] === "\x1b") {
+      const rest = data.slice(index);
+      const kitty = rest.match(KITTY_KEY);
+      const modified = rest.match(MODIFIED_KEY);
+      if (kitty) {
+        keys.push(...reportedKey(Number(kitty[1]), Number(kitty[2] ?? 1), Number(kitty[3] ?? 1)));
+        index += kitty[0].length;
+        continue;
+      }
+      if (modified) {
+        keys.push(...reportedKey(Number(modified[2]), Number(modified[1]), 1));
+        index += modified[0].length;
+        continue;
+      }
     }
     let matched = false;
     for (const length of [7, 6, 5, 4, 3, 2]) {
@@ -236,13 +281,16 @@ export class Keyboard {
   private handler: KeyHandler = () => {};
   private started = false;
   private held: Key[] | null = null;
+  private modes = keyModes(Boolean(process.env.TMUX));
 
   start() {
     if (this.started || !process.stdin.isTTY) return;
     this.started = true;
     process.stdin.setRawMode(true);
     process.stdin.setEncoding("utf8");
-    process.stdout.write(term.bracketedPasteOn);
+    process.stdout.write(term.bracketedPasteOn + this.modes.on);
+    // These modes outlive clue, so any way out has to turn them off.
+    process.once("exit", () => this.stop());
     process.stdin.on("data", (data: string) => {
       for (const key of parseKeys(data)) this.deliver(key);
     });
@@ -252,7 +300,7 @@ export class Keyboard {
   stop() {
     if (!this.started) return;
     this.started = false;
-    process.stdout.write(term.bracketedPasteOff + term.showCursor);
+    process.stdout.write(term.bracketedPasteOff + this.modes.off + term.showCursor);
     process.stdin.setRawMode(false);
     process.stdin.pause();
   }

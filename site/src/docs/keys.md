@@ -5,7 +5,7 @@ title: Keys
 | Key | What it does |
 | --- | --- |
 | `enter` | Sends the message. |
-| `alt+enter`, or `\` then `enter` | Adds a new line. |
+| `shift+enter`, `alt+enter`, or `\` then `enter` | Adds a new line. `shift+enter` needs a terminal that reports it, such as Ghostty or kitty. |
 | `↑` `↓` | Move through history. |
 | `tab` | Completes a command. During a run, queues the message. |
 | `ctrl+v` | Attaches the clipboard image. |

@@ -48,6 +48,8 @@ async function startClue(options: { delay?: number; env?: Record<string, string>
   const clue = {
     cwd,
     screen: () => Bun.stripANSI(output),
+    raw: () => output,
+    exited: () => Promise.race([proc.exited, Bun.sleep(3000)]),
     type: async (text: string) => {
       terminal.write(text);
       await Bun.sleep(40);
@@ -454,4 +456,39 @@ test("resume restores a session taller than the screen into the scrollback", asy
   await clue.seen("seeded prompt 59");
   expect(clue.screen()).toContain("seeded prompt 0");
   expect(clue.screen()).not.toContain("earlier turns hidden");
+}, 25_000);
+
+test("shift+enter adds a new line, and enter sends both lines", async () => {
+  const clue = await startClue();
+  await clue.type("line one");
+  await clue.type("\x1b[13;2u");
+  await clue.type("line two");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(clue.wasSent("line one\\nline two")).toBe(true);
+}, 25_000);
+
+test("ctrl+c in its new form still interrupts a turn", async () => {
+  const clue = await startClue({ delay: 40 });
+  await clue.type("first");
+  await clue.type(ENTER);
+  await clue.working();
+  await clue.type("\x1b[99;5u");
+  await clue.seen("Interrupting");
+}, 25_000);
+
+test("clue asks for key reports at startup, and hands the terminal back on exit", async () => {
+  const clue = await startClue();
+  expect(clue.raw()).toContain("\x1b[>1u");
+  expect(clue.raw()).toContain("\x1b[>4;2m");
+  await clue.type("\x1b[100;5u");
+  await clue.exited();
+  expect(clue.raw()).toContain("\x1b[<u");
+  expect(clue.raw()).toContain("\x1b[>4;0m");
+}, 25_000);
+
+test("a terminal already inside tmux gets no kitty request", async () => {
+  const clue = await startClue({ env: { TMUX: "/tmp/tmux-501/default,1,0" } });
+  expect(clue.raw()).not.toContain("\x1b[>1u");
+  expect(clue.raw()).toContain("\x1b[>4;2m");
 }, 25_000);
