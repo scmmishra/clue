@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { projectKey } from "../src/session";
 import { statusReport, type ProgramStatus } from "../src/ui/status";
-import { requests, startMockApi } from "./mock-api";
+import { compactions, compactionStop, requests, startMockApi, usage } from "./mock-api";
 
 // A 1×1 PNG.
 const PNG = Buffer.from(
@@ -697,4 +697,104 @@ test("/undo removes what the turn wrote and leaves the conversation alone", asyn
   expect(history).toContain("create the note");
   expect(history).not.toContain("/undo");
   expect(history).not.toContain("Deleted note.txt");
+}, 25_000);
+
+test("/compact sends the summary first, then the context again with the next prompt", async () => {
+  const clue = await startClue();
+  await clue.type("hello there");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  await clue.type("/compact");
+  await clue.type(ENTER);
+  await clue.seen("token summary");
+  await clue.type("next");
+  await clue.type(ENTER);
+  await clue.turns(2);
+  const last = requests.at(-1) as { messages: { role: string; content: any }[]; context_management?: unknown };
+  expect(last.messages[0].content[0].type).toBe("compaction");
+  expect(last.context_management).toBeUndefined();
+  expect(JSON.stringify(last.messages)).not.toContain("hello there");
+  expect(JSON.stringify(last.messages[1])).toContain("<context>");
+}, 25_000);
+
+test("a summary that doesn't finish leaves the conversation as it was", async () => {
+  const clue = await startClue();
+  await clue.type("hello there");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  compactionStop.value = "max_tokens";
+  await clue.type("/compact");
+  await clue.type(ENTER);
+  await clue.seen("Nothing changed.");
+  compactionStop.value = "compaction";
+  await clue.type("next");
+  await clue.type(ENTER);
+  await clue.turns(2);
+  expect(JSON.stringify((requests.at(-1) as { messages: unknown }).messages)).toContain("hello there");
+}, 25_000);
+
+test("/compact on an empty session does nothing", async () => {
+  const clue = await startClue();
+  const before = compactions.length;
+  await clue.type("/compact");
+  await clue.type(ENTER);
+  await clue.seen("Nothing to compact.");
+  expect(compactions.length).toBe(before);
+}, 25_000);
+
+test("a resumed session still shows what came before a compaction", async () => {
+  const [cwd, home] = [scratch("clue-compact-"), scratch("clue-compact-home-")];
+  const first = await startClue({ cwd, home });
+  await first.type("the early prompt");
+  await first.type(ENTER);
+  await first.turns(1);
+  await first.type("/compact");
+  await first.type(ENTER);
+  await first.seen("token summary");
+  await stop();
+  const second = await startClue({ cwd, home, args: ["-c"] });
+  await second.seen("the early prompt");
+}, 25_000);
+
+const compactedSession = async () => {
+  const clue = await startClue();
+  await clue.type("hello there");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  await clue.type("/compact");
+  await clue.type(ENTER);
+  await clue.seen("token summary");
+  return clue;
+};
+
+test("after /compact, clue compacts a full conversation itself before the next prompt", async () => {
+  const clue = await compactedSession();
+  usage.cache_read_input_tokens = 200_000;
+  await clue.type("zebra-two");
+  await clue.type(ENTER);
+  await clue.turns(2);
+  usage.cache_read_input_tokens = 2000;
+  const before = compactions.length;
+  await clue.type("third");
+  await clue.type(ENTER);
+  await clue.turns(3);
+  expect(compactions.length).toBe(before + 1);
+  await clue.seen("Compacted the conversation.");
+  const last = JSON.stringify((requests.at(-1) as { messages: unknown }).messages);
+  expect(last).not.toContain("zebra-two");
+  expect(last).toContain("third");
+}, 25_000);
+
+test("a compaction during a turn lets the turn continue", async () => {
+  const clue = await compactedSession();
+  usage.cache_read_input_tokens = 200_000;
+  const before = compactions.length;
+  await clue.type("read the package");
+  await clue.type(ENTER);
+  await clue.turns(2);
+  usage.cache_read_input_tokens = 2000;
+  expect(compactions.length).toBe(before + 1);
+  const last = (requests.at(-1) as { messages: { role: string; content: any }[] }).messages;
+  expect(last[0].content[0].type).toBe("compaction");
+  expect(last.at(-1)).toEqual({ role: "user", content: "Continue with the task." });
 }, 25_000);

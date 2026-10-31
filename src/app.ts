@@ -16,7 +16,7 @@ import { encodeImage } from "./tools/files";
 import { stopAllProcesses, warmShellEnv } from "./tools/shell";
 import { discoverSkills, type Skill } from "./tools/skills";
 import type { Question } from "./tools/types";
-import { duration, homePath, style } from "./ui/ansi";
+import { duration, homePath, style, tokens } from "./ui/ansi";
 import { Editor, type Command } from "./ui/editor";
 import { listPaths } from "./ui/file-mention";
 import { undoReport } from "./ui/undo";
@@ -39,6 +39,7 @@ const COMMANDS: Command[] = [
   { name: "new", description: "start a fresh session" },
   { name: "mcp", description: "manage MCP servers" },
   { name: "paste", description: "attach the image on the clipboard" },
+  { name: "compact", description: "replace the conversation with a summary" },
   { name: "undo", description: "restore the files changed in the last turn" },
   { name: "usage", description: "context, tokens and cost of this session" },
   { name: "cost", description: "same as /usage" },
@@ -273,6 +274,27 @@ export class App {
   }
 
   // Handles a key that adds to the input from outside it. True when the key was one.
+  private async compact() {
+    const before = this.session.turns.at(-1)?.context;
+    this.print([`  ${style.muted("Compacting…")}`]);
+    this.screen.status("working");
+    try {
+      const result = await this.agent.compact(new AbortController().signal);
+      if ("problem" in result) this.print([`  ${style.orange(result.problem)} ${style.muted("Nothing changed.")}`, ""]);
+      else {
+        const size = `${before ? `${tokens(before)} tokens into ` : ""}a ${tokens(result.summaryTokens)} token summary`;
+        this.print([
+          `  ${style.muted(`Compacted ${size}.`)}`,
+          `  ${style.faint("Images and file contents are gone. Claude reads files again when it needs them.")}`,
+          "",
+        ]);
+      }
+    } catch (error) {
+      this.print([`  ${style.red(describeError(error))}`, ""]);
+    }
+    this.screen.status("idle");
+  }
+
   private setPermissionMode(mode: PermissionMode) {
     this.permissions.mode = mode;
     this.settings.permission_mode = mode;
@@ -536,11 +558,17 @@ export class App {
         this.keyboard.hold(work);
         return work;
       }
+      case "compact": {
+        if (this.session.isEmpty) return say(style.muted("Nothing to compact."));
+        const work = this.compact();
+        this.keyboard.hold(work);
+        return work;
+      }
       case "undo":
         return this.print(undoReport(this.agent.undo.undo(args[0] === "force"), this.cwd));
       case "cost":
       case "usage":
-        return this.print(usageReport(this.session.turns));
+        return this.print(usageReport(this.session.turns, this.session.compactions));
       case "exit":
       case "quit":
         return this.exit(0);

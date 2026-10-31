@@ -8,8 +8,8 @@ import type { Skill } from "../tools/skills";
 import { clip, toolKind, type Question, type ToolContext, type ToolOutput } from "../tools/types";
 import { buildContext } from "./context";
 import { msSince, now } from "../clock";
-import { cost } from "./models";
-import { dropRejectedFeature, stream } from "./provider";
+import { COMPACTION_TRIGGER_TOKENS, cost } from "./models";
+import { dropRejectedFeature, stream, summarize } from "./provider";
 import { UndoStack } from "./undo";
 
 type ContentBlock = Anthropic.Beta.Messages.BetaContentBlock;
@@ -53,6 +53,7 @@ export class Agent {
   readStamps = new Map<string, number>();
   seenInstructions = new Set<string>();
   undo = new UndoStack(this.readStamps);
+  private lastContext = 0;
 
   constructor(private options: AgentOptions) {}
 
@@ -66,6 +67,54 @@ export class Agent {
 
   setEffort(effort: Effort) {
     this.options.settings.effort = effort;
+  }
+
+  // Replaces the conversation with a summary. Returns its size in tokens, or why there is none.
+  async compact(signal: AbortSignal): Promise<{ summaryTokens: number } | { problem: string }> {
+    const { session, settings } = this.options;
+    session.closeUnfinishedTools();
+    const model = settings.model;
+    const message = await summarize({ model, effort: settings.effort, messages: session.messages }, signal);
+    const iterations = message.usage.iterations ?? [];
+    const usage = emptyUsage();
+    for (const iteration of iterations) addUsage(usage, iteration as unknown as Anthropic.Beta.Messages.BetaUsage);
+    if (message.stop_reason !== "compaction" || !message.content.some((block) => block.type === "compaction")) {
+      return { problem: `The summary didn't finish (${message.stop_reason ?? "no reason given"}).` };
+    }
+    session.append({
+      t: "compacted",
+      message: { role: "assistant", content: message.content as Anthropic.Beta.Messages.BetaContentBlockParam[] },
+      usage,
+      cost: cost(model, usage),
+      model,
+      at: Date.now(),
+    });
+    // The summary doesn't hold file contents or instructions, so Claude has to read them again.
+    this.readStamps.clear();
+    this.seenInstructions.clear();
+    this.lastContext = 0;
+    return { summaryTokens: usage.output };
+  }
+
+  // Automatic compaction can't run on a session with a /compact summary, so clue triggers it here.
+  private async compactIfFull(signal: AbortSignal, midTurn: boolean) {
+    const { session, events } = this.options;
+    if (!session.carriesSummary || this.lastContext < COMPACTION_TRIGGER_TOKENS) return;
+    let problem: string | null = null;
+    try {
+      const result = await this.compact(signal);
+      if ("problem" in result) problem = result.problem;
+    } catch (error) {
+      problem = (error as Error).message;
+    }
+    if (problem) {
+      // Trying again before the next request would only repeat the failure.
+      this.lastContext = 0;
+      return events.notice(`Compaction failed. ${problem}`, "warn");
+    }
+    events.notice("Compacted the conversation.", "info");
+    // A request can't end on the summary, which is an assistant message.
+    if (midTurn) session.appendMessage({ role: "user", content: "Continue with the task." });
   }
 
   // Runs one user prompt to completion: model turns and tool calls until Claude stops.
@@ -82,7 +131,9 @@ export class Agent {
 
     if (!this.options.subagent) this.undo.beginTurn();
     session.closeUnfinishedTools();
-    if (session.isEmpty) {
+    this.lastContext ||= session.turns.at(-1)?.context ?? 0;
+    await this.compactIfFull(signal, false);
+    if (session.needsContext) {
       const context = await buildContext(
         this.options.cwd,
         this.options.skills(),
@@ -108,6 +159,7 @@ export class Agent {
         stop = "interrupted";
         break;
       }
+      if (toolCount) await this.compactIfFull(signal, true);
       model = settings.model;
       let message: Anthropic.Beta.Messages.BetaMessage;
       try {
@@ -139,7 +191,7 @@ export class Agent {
       }
 
       addUsage(usage, message.usage);
-      context = contextTokens(message.usage);
+      context = this.lastContext = contextTokens(message.usage);
       session.appendMessage({
         role: "assistant",
         content: message.content as Anthropic.Beta.Messages.BetaContentBlockParam[],

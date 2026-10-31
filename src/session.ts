@@ -50,12 +50,28 @@ export type TurnRecord = {
   context?: number;
 };
 
+// One /compact: the summary that replaces the messages, and what the summary cost.
+export type CompactionRecord = {
+  message: MessageParam;
+  usage: Usage;
+  cost: number | null;
+  model: string;
+  at: number;
+};
+
 export type SessionRecord =
   | { t: "session"; id: string; cwd: string; created: number; version: string }
   | { t: "message"; message: MessageParam }
   | { t: "tool"; tool: ToolRecord }
   | { t: "turn"; turn: TurnRecord }
+  | ({ t: "compacted" } & CompactionRecord)
   | { t: "name"; name: string };
+
+// A /compact summary sits first in the messages. An automatic compaction block never does.
+export function startsWithSummary(messages: MessageParam[]) {
+  const content = messages[0]?.content;
+  return Array.isArray(content) && content[0]?.type === "compaction";
+}
 
 export type SessionMeta = {
   id: string;
@@ -108,7 +124,11 @@ function parseRecords(text: string) {
 
 export class Session {
   readonly file: string;
+  // What the next request sends. A compaction replaces these with its summary.
   messages: MessageParam[] = [];
+  // Every message of the session, for showing it again on resume.
+  transcript: MessageParam[] = [];
+  compactions: CompactionRecord[] = [];
   tools = new Map<string, ToolRecord>();
   turns: TurnRecord[] = [];
   records: SessionRecord[] = [];
@@ -148,8 +168,13 @@ export class Session {
 
   private apply(record: SessionRecord) {
     this.records.push(record);
+    if (record.t === "compacted") {
+      this.compactions.push(record);
+      this.messages = [record.message];
+    }
     if (record.t === "message") {
       this.messages.push(record.message);
+      this.transcript.push(record.message);
       if (record.message.role === "user" && typeof record.message.content === "string") {
         this.prompts += 1;
         this.title ||= record.message.content;
@@ -228,6 +253,15 @@ export class Session {
 
   get isEmpty() {
     return this.messages.length === 0;
+  }
+
+  get carriesSummary() {
+    return startsWithSummary(this.messages);
+  }
+
+  // Compaction summarizes the opening context, so the next prompt brings it again.
+  get needsContext() {
+    return this.isEmpty || (this.messages.length === 1 && this.carriesSummary);
   }
 
   // A crash mid-tool leaves tool calls without results, and the API refuses a new

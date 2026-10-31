@@ -2,6 +2,10 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- `/compact` replaces the conversation with a summary when you ask. Images and file contents don't survive it, so Claude reads files again when it needs them.
+
 ## 0.7.0
 
 - `/undo` restores the files that clue changed in the last turn. It refuses if those files changed since, unless you run `/undo force`. It keeps the conversation, and it can't undo shell commands.

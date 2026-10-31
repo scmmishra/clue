@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Effort } from "../config";
 import { resolveAuth } from "../auth";
-import type { MessageParam } from "../session";
+import { startsWithSummary, type MessageParam } from "../session";
 import { toolDefinitions } from "../tools";
 import { modelInfo } from "./models";
 import { SYSTEM_PROMPT } from "./prompt";
@@ -46,6 +46,7 @@ const features = {
 };
 
 export type RequestOptions = {
+  summarize?: boolean;
   model: string;
   effort: Effort;
   messages: MessageParam[];
@@ -74,11 +75,14 @@ export function buildRequest(options: RequestOptions) {
   } else {
     request.thinking = { type: "adaptive", display: "summarized" };
   }
-  if (features.compaction) {
+  // Automatic compaction can't run on a request that carries a /compact summary.
+  if (options.summarize) request.compaction = { type: "summarize" };
+  if (options.summarize || startsWithSummary(options.messages)) betas.push("compact-2026-09-04");
+  else if (features.compaction) {
     request.context_management = { edits: [{ type: "compact_20260112" }] };
     betas.push("compact-2026-01-12");
   }
-  if (features.fallbacks && info?.fallbacks) {
+  if (features.fallbacks && info?.fallbacks && !options.summarize) {
     (request as { fallbacks?: unknown }).fallbacks = "default";
     betas.push("server-side-fallback-2026-07-01");
   }
@@ -101,6 +105,12 @@ export function dropRejectedFeature(error: unknown) {
 export async function stream(options: RequestOptions, signal: AbortSignal) {
   const client = await getClient();
   return client.beta.messages.stream(buildRequest(options), { signal });
+}
+
+// Asks for a summary of the conversation. The response holds a compaction block and no reply.
+export async function summarize(options: RequestOptions, signal: AbortSignal) {
+  const client = await getClient();
+  return client.beta.messages.stream(buildRequest({ ...options, summarize: true }), { signal }).finalMessage();
 }
 
 // Caches a resumed conversation while the user types. max_tokens 0 runs the

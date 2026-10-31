@@ -21,7 +21,7 @@ export function sessionEntries(session: Session): Entry[] {
     if (group.length) entries.push({ type: "tools", tools: group });
     group = [];
   };
-  for (const message of session.messages) {
+  for (const message of session.transcript) {
     if (message.role === "user") {
       let text: string | null = null;
       if (typeof message.content === "string") text = message.content;

@@ -47,7 +47,12 @@ function sse(events: Record<string, unknown>[], delay: number) {
   return new Response(stream, { headers: { "content-type": "text/event-stream" } });
 }
 
-const usage = { input_tokens: 120, output_tokens: 40, cache_read_input_tokens: 2000, cache_creation_input_tokens: 300 };
+export const usage = {
+  input_tokens: 120,
+  output_tokens: 40,
+  cache_read_input_tokens: 2000,
+  cache_creation_input_tokens: 300,
+};
 
 function message(content: unknown[], stop: string) {
   return {
@@ -71,6 +76,9 @@ function streamText(text: string, index: number) {
   ];
 }
 
+export const compactions: unknown[] = [];
+export const compactionStop = { value: "compaction" };
+
 export function startMockApi(port = 0, delay = DELAY) {
   return Bun.serve({
     port,
@@ -91,6 +99,30 @@ export function startMockApi(port = 0, delay = DELAY) {
         });
       if (!url.pathname.endsWith("/v1/messages")) return new Response("not found", { status: 404 });
       const body = (await request.json()) as Body;
+      if ((body as { compaction?: unknown }).compaction) {
+        compactions.push(body);
+        return sse(
+          [
+            { type: "message_start", message: message([], "") },
+            {
+              type: "content_block_start",
+              index: 0,
+              content_block: { type: "compaction", content: "Summary of the conversation.", signature: "sig" },
+            },
+            { type: "content_block_stop", index: 0 },
+            {
+              type: "message_delta",
+              delta: { stop_reason: compactionStop.value, stop_sequence: null },
+              usage: {
+                output_tokens: 0,
+                iterations: [{ type: "compaction", input_tokens: 5000, output_tokens: 700 }],
+              },
+            },
+            { type: "message_stop" },
+          ],
+          delay,
+        );
+      }
       // A review is the one request that doesn't stream and asks for a reply.
       if (!body.stream && body.max_tokens !== 0) {
         reviewers.claudeCalls.push({ model: body.model!, effort: body.output_config?.effort });
@@ -115,7 +147,7 @@ export function startMockApi(port = 0, delay = DELAY) {
         return Response.json(message([], "max_tokens"));
       }
       const promptText = JSON.stringify(body.messages.filter((item) => item.role === "user").at(-1)?.content ?? "");
-      if (!hasToolResult) {
+      if (!hasToolResult && !JSON.stringify(body.messages).includes("Continue with the task.")) {
         const wantsPush = promptText.includes("push");
         const wantsWrite = promptText.includes("create the note");
         const input = JSON.stringify(
