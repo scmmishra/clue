@@ -4,6 +4,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- The stream an MCP server keeps open while clue is idle is no longer compressed. A broken compressed stream could print a `ZlibError` line over your input.
 - Resuming a session restores the conversation into your scrollback, up to the last 1 MB, instead of only the last screen.
 - `clue config unset` removes a setting, so it goes back to its default.
 

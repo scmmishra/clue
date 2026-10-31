@@ -81,6 +81,18 @@ class StoredAuthProvider implements OAuthClientProvider {
   }
 }
 
+// The stream an MCP server keeps open while clue is idle carries a few small messages, so
+// compressing it saves nothing. When a compressed stream breaks, Bun writes straight to the
+// terminal, over the input. Everything else stays compressed.
+export const plainStreams = (fetcher: typeof fetch = fetch) =>
+  ((url: string | URL | Request, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    const isStream = (init?.method ?? "GET") === "GET" && headers.get("accept")?.includes("text/event-stream");
+    if (!isStream) return fetcher(url, init);
+    headers.set("Accept-Encoding", "identity");
+    return fetcher(url, { ...init, headers });
+  }) as typeof fetch;
+
 export const hasLogin = (name: string) => existsSync(authFile(name));
 export const forgetLogin = (name: string) => rmSync(authFile(name), { force: true });
 
@@ -196,10 +208,10 @@ export class McpManager {
     const url = new URL(config.url ?? "");
     if (kind === "sse") {
       const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
-      return new SSEClientTransport(url, { authProvider, requestInit: { headers } });
+      return new SSEClientTransport(url, { authProvider, requestInit: { headers }, fetch: plainStreams() });
     }
     const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
-    return new StreamableHTTPClientTransport(url, { authProvider, requestInit: { headers } });
+    return new StreamableHTTPClientTransport(url, { authProvider, requestInit: { headers }, fetch: plainStreams() });
   }
 
   // Browser sign-in: opens the authorization page and waits for the redirect on a local port.
