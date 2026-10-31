@@ -5,6 +5,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 ## Unreleased
 
 - `shift+enter` adds a new line in terminals that can report it.
+- Arrow keys, `home`, `end` and `delete` work in terminals that report caps lock or num lock with each key.
 
 ## 0.5.1
 

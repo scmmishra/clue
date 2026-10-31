@@ -184,6 +184,9 @@ export const keyModes = (tmux: boolean) => ({
 
 const KITTY_KEY = /^\x1b\[(\d+)(?::\d+)*(?:;(\d+)(?::(\d+))?)?(?:;[\d:]*)?u/;
 const MODIFIED_KEY = /^\x1b\[27;(\d+);(\d+)~/;
+const FUNCTIONAL_KEY = /^\x1b\[(\d+);(\d+)(?::(\d))?([ABCDHF~])/;
+// Caps lock and num lock. A terminal can report them with every key, but they aren't shortcuts.
+const LOCK_FLAGS = 64 | 128;
 const KEYPAD_ENTER = 57414;
 // Keys with no character, such as caps lock, use this Unicode private range.
 const PRIVATE_KEYS = [57344, 63743];
@@ -191,8 +194,16 @@ const KEY_RELEASE = 3;
 
 // A key reported with its modifiers. Ctrl and alt become the sequences terminals send
 // without these reports, so every key keeps one meaning.
+// Maps an arrow, home, end or tilde key with reported modifiers to the key without lock flags.
+function functionalKey(number: string, mods: number, event: number, final: string): Key | null {
+  if (event === KEY_RELEASE) return null;
+  const flags = (mods - 1) & ~LOCK_FLAGS;
+  if (flags) return SEQUENCES[`\x1b[${number};${flags + 1}${final}`] ?? null;
+  return SEQUENCES[final === "~" ? `\x1b[${number}~` : `\x1b[${final}`] ?? null;
+}
+
 function reportedKey(code: number, mods: number, event: number): Key[] {
-  const flags = mods - 1;
+  const flags = (mods - 1) & ~LOCK_FLAGS;
   const [shift, alt, ctrl, command] = [flags & 1, flags & 2, flags & 4, flags & 8];
   if (event === KEY_RELEASE || command) return [];
   if (code === 13 || code === KEYPAD_ENTER) return [{ name: flags ? "newline" : "enter" }];
@@ -221,6 +232,13 @@ export function parseKeys(data: string): Key[] {
       const rest = data.slice(index);
       const kitty = rest.match(KITTY_KEY);
       const modified = rest.match(MODIFIED_KEY);
+      const functional = rest.match(FUNCTIONAL_KEY);
+      if (functional) {
+        const key = functionalKey(functional[1], Number(functional[2]), Number(functional[3] ?? 1), functional[4]);
+        if (key) keys.push(key);
+        index += functional[0].length;
+        continue;
+      }
       if (kitty) {
         keys.push(...reportedKey(Number(kitty[1]), Number(kitty[2] ?? 1), Number(kitty[3] ?? 1)));
         index += kitty[0].length;

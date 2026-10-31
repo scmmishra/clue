@@ -87,3 +87,41 @@ test("clue asks for both key reports, and turns them back off", () => {
 test("inside tmux, clue leaves the kitty protocol alone", () => {
   expect(keyModes(true)).toEqual({ on: term.modifyKeysOn, off: term.modifyKeysOff });
 });
+
+test.each([
+  ["\x1b[1;1A", "up"],
+  ["\x1b[1;1B", "down"],
+  ["\x1b[1;1:1B", "down"],
+  ["\x1b[1;1C", "right"],
+  ["\x1b[1;1D", "left"],
+  ["\x1b[1;1H", "home"],
+  ["\x1b[1;1F", "end"],
+])("%j is read as %s", (sequence, name) => {
+  expect(parseKeys(sequence)).toEqual([{ name }]);
+});
+
+test("a key release report is not a key press", () => {
+  expect(parseKeys("\x1b[1;1:3B")).toEqual([]);
+});
+
+test.each([
+  ["\x1b[1;129A", { name: "up" }],
+  ["\x1b[1;129B", { name: "down" }],
+  ["\x1b[1;129C", { name: "right" }],
+  ["\x1b[1;129D", { name: "left" }],
+  ["\x1b[1;65B", { name: "down" }],
+  ["\x1b[1;193B", { name: "down" }],
+  ["\x1b[1;129H", { name: "home" }],
+  ["\x1b[3;129~", { name: "delete" }],
+  ["\x1b[1;131C", { name: "right", meta: true }],
+  ["\x1b[13;129u", { name: "enter" }],
+  ["\x1b[27;129;13~", { name: "enter" }],
+  ["\x1b[13;130u", { name: "newline" }],
+])("%j ignores caps lock and num lock", (sequence, key) => {
+  expect(parseKeys(sequence)).toEqual([key]);
+});
+
+test("a modified key that has no action is dropped whole", () => {
+  expect(parseKeys("\x1b[1;2A")).toEqual([]);
+  expect(parseKeys("\x1b[1;2Ax")).toEqual([{ name: "char", text: "x" }]);
+});
