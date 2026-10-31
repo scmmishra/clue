@@ -2,7 +2,7 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
-## Unreleased
+## 0.7.2
 
 - Shell commands can use your aliases and functions in zsh and bash. An alias or function named after a real program, such as `grep`, stays out, so standard tools behave the same.
 - clue reruns your shell startup files after more kinds of change, such as a new `ZDOTDIR` or an edit to a file in `/etc`.
