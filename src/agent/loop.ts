@@ -387,7 +387,12 @@ function parseJson(text: string): Record<string, unknown> {
 }
 
 // Reads the fields that have arrived so far from a partial JSON object.
-function previewInput(partial: string): Record<string, string> | null {
+// A label needs fields near the start, such as a path or a command. Input can be a whole
+// file, and it's read again on every streamed piece, so only this much is ever scanned.
+export const PREVIEW_CHARS = 2048;
+
+export function previewInput(input: string): Record<string, string> | null {
+  const partial = input.slice(0, PREVIEW_CHARS);
   const fields: Record<string, string> = {};
   for (const match of partial.matchAll(/"(\w+)"\s*:\s*"((?:[^"\\]|\\.)*)"/g)) {
     try {
@@ -395,10 +400,10 @@ function previewInput(partial: string): Record<string, string> | null {
     } catch {}
   }
   // A string still arriving, such as a long command.
-  const open = partial.match(/"(\w+)"\s*:\s*"((?:[^"\\]|\\.)*)$/);
+  const open = partial.match(/"(\w+)"\s*:\s*"((?:[^"\\]|\\.)*\\?)$/);
   if (open && !(open[1] in fields)) {
     try {
-      fields[open[1]] = JSON.parse(`"${open[2].replace(/\\$/, "")}"`);
+      fields[open[1]] = JSON.parse(`"${open[2].replace(/\\(u[0-9a-fA-F]{0,3})?$/, "")}"`);
     } catch {}
   }
   return Object.keys(fields).length ? fields : null;
