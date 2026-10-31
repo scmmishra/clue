@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "bun src/main.ts",
     "build": "bun scripts/build.ts",
+    "build:watch": "bun scripts/watch.ts",
     "bench": "bun benchmarks/run.ts",
     "bench:check": "bun run build && bun benchmarks/run.ts --check",
     "bench:tools": "bun benchmarks/tools.ts",

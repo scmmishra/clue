@@ -357,6 +357,7 @@ bun install
 bun run dev          # run from source
 bun test             # tests, against a local stand-in for the API
 bun run build        # dist/clue for this machine; --all for every platform
+bun run build:watch  # rebuild dist/clue when src or prompts change
 bun run bench        # start, resume and first-token benchmarks
 bun run bench:check  # build, then fail if start or resume is over budget
 bun run bench:tools  # each tool on its own, outside the agent loop
