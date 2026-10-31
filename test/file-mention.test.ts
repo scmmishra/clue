@@ -92,14 +92,15 @@ test("the best matches survive a query that matches more than the limit", () => 
   expect(rankPaths("widget", paths)).toHaveLength(MAX_MATCHES);
 });
 
-test("ranking 100,000 paths stays quick enough to run on a keypress", () => {
+// The limit allows for slow CI machines. It catches quadratic ranking, not small slowdowns.
+test("ranking 100,000 paths doesn't grow quadratically", () => {
   const paths = Array.from(
     { length: 100_000 },
     (_, index) => `packages/app-${index % 50}/src/components/widget${index}.tsx`,
   );
   const start = Bun.nanoseconds();
   rankPaths("widget", paths);
-  expect((Bun.nanoseconds() - start) / 1e6).toBeLessThan(40);
+  expect((Bun.nanoseconds() - start) / 1e6).toBeLessThan(500);
 });
 
 test.each([

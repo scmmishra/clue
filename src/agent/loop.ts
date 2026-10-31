@@ -52,7 +52,7 @@ const ERROR_NOTE_CHARS = 60;
 export class Agent {
   readStamps = new Map<string, number>();
   seenInstructions = new Set<string>();
-  undo = new UndoStack();
+  undo = new UndoStack(this.readStamps);
 
   constructor(private options: AgentOptions) {}
 

@@ -16,6 +16,8 @@ const MAX_TURNS = 20;
 export type FileSnapshot = { content: Buffer; mode: number };
 
 type TrackedFile = {
+  // The path the tool wrote to, which is the key of its read stamp.
+  file: string;
   // What the file held before the turn first changed it. Null means the turn created it.
   previous: FileSnapshot | null;
   // Hash of what the turn left, so a later change by someone else isn't overwritten.
@@ -58,6 +60,8 @@ export class UndoStack {
   private turns: TurnChanges[] = [];
   private current: TurnChanges = { files: new Map(), ranShell: false };
 
+  constructor(private readStamps = new Map<string, number>()) {}
+
   beginTurn() {
     this.current = { files: new Map(), ranShell: false };
   }
@@ -75,7 +79,7 @@ export class UndoStack {
       tracked.after = after;
       return;
     }
-    this.current.files.set(path, { previous, after });
+    this.current.files.set(path, { file, previous, after });
     if (this.turns.at(-1) === this.current) return;
     this.turns.push(this.current);
     if (this.turns.length > MAX_TURNS) this.turns.shift();
@@ -95,7 +99,9 @@ export class UndoStack {
       failed: [] as string[],
       ranShell: turn.ranShell,
     };
-    for (const [path, { previous }] of files) {
+    for (const [path, { file, previous }] of files) {
+      // A timestamp alone can't show the change, because a coarse clock may give the restore the same one.
+      this.readStamps.delete(file);
       try {
         restore(path, previous);
         (previous ? result.restored : result.deleted).push(path);

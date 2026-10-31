@@ -21,14 +21,15 @@ import { undoReport } from "../src/ui/undo";
 
 function setup() {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "clue-undo-")));
-  const undo = new UndoStack();
+  const readStamps = new Map<string, number>();
+  const undo = new UndoStack(readStamps);
   const context: ToolContext = {
     cwd: dir,
     session: Session.create(dir),
     signal: new AbortController().signal,
     mcp: {} as never,
     skills: () => [],
-    readStamps: new Map(),
+    readStamps,
     undo,
     seenInstructions: new Set(),
     ask: async () => null,
@@ -175,7 +176,7 @@ test("after an undo, the edit tools make the agent read the file again", async (
   undo.undo();
   const result = await editFile.run({ path: "a.ts", old_string: "two", new_string: "three" }, context);
   expect(result.isError).toBe(true);
-  expect(result.content).toContain("changed since you last read it");
+  expect(result.content).toBe("Read a.ts before editing it.");
 });
 
 test("a turn that ran a shell command says so", async () => {
