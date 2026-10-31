@@ -17,6 +17,7 @@ Usage
   clue mcp <command>         manage MCP servers (list, add, remove, login, ...)
   clue config <command>      show or change settings (show, path, edit, set, unset)
   clue upgrade               install the latest release
+  clue doctor                check credentials, settings, MCP servers and the terminal
 
 Options
   --model <id>               model for this run, such as sonnet or claude-opus-5-5
@@ -59,7 +60,7 @@ function parse(argv: string[]): Parsed {
     else if (arg === "-h") flags.help = true;
     else positional.push(arg);
   }
-  const commands = new Set(["ask", "login", "logout", "mcp", "config", "upgrade", "help", "version"]);
+  const commands = new Set(["ask", "login", "logout", "mcp", "config", "upgrade", "doctor", "help", "version"]);
   const command = positional[0] && commands.has(positional[0]) ? positional.shift()! : "";
   return { command, positional, flags };
 }
@@ -125,6 +126,11 @@ async function main() {
   if (command === "upgrade") {
     const { upgrade } = await import("./commands/upgrade");
     return upgrade();
+  }
+
+  if (command === "doctor") {
+    const { doctor } = await import("./commands/doctor");
+    return doctor();
   }
 
   if (command === "login" || command === "logout") {

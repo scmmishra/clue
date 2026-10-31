@@ -67,6 +67,7 @@ export function startMockApi(port = 0, delay = DELAY) {
         if (reviewers.jev === "error") return Response.json({ error: { message: "limit reached" } }, { status: 500 });
         return Response.json({ answers: { decision: { choice: reviewers.jev } } });
       }
+      if (url.pathname.includes("/v1/models/")) return Response.json({ id: url.pathname.split("/").at(-1), type: "model", display_name: "mock", created_at: "2026-01-01T00:00:00Z" });
       if (!url.pathname.endsWith("/v1/messages")) return new Response("not found", { status: 404 });
       const body = (await request.json()) as Body;
       // A review is the one request that doesn't stream and asks for a reply.

@@ -18,7 +18,7 @@ export function upgradeTarget(binary: string, channel: string): { dir: string } 
 
 export const isNewer = (latest: string, current: string) => Bun.semver.order(latest.replace(/^v/, ""), current) > 0;
 
-async function latestTag() {
+export async function latestTag() {
   const response = await fetch(RELEASES, { signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS) });
   if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
   return ((await response.json()) as { tag_name: string }).tag_name;
