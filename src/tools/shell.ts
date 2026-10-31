@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { CLUE_HOME, ensureDir } from "../config";
-import { checkFields, type Tool } from "./types";
+import { checkFields, fieldOf, type Tool } from "./types";
 
 // Commands run in the user's shell with the environment, aliases and functions their
 // startup files produce. Startup files run once. The result is cached until one changes,
@@ -73,8 +73,13 @@ type ShellState = { env: Record<string, string>; hasSnapshot: boolean };
 
 async function captureState(): Promise<ShellState> {
   try {
-    const cached = JSON.parse(readFileSync(ENV_CACHE, "utf8"));
-    if (cached.stamp === startupStamp(cached.env?.ZDOTDIR) && (!cached.hasSnapshot || existsSync(SNAPSHOT))) {
+    // clue wrote this file itself, in the shape below.
+    const cached = JSON.parse(readFileSync(ENV_CACHE, "utf8")) as Partial<ShellState> & { stamp?: string };
+    if (
+      cached.env &&
+      cached.stamp === startupStamp(cached.env.ZDOTDIR) &&
+      (!cached.hasSnapshot || existsSync(SNAPSHOT))
+    ) {
       return { env: cached.env, hasSnapshot: Boolean(cached.hasSnapshot) };
     }
   } catch {}
@@ -338,9 +343,10 @@ export const shell: Tool<ShellInput> = {
       wait_ms: "number?",
     });
     if (error) return error;
-    const action = input.action ?? "run";
-    if (action === "run" && !input.command) return 'action "run" needs a command.';
-    if (action !== "run" && !input.id) return `action "${action}" needs an id.`;
+    // checkFields made action a string, when present.
+    const action = String(fieldOf(input, "action") ?? "run");
+    if (action === "run" && !fieldOf(input, "command")) return 'action "run" needs a command.';
+    if (action !== "run" && !fieldOf(input, "id")) return `action "${action}" needs an id.`;
     return null;
   },
   async run(input, context) {

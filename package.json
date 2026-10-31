@@ -14,7 +14,7 @@
     "bench": "bun benchmarks/run.ts",
     "bench:check": "bun run build && bun benchmarks/run.ts --check",
     "bench:tools": "bun benchmarks/tools.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun check",
     "fmt": "bun fmt --no-script src test scripts benchmarks",
     "test": "bun test"
   },
@@ -23,7 +23,6 @@
     "@modelcontextprotocol/sdk": "^1.32.2"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.4",
-    "typescript": "^6"
+    "@types/bun": "^1.4.4"
   }
 }

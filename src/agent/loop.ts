@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import type { Effort, Settings } from "../config";
+import { isObject, type Effort, type Settings } from "../config";
 import type { McpManager } from "../mcp/manager";
 import { approvalQuestion, Permissions, reviewAction } from "../permissions";
 import {
@@ -13,7 +13,7 @@ import {
 } from "../session";
 import { findTool } from "../tools";
 import type { Skill } from "../tools/skills";
-import { clip, toolKind, type Question, type ToolContext, type ToolOutput } from "../tools/types";
+import { clip, type Question, type ToolContext, type ToolOutput } from "../tools/types";
 import { buildContext } from "./context";
 import { msSince, now } from "../clock";
 import { COMPACTION_TRIGGER_TOKENS, cost } from "./models";
@@ -304,7 +304,7 @@ export class Agent {
         });
         if (block.type === "tool_use") {
           const tool = findTool(block.name);
-          events.toolStart(block.id, tool ? safeLabel(tool, {}, false) : block.name, tool ? toolKind(tool, {}) : "mcp");
+          events.toolStart(block.id, tool ? safeLabel(tool, {}, false) : block.name, tool ? tool.kind : "mcp");
         } else if (block.type === "server_tool_use") {
           events.toolStart(block.id, block.name === "web_fetch" ? "Fetching" : "Searching the web", "web");
         } else if (block.type === "web_search_tool_result" || block.type === "web_fetch_tool_result") {
@@ -401,7 +401,7 @@ export class Agent {
 
     if (!tool) return finish({ content: `There is no tool named ${use.name}.`, isError: true }, use.name, "mcp");
     const invalid = tool.validate(input);
-    const kind = toolKind(tool, input);
+    const kind = tool.kind;
     if (invalid) {
       return finish(
         { content: JSON.stringify({ INVALID_INPUT: invalid, received: input }), isError: true },
@@ -494,7 +494,7 @@ export class Agent {
     };
     let output: ToolOutput;
     try {
-      output = await tool.run(input as never, context);
+      output = await tool.run(input, context);
     } catch (error) {
       output = { content: `${tool.name} failed: ${(error as Error).message}`, isError: true };
     }
@@ -569,7 +569,8 @@ export function awaitsServerTool(content: ContentBlock[]) {
 
 function parseJson(text: string): Record<string, unknown> {
   try {
-    return JSON.parse(text || "{}");
+    const value: unknown = JSON.parse(text || "{}");
+    return isObject(value) ? value : {};
   } catch {
     return {};
   }
@@ -585,14 +586,14 @@ export function previewInput(input: string): Record<string, string> | null {
   const fields: Record<string, string> = {};
   for (const match of partial.matchAll(/"(\w+)"\s*:\s*"((?:[^"\\]|\\.)*)"/g)) {
     try {
-      fields[match[1]] = JSON.parse(`"${match[2]}"`);
+      fields[match[1]] = String(JSON.parse(`"${match[2]}"`));
     } catch {}
   }
   // A string still arriving, such as a long command.
   const open = partial.match(/"(\w+)"\s*:\s*"((?:[^"\\]|\\.)*\\?)$/);
   if (open && !(open[1] in fields)) {
     try {
-      fields[open[1]] = JSON.parse(`"${open[2].replace(/\\(u[0-9a-fA-F]{0,3})?$/, "")}"`);
+      fields[open[1]] = String(JSON.parse(`"${open[2].replace(/\\(u[0-9a-fA-F]{0,3})?$/, "")}"`));
     } catch {}
   }
   return Object.keys(fields).length ? fields : null;
@@ -601,7 +602,7 @@ export function previewInput(input: string): Record<string, string> | null {
 function safeLabel(tool: NonNullable<ReturnType<typeof findTool>>, input: unknown, done: boolean) {
   try {
     return tool
-      .label(input as never, done)
+      .label(input, done)
       .replace(/\s+undefined\b/g, "")
       .trim();
   } catch {

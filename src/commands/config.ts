@@ -1,6 +1,15 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { checkSetting, isSetting, loadSettings, paths, readJson, settingsProblems } from "../config";
+import {
+  checkSetting,
+  isObject,
+  isSetting,
+  loadSettings,
+  paths,
+  readJson,
+  settingsProblems,
+  type JsonObject,
+} from "../config";
 
 const USAGE = `Usage:
   clue config show [--json]         the settings in use, and where each comes from
@@ -23,7 +32,8 @@ function stop(message: string, code = 2): never {
   process.exit(code);
 }
 
-const valueAt = (settings: object, key: string) => key.split(".").reduce<any>((value, part) => value?.[part], settings);
+const valueAt = (settings: object, key: string) =>
+  key.split(".").reduce<unknown>((value, part) => (isObject(value) ? value[part] : undefined), settings);
 
 function sourceOf(key: string, value: unknown, file: object) {
   const env = ENV[key];
@@ -60,13 +70,15 @@ function show(json: boolean) {
 const fileProblems = () => (existsSync(paths.settings) ? settingsProblems(readFileSync(paths.settings, "utf8")) : []);
 
 // The file as an object. A file that can't be read is left alone, so nothing overwrites it.
-function readForWriting() {
+function readForWriting(): JsonObject {
   if (!existsSync(paths.settings)) return {};
+  let parsed: unknown;
   try {
-    return JSON.parse(readFileSync(paths.settings, "utf8")) as Record<string, any>;
+    parsed = JSON.parse(readFileSync(paths.settings, "utf8"));
   } catch {
     stop("settings.json isn't valid JSON. Fix it with clue config edit.");
   }
+  return isObject(parsed) ? parsed : stop("settings.json isn't a JSON object. Fix it with clue config edit.");
 }
 
 function write(settings: object) {
@@ -85,7 +97,11 @@ function set(args: string[]) {
   if (problem) stop(problem);
   const settings = readForWriting();
   const parts = key.split(".");
-  const parent = parts.slice(0, -1).reduce((object, part) => (object[part] ??= {}), settings);
+  let parent = settings;
+  for (const part of parts.slice(0, -1)) {
+    const group = parent[part];
+    parent = isObject(group) ? group : (parent[part] = {});
+  }
   parent[parts.at(-1)!] = value;
   write(settings);
   console.log(`Set ${key} to ${text}.`);
@@ -99,10 +115,11 @@ function unset(args: string[]) {
   const settings = readForWriting();
   if (valueAt(settings, key) === undefined) return console.log(`${key} isn't set.`);
   const [first, second] = key.split(".");
+  const group = settings[first];
   if (second === undefined) delete settings[first];
-  else {
-    delete settings[first][second];
-    if (Object.keys(settings[first]).length === 0) delete settings[first];
+  else if (isObject(group)) {
+    delete group[second];
+    if (Object.keys(group).length === 0) delete settings[first];
   }
   write(settings);
   console.log(`Unset ${key}.`);

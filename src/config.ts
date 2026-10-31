@@ -86,7 +86,10 @@ export async function saveSetting<K extends keyof Settings>(key: K, value: Setti
 }
 
 const REVIEW_PROVIDERS = ["anthropic", "openrouter"];
-const isObject = (value: unknown) => typeof value === "object" && value !== null && !Array.isArray(value);
+// A JSON object, such as settings.json or a group of settings in it.
+export type JsonObject = { [key: string]: unknown };
+export const isObject = (value: unknown): value is JsonObject =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 const oneOf = (options: readonly string[]) => (value: unknown) =>
   options.includes(value as string) ? null : `must be one of ${options.join(", ")}`;
 const aString = (value: unknown) => (typeof value === "string" ? null : "must be a string");
@@ -117,7 +120,7 @@ export function checkSetting(key: string, value: unknown) {
 // What's wrong with the text of settings.json. loadSettings ignores a file it can't read,
 // and that silently drops the user's deny rules, so startup warns about it.
 export function settingsProblems(text: string): string[] {
-  let settings: Record<string, unknown>;
+  let settings: unknown;
   try {
     settings = JSON.parse(text);
   } catch {
@@ -127,9 +130,7 @@ export function settingsProblems(text: string): string[] {
   const problems = Object.entries(settings).flatMap(([key, value]) => checkSetting(key, value) ?? []);
   if (isObject(settings.review)) {
     problems.push(
-      ...Object.entries(settings.review as object).flatMap(
-        ([key, value]) => checkSetting(`review.${key}`, value) ?? [],
-      ),
+      ...Object.entries(settings.review).flatMap(([key, value]) => checkSetting(`review.${key}`, value) ?? []),
     );
   }
   return problems;

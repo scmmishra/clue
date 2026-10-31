@@ -4,7 +4,7 @@ import type { PermissionMode, PermissionRules, ReviewSetting, RuleValue } from "
 import { KNOWN_MODELS, modelLabel, resolveModel, REVIEW_FALLBACK_MODEL } from "./agent/models";
 import { getClient } from "./agent/provider";
 import { parseCommand } from "./shell-command";
-import type { Tool } from "./tools/types";
+import { fieldOf, type Tool } from "./tools/types";
 import reviewPrompt from "../prompts/review.yaml";
 
 // Decides whether a tool call runs, asks the user, or goes to the reviewer.
@@ -102,12 +102,14 @@ function insideProject(cwd: string, path: string) {
 }
 
 // The text rules match against: the command, the file path, or "server.tool".
-export function subjectOf(tool: Tool, input: any): string {
+export function subjectOf(tool: Tool, input: unknown): string {
+  const field = (key: string) => fieldOf(input, key);
+  const action = field("action");
   if (tool.name === "shell")
-    return input?.action && input.action !== "run" ? `${input.action} ${input.id}` : (input?.command ?? "");
-  if (tool.name === "mcp_call") return `${input?.server}.${input?.tool}`;
-  if (input?.path) return String(input.path);
-  if (tool.name === "install_skill") return String(input?.source ?? "");
+    return action && action !== "run" ? `${String(action)} ${String(field("id"))}` : String(field("command") ?? "");
+  if (tool.name === "mcp_call") return `${String(field("server"))}.${String(field("tool"))}`;
+  if (field("path")) return String(field("path"));
+  if (tool.name === "install_skill") return String(field("source") ?? "");
   return "";
 }
 
@@ -153,7 +155,7 @@ function shellRule(rules: PermissionRules, line: string): RuleValue | null {
 }
 
 // The question an approval prompt asks, such as "Run git push origin main?".
-export function approvalQuestion(tool: Tool, input: any) {
+export function approvalQuestion(tool: Tool, input: unknown) {
   const subject = subjectOf(tool, input);
   switch (tool.name) {
     case "shell":
@@ -206,9 +208,10 @@ export class Permissions {
     return commands !== null && commands.length > 0 && commands.every((words) => matches(words.join(" ")));
   }
 
-  decide(tool: Tool, input: any): Decision {
+  decide(tool: Tool, input: unknown): Decision {
     const subject = subjectOf(tool, input);
-    const runsCommand = tool.name === "shell" && (input?.action ?? "run") === "run";
+    const action = fieldOf(input, "action");
+    const runsCommand = tool.name === "shell" && (action ?? "run") === "run";
     const rule = runsCommand ? shellRule(this.rules, subject) : ruleFor(this.rules, tool.name, subject);
     if (rule === "deny") return { action: "deny", subject, reason: "a deny rule in ~/.clue/settings.json" };
     if (tool.readOnly) return { action: "run", subject };
@@ -227,7 +230,7 @@ export class Permissions {
       };
     }
     if (tool.name === "shell") {
-      if (input?.action === "interact" || input?.action === "stop") return { action: "run", subject };
+      if (action === "interact" || action === "stop") return { action: "run", subject };
       return commandIsRoutine(subject)
         ? { action: "run", subject }
         : { action: "review", subject, reason: "unrecognized command" };
@@ -278,6 +281,9 @@ export function chooseReviewer(review: ReviewSetting = {}, openrouterKey?: strin
 const reviewerName = ({ provider, model }: Reviewer) =>
   provider === "openrouter" ? "jev" : modelLabel(model).split(" ")[0];
 
+// What OpenRouter's decisions endpoint sends back. Every field is checked before use.
+type JevReply = { error?: { message?: string }; answers?: { decision?: { choice?: unknown } } };
+
 async function askJev(model: string, state: object, signal: AbortSignal): Promise<Verdict> {
   const response = await fetch(`${process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai"}/api/alpha/decisions`, {
     method: "POST",
@@ -295,7 +301,7 @@ async function askJev(model: string, state: object, signal: AbortSignal): Promis
       },
     }),
   });
-  const body = (await response.json().catch(() => null)) as any;
+  const body = (await response.json().catch(() => null)) as JevReply | null;
   if (!response.ok || body?.error) throw new Error(body?.error?.message ?? `Jev returned ${response.status}`);
   const choice = body?.answers?.decision?.choice;
   if (choice !== "clear" && choice !== "caution") throw new Error(`Jev answered ${choice}`);

@@ -41,7 +41,7 @@ class StoredAuthProvider implements OAuthClientProvider {
   ) {}
   private read(): StoredAuth {
     try {
-      return JSON.parse(readFileSync(authFile(this.name), "utf8"));
+      return JSON.parse(readFileSync(authFile(this.name), "utf8")) as StoredAuth;
     } catch {
       return {};
     }

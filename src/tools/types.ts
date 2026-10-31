@@ -41,26 +41,32 @@ export type ToolContext = {
 export type ToolKind =
   "read" | "search" | "edit" | "write" | "command" | "web" | "subagent" | "skill" | "mcp" | "question" | "result";
 
-export type Tool<Input = any> = {
+// `Input` is the shape `validate` lets through. Tools with different inputs share one list
+// of `Tool`, whose input is `unknown`. `label` and `run` are methods because TypeScript
+// lets a method in that list take a narrower input.
+export type Tool<Input = unknown> = {
   name: string;
   description: string;
   schema: Anthropic.Beta.Messages.BetaTool.InputSchema;
-  kind: ToolKind | ((input: Input) => ToolKind);
+  kind: ToolKind;
   // Runs without permission checks in every mode.
   readOnly?: boolean;
-  // Present-tense label while running and past-tense label once done.
-  label: (input: Input, done: boolean) => string;
+  // Present-tense label while running and past-tense label once done. It also draws the
+  // input still streaming in, so a field can be missing.
+  label(input: Input, done: boolean): string;
   // Returns an error message when the input is unusable.
-  validate: (input: any) => string | null;
-  run: (input: Input, context: ToolContext) => Promise<ToolOutput>;
+  validate: (input: unknown) => string | null;
+  run(input: Input, context: ToolContext): Promise<ToolOutput>;
 };
 
-export const toolKind = (tool: Tool, input: unknown) =>
-  typeof tool.kind === "function" ? tool.kind(input) : tool.kind;
+// A field of input nobody has checked yet, such as a tool call's arguments.
+export function fieldOf(input: unknown, key: string): unknown {
+  return input !== null && typeof input === "object" ? (input as Record<string, unknown>)[key] : undefined;
+}
 
 // Checks that every required field exists and has the declared primitive type.
 export function checkFields(
-  input: any,
+  input: unknown,
   fields: Record<
     string,
     "string" | "number" | "boolean" | "object" | "array" | "string?" | "number?" | "boolean?" | "object?" | "array?"
@@ -70,7 +76,7 @@ export function checkFields(
   for (const [key, spec] of Object.entries(fields)) {
     const optional = spec.endsWith("?");
     const type = spec.replace("?", "");
-    const value = input[key];
+    const value = fieldOf(input, key);
     if (value === undefined || value === null) {
       if (optional) continue;
       return `Missing required field "${key}".`;
