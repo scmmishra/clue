@@ -44,7 +44,7 @@ clue warns at startup if the file has a problem. If the JSON is broken, clue use
 | `anthropic` | `haiku` | Any Claude model, such as `sonnet` |
 | `openrouter` | `jev` | A pinned Jev, such as `typesafe/jev-1.14` |
 
-Both keys are optional. With no `review`, clue uses Jev if `OPENROUTER_API_KEY` is set, and Haiku otherwise. With `"provider": "anthropic"`, reviews never reach OpenRouter.
+Both keys are optional. With no `review`, clue uses Haiku. To use Jev, set `"provider": "openrouter"` or `"model": "jev"`, and `OPENROUTER_API_KEY`.
 
 If the reviewer fails or the setting can't work, Claude Haiku at low effort reviews instead. If that fails too, clue asks you, or holds the action in `clue ask`.
 

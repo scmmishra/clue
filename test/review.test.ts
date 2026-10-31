@@ -12,7 +12,7 @@ const JEV = { provider: "openrouter", model: "typesafe/jev-1.14" } as const;
 
 test.each([
   ["nothing set, no key", undefined, undefined, HAIKU],
-  ["nothing set, with a key", undefined, KEY, JEV],
+  ["nothing set, with a key", undefined, KEY, HAIKU],
   ["anthropic alone, with a key", { provider: "anthropic" }, KEY, HAIKU],
   ["openrouter alone", { provider: "openrouter" }, KEY, JEV],
   ["a short model name", { provider: "anthropic", model: "sonnet" }, undefined, SONNET],

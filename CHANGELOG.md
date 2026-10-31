@@ -6,6 +6,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 - Pasting an image from the clipboard is about 9x faster, around 30 ms instead of 290 ms. clue reads the image directly instead of starting `osascript`.
 - `auto` mode runs more everyday commands without a review: `cd` into the project, `find` without `-exec` or `-delete`, `sed -n '1,20p'`, `test`, `seq`, checksums, version checks such as `node --version`, `bun check` and `bun fmt`. A command can also end with `2>&1` or `>/dev/null`, or start with `timeout 60`, `time`, `env -u NAME` or a variable such as `NO_COLOR=1`.
+- Claude Haiku reviews actions by default, even when `OPENROUTER_API_KEY` is set. To keep Jev, set `"review": { "provider": "openrouter" }` in `settings.json`.
 
 ## 0.8.0
 

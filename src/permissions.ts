@@ -286,8 +286,8 @@ export class Permissions {
 }
 
 // ---------------------------------------------------------------------------
-// Reviewer: the `review` setting picks one. Without it, Jev through OpenRouter when
-// OPENROUTER_API_KEY is set, otherwise Claude Haiku. Whichever it is, Haiku at low effort
+// Reviewer: the `review` setting picks one. Without it, Claude Haiku. Jev through
+// OpenRouter only when the setting asks for it. Whichever it is, Haiku at low effort
 // takes over if it breaks. Anthropic sees the conversation anyway, so that never leaks
 // anything, and nothing falls back the other way.
 
@@ -311,8 +311,7 @@ const REVIEW_TIMEOUT_MS = 20_000;
 export function chooseReviewer(review: ReviewSetting = {}, openrouterKey?: string): Reviewer {
   const { model } = review;
   const jev = model?.match(JEV);
-  const provider =
-    review.provider ?? (model ? (jev ? "openrouter" : "anthropic") : openrouterKey ? "openrouter" : "anthropic");
+  const provider = review.provider ?? (jev ? "openrouter" : "anthropic");
   if (provider === "openrouter") {
     if (!openrouterKey) throw new Error("OPENROUTER_API_KEY isn't set");
     if (model && !jev) throw new Error(`OpenRouter can't run ${model}`);
