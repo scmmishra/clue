@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CONTINUE_PROMPT, Session, type MessageParam, type TurnRecord } from "../src/session";
 import { sessionEntries } from "../src/ui/replay";
-import { RewindPicker, rewindReport, type RewindRow } from "../src/ui/rewind";
+import { RewindPicker, rewindReport, sentAt, type RewindRow } from "../src/ui/rewind";
 import { usageReport } from "../src/ui/usage";
 
 const usage = { input: 100, output: 10, cacheRead: 0, cacheWrite: 0, webSearches: 0 };
@@ -123,28 +123,75 @@ const shown = (picker: RewindPicker) => picker.frame().map((line) => Bun.stripAN
 test("each row says what a rewind can do", () => {
   const lines = shown(
     new RewindPicker([
-      row("edited", { files: 3 }),
-      row("both", { files: 1, ranShell: true }),
       row("resumed", { restorable: false }),
+      row("both", { files: 1, ranShell: true }),
+      row("edited", { files: 3 }),
     ]),
   );
-  expect(lines[1]).toContain("› edited");
-  expect(lines[1]).toContain("3 files");
+  expect(lines[1]).toContain("conversation only");
   expect(lines[2]).toContain("1 file · shell");
-  expect(lines[3]).toContain("conversation only");
+  expect(lines[3]).toContain("› edited");
+  expect(lines[3]).toContain("3 files");
   expect(lines.at(-1)).toContain("enter rewind · tab keep files · esc cancel");
 });
 
-test("arrows move and wrap, and each choice carries what it means", () => {
-  const picker = new RewindPicker([row("new"), row("old")]);
-  picker.handle({ name: "down" });
+test("the cursor starts on the newest prompt, up goes back, and arrows wrap", () => {
+  const picker = new RewindPicker([row("old"), row("new")]);
+  expect(picker.turnsDropped).toBe(1);
+  picker.handle({ name: "up" });
   expect(picker.handle({ name: "enter" })).toMatchObject({ point: { text: "old" }, keepFiles: false, force: false });
   expect(picker.turnsDropped).toBe(2);
   expect(picker.handle({ name: "tab" })).toMatchObject({ keepFiles: true });
-  picker.handle({ name: "down" });
+  picker.handle({ name: "up" });
   expect(picker.turnsDropped).toBe(1);
   expect(picker.handle({ name: "escape" })).toBe("cancel");
   expect(picker.handle({ name: "char", text: "x" })).toBeNull();
+});
+
+test("a long list opens on the newest prompts and scrolls only past the window's edge", () => {
+  const picker = new RewindPicker(Array.from({ length: 15 }, (_, index) => row(`p${index}`)));
+  const prompts = () => shown(picker).filter((line) => /\bp\d+\b/.test(line));
+  const first = () => prompts()[0].match(/p\d+/)![0];
+  expect(prompts()).toHaveLength(10);
+  expect(first()).toBe("p5");
+  expect(prompts().at(-1)).toContain("› p14");
+  for (let step = 0; step < 9; step++) picker.handle({ name: "up" });
+  expect(prompts()[0]).toContain("› p5");
+  picker.handle({ name: "up" });
+  expect(prompts()[0]).toContain("› p4");
+  picker.handle({ name: "down" });
+  expect(first()).toBe("p4");
+});
+
+test("recent prompts show minutes ago, older ones the time, and other days the date too", () => {
+  const now = new Date(2026, 9, 31, 21, 20).getTime();
+  const at = (...parts: [number, number, number, number, number]) => new Date(...parts);
+  const time = (date: Date) => date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  expect(sentAt(now - 20_000, now)).toBe("now");
+  expect(sentAt(now - 12 * 60_000, now)).toBe("12m ago");
+  expect(sentAt(now - 29 * 60_000, now)).toBe("29m ago");
+  const earlier = at(2026, 9, 31, 18, 5);
+  expect(sentAt(earlier.getTime(), now)).toBe(time(earlier));
+  const yesterday = at(2026, 9, 30, 23, 50);
+  expect(sentAt(yesterday.getTime(), now)).toBe(
+    `${yesterday.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${time(yesterday)}`,
+  );
+  const lastYear = at(2025, 11, 31, 9, 0);
+  expect(sentAt(lastYear.getTime(), now)).toContain("2025");
+});
+
+test("prompts from the same hours get different times, in one column", () => {
+  const now = Date.now();
+  const rows = [row("a", {}), row("b", {}), row("c", {})];
+  rows[0].point.at = now - 3 * 3_600_000;
+  rows[1].point.at = now - 3 * 3_600_000 + 7 * 60_000;
+  rows[2].point.at = now - 5 * 60_000;
+  const lines = shown(new RewindPicker(rows)).slice(1, 4);
+  const times = rows.map((r) => sentAt(r.point.at!, now));
+  expect(new Set(times).size).toBe(3);
+  lines.forEach((line, index) => expect(line).toContain(times[index]));
+  const column = lines.map((line, index) => line.indexOf(times[index]));
+  expect(new Set(column).size).toBe(1);
 });
 
 test("a conflict shows the files, and enter then overwrites", () => {

@@ -3,7 +3,6 @@ import type { RewindPoint } from "../session";
 import { display } from "../tools/files";
 import { columns, rows as terminalRows, style, truncate } from "./ansi";
 import { MAX_ROWS } from "./file-mention";
-import { ago } from "./picker";
 import type { Key } from "./screen";
 
 export type RewindRow = { point: RewindPoint; files: number; ranShell: boolean; restorable: boolean };
@@ -12,21 +11,47 @@ export type RewindChoice = { point: RewindPoint; keepFiles: boolean; force: bool
 const PROMPT_WIDTH = 36;
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
+const RELATIVE_MINUTES = 30;
+
+// When a prompt was sent. Recent ones are relative, the rest are clock times, so prompts
+// from the same hours still read in order. A prompt from another day also has its date.
+export function sentAt(at: number, now = Date.now()) {
+  const minutes = Math.floor((now - at) / 60_000);
+  if (minutes < 1) return "now";
+  if (minutes < RELATIVE_MINUTES) return `${minutes}m ago`;
+  const date = new Date(at);
+  const today = new Date(now);
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (date.toDateString() === today.toDateString()) return time;
+  const year = date.getFullYear() === today.getFullYear() ? undefined : "numeric";
+  return `${date.toLocaleDateString(undefined, { month: "short", day: "numeric", year })} ${time}`;
+}
+
 function details({ files, ranShell, restorable }: RewindRow) {
   if (!restorable) return "conversation only";
   return [files ? plural(files, "file") : "", ranShell ? "shell" : ""].filter(Boolean).join(" · ");
 }
 
-// The list `esc esc` opens under the input, newest prompt first.
+// The list `esc esc` opens under the input, oldest prompt first, like the scrollback above it.
+// The cursor starts on the newest prompt, at the bottom.
 export class RewindPicker {
-  private index = 0;
+  private index: number;
+  private top = Infinity;
   private changed: string[] | null = null;
+  // Set when the list opens, so the column doesn't change width while it is open.
+  private times: string[];
+  private timeWidth: number;
 
-  constructor(private rows: RewindRow[]) {}
+  constructor(private rows: RewindRow[]) {
+    this.index = rows.length - 1;
+    const now = Date.now();
+    this.times = rows.map((row) => (row.point.at ? sentAt(row.point.at, now) : ""));
+    this.timeWidth = Math.max(0, ...this.times.map((time) => time.length));
+  }
 
   // Every prompt from the selected one to the newest is dropped.
   get turnsDropped() {
-    return this.index + 1;
+    return this.rows.length - this.index;
   }
 
   conflict(paths: string[]) {
@@ -49,11 +74,13 @@ export class RewindPicker {
   frame() {
     const max = columns() - 1;
     const room = Math.max(3, Math.min(MAX_ROWS, terminalRows() - 8));
-    const top = Math.max(0, this.index - room + 1);
+    // Scroll only when the cursor leaves the window.
+    this.top = Math.max(0, Math.min(this.top, this.index, this.rows.length - room), this.index - room + 1);
+    const top = this.top;
     const lines = [`  ${style.muted("Rewind to before:")}`];
     this.rows.slice(top, top + room).forEach((row, offset) => {
       const prompt = truncate(row.point.text.replace(/\s+/g, " ").trim(), PROMPT_WIDTH).padEnd(PROMPT_WIDTH);
-      const when = row.point.at ? ago(row.point.at).padEnd(9) : " ".repeat(9);
+      const when = this.times[offset + top].padEnd(this.timeWidth);
       const text = truncate(`${prompt} ${when} ${details(row)}`.trimEnd(), max - 2);
       lines.push(offset + top === this.index ? style.brand(`› ${style.accent(text)}`) : style.muted(`  ${text}`));
     });

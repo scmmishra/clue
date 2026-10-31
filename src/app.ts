@@ -353,9 +353,11 @@ export class App {
     const points = this.session.rewindPoints;
     if (!points.length) return this.print([`  ${style.muted("Nothing to rewind.")}`, ""]);
     const { undo } = this.agent;
-    const rows = points
-      .map((point) => ({ point, ...undo.summary(point.transcript), restorable: undo.covers(point.transcript) }))
-      .reverse();
+    const rows = points.map((point) => ({
+      point,
+      ...undo.summary(point.transcript),
+      restorable: undo.covers(point.transcript),
+    }));
     this.editor.closePicker();
     this.rewindPicker = new RewindPicker(rows);
     this.screen.refresh();

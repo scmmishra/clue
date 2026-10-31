@@ -2,6 +2,11 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- Rewind lists prompts oldest first, like the scrollback. The cursor starts on the newest prompt at the bottom, and `up` goes further back.
+- Rewind shows when each prompt was sent: minutes ago for the last 30 minutes, then the time, and the date too for an earlier day. Before, prompts from the same hours all read `3h ago`.
+
 ## 0.7.4
 
 - `/model`, `/effort` and `/permissions` with no argument open a list you can choose from.
