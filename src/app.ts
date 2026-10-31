@@ -18,6 +18,7 @@ import { discoverSkills, type Skill } from "./tools/skills";
 import type { Question } from "./tools/types";
 import { duration, homePath, money, style } from "./ui/ansi";
 import { Editor, type Command } from "./ui/editor";
+import { listPaths } from "./ui/file-mention";
 import { clipboardImage, clipboardSupported } from "./ui/clipboard";
 import { findImagePaths } from "./ui/paste";
 import { pickSession } from "./ui/picker";
@@ -60,7 +61,11 @@ export type AppOptions = {
 export class App {
   private screen = new Screen();
   private keyboard = new Keyboard();
-  private editor = new Editor(COMMANDS);
+  private editor = new Editor(
+    COMMANDS,
+    () => listPaths(this.cwd),
+    () => this.screen.refresh(),
+  );
   private session: Session;
   private agent!: Agent;
   private mcp!: McpManager;
@@ -377,14 +382,14 @@ export class App {
       this.view?.notice("Interrupting…", "warn");
     };
     if (key.ctrl && key.name === "c") return interrupt();
-    if (key.name === "escape") {
+    if (key.name === "escape" && !this.editor.pickerOpen) {
       if (Date.now() - this.lastEscape < DOUBLE_PRESS_MS) return interrupt();
       this.lastEscape = Date.now();
       return;
     }
     this.hint = "";
     if (this.pasteKey(key)) return;
-    if (key.name === "up" && this.queued) return this.unqueue();
+    if (key.name === "up" && this.queued && !this.editor.pickerOpen) return this.unqueue();
     if (key.name === "tab" && !this.editor.hasCompletions) return this.queueDraft();
     if (this.editor.handle(key) === "submit") return this.queueDraft();
     this.screen.refresh();
@@ -411,7 +416,7 @@ export class App {
         this.print([
           ...COMMANDS.map((command) => `  ${style.accent(`/${command.name}`.padEnd(14))}${style.muted(command.description)}`),
           "",
-          `  ${style.muted("enter send · shift+enter, alt+enter or \\ newline · ↑↓ history · tab complete · ctrl+v paste image")}`,
+          `  ${style.muted("enter send · shift+enter, alt+enter or \\ newline · ↑↓ history · @ file · tab complete · ctrl+v paste image")}`,
           `  ${style.muted("while clue works: tab queue a message · ↑ edit it")}`,
           `  ${style.muted("esc esc or ctrl+c interrupt · ctrl+o detail · ctrl+d exit")}`,
           "",

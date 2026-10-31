@@ -68,6 +68,8 @@ clue
 
 Type what you want done and press Enter. `/help` lists the slash commands.
 
+To mention a file, type `@` and search. `Enter` adds the path to your message, and `Tab` opens a folder. Claude reads the file when it needs it.
+
 To add an image, paste or drag its file into the prompt. It shows as `[Image #1]`, and deleting that text removes the image. Paths to other files stay as text, and the model reads them with its tools. A terminal only passes on text, so for an image copied to the clipboard, press `ctrl+v` or run `/paste`. That works on macOS.
 
 While clue works, you can keep typing. `Tab` or `Enter` queues your message, and clue sends it when the turn ends. Only one message can wait. `↑` takes it back to edit, and interrupting the turn returns it to the input.

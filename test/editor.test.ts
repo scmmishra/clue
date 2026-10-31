@@ -178,3 +178,219 @@ test("only the newest 500 prompts are kept", () => {
     expect(editor.text).toBe("p10");
   });
 });
+
+const PATHS = ["README.md", "src/", "src/app.ts", "src/ui/", "src/ui/editor.ts"];
+const picking = (paths = PATHS) => new Editor([], async () => paths);
+const settle = () => Bun.sleep(5);
+const rowsOf = (editor: Editor) => editor.frame("status").lines.map((line) => Bun.stripANSI(line)).slice(2);
+
+test("typing @ loads the files and shows them under the input, without the status line", async () => {
+  const editor = picking();
+  typed(editor, "@");
+  await settle();
+  expect(rowsOf(editor)).toEqual(["› README.md", "  src/", "  src/app.ts", "  src/ui/", "  src/ui/editor.ts"]);
+});
+
+test("the picker tells the app when the list arrives", async () => {
+  let told = 0;
+  const editor = new Editor([], async () => PATHS, () => told++);
+  typed(editor, "@");
+  await settle();
+  expect(told).toBe(1);
+});
+
+test("typing filters the list", async () => {
+  const editor = picking();
+  typed(editor, "@edit");
+  await settle();
+  expect(rowsOf(editor)).toEqual(["› src/ui/editor.ts"]);
+});
+
+test("enter mentions the selected file and keeps the message open", async () => {
+  const editor = picking();
+  typed(editor, "see @app");
+  await settle();
+  expect(editor.handle({ name: "enter" })).toBe("handled");
+  expect(editor.text).toBe("see @src/app.ts ");
+  expect(editor.cursor).toBe(editor.text.length);
+  expect(editor.pickerOpen).toBe(false);
+});
+
+test("arrows move the selection", async () => {
+  const editor = picking();
+  typed(editor, "@");
+  await settle();
+  editor.handle({ name: "down" });
+  editor.handle({ name: "down" });
+  editor.handle({ name: "up" });
+  editor.handle({ name: "enter" });
+  expect(editor.text).toBe("@src/ ");
+});
+
+test("the selection wraps and stays on the list", async () => {
+  const editor = picking();
+  typed(editor, "@");
+  await settle();
+  editor.handle({ name: "up" });
+  editor.handle({ name: "enter" });
+  expect(editor.text).toBe("@src/ui/editor.ts ");
+});
+
+test("a new query starts from the top", async () => {
+  const editor = picking();
+  typed(editor, "@");
+  await settle();
+  editor.handle({ name: "down" });
+  typed(editor, "e");
+  editor.handle({ name: "enter" });
+  expect(editor.text).toBe("@src/ui/editor.ts ");
+});
+
+test("tab opens a folder and searches inside it", async () => {
+  const editor = picking();
+  typed(editor, "@");
+  await settle();
+  editor.handle({ name: "down" });
+  editor.handle({ name: "tab" });
+  expect(editor.text).toBe("@src/");
+  expect(rowsOf(editor)).toEqual(["› src/app.ts", "  src/ui/", "  src/ui/editor.ts"]);
+});
+
+test("tab on a file mentions it", async () => {
+  const editor = picking();
+  typed(editor, "@read");
+  await settle();
+  editor.handle({ name: "tab" });
+  expect(editor.text).toBe("@README.md ");
+});
+
+test("a path with spaces is quoted", async () => {
+  const editor = picking(["my file.ts"]);
+  typed(editor, "@my");
+  await settle();
+  editor.handle({ name: "enter" });
+  expect(editor.text).toBe('@"my file.ts" ');
+});
+
+test("a mention replaces the whole word, not only what's before the cursor", async () => {
+  const editor = picking();
+  typed(editor, "@app.oldname rest");
+  editor.cursor = 4;
+  await settle();
+  editor.handle({ name: "enter" });
+  expect(editor.text).toBe("@src/app.ts  rest");
+});
+
+test("escape closes the picker, and enter then sends", async () => {
+  const editor = picking();
+  typed(editor, "@app");
+  await settle();
+  editor.handle({ name: "escape" });
+  expect(editor.pickerOpen).toBe(false);
+  expect(editor.handle({ name: "enter" })).toBe("submit");
+});
+
+test("a closed picker opens again at the next @", async () => {
+  const editor = picking();
+  typed(editor, "@app");
+  await settle();
+  editor.handle({ name: "escape" });
+  typed(editor, " @");
+  await settle();
+  expect(editor.pickerOpen).toBe(true);
+});
+
+test("no matches means enter sends, and the status line stays", async () => {
+  const editor = picking();
+  typed(editor, "@zzqq");
+  await settle();
+  expect(editor.pickerOpen).toBe(false);
+  expect(editor.handle({ name: "enter" })).toBe("submit");
+  expect(editor.frame("status").lines.at(-1)).toBe("status");
+});
+
+test("an email address never opens the picker", async () => {
+  const editor = picking();
+  typed(editor, "a@b");
+  await settle();
+  expect(editor.pickerOpen).toBe(false);
+});
+
+test("the list is read fresh for each new mention", async () => {
+  let reads = 0;
+  const editor = new Editor([], async () => {
+    reads++;
+    return PATHS;
+  });
+  typed(editor, "@ab");
+  await settle();
+  expect(reads).toBe(1);
+  typed(editor, " @");
+  await settle();
+  expect(reads).toBe(2);
+});
+
+test("a failed read leaves the input working", async () => {
+  const editor = new Editor([], async () => {
+    throw new Error("no git");
+  });
+  typed(editor, "@a");
+  await settle();
+  expect(editor.pickerOpen).toBe(false);
+  expect(editor.handle({ name: "enter" })).toBe("submit");
+});
+
+test("only ten rows show, and the selection scrolls them", async () => {
+  const many = Array.from({ length: 15 }, (_, index) => `f${String(index).padStart(2, "0")}`);
+  const editor = picking(many);
+  typed(editor, "@");
+  await settle();
+  expect(rowsOf(editor)).toHaveLength(10);
+  expect(rowsOf(editor)[0]).toBe("› f00");
+  for (let index = 0; index < 12; index++) editor.handle({ name: "down" });
+  expect(rowsOf(editor)).toContain("› f12");
+  expect(rowsOf(editor)).toHaveLength(10);
+});
+
+test("a long path keeps its end, on one row", async () => {
+  const path = `${"deep/".repeat(40)}name.ts`;
+  const editor = picking([path]);
+  typed(editor, "@");
+  await settle();
+  const [row] = rowsOf(editor);
+  expect(row.endsWith("name.ts")).toBe(true);
+  expect(Bun.stringWidth(row)).toBeLessThanOrEqual(79);
+});
+
+test("a message from history doesn't open the picker, so enter sends it", async () => {
+  const editor = picking();
+  editor.remember("see @src/app.ts");
+  editor.handle({ name: "up" });
+  await settle();
+  expect(editor.pickerOpen).toBe(false);
+  expect(editor.handle({ name: "enter" })).toBe("submit");
+});
+
+test("a draft taken back from the queue doesn't open the picker", async () => {
+  const editor = picking();
+  editor.restore("see @src/app.ts", []);
+  await settle();
+  expect(editor.pickerOpen).toBe(false);
+});
+
+test("typing in a closed mention keeps it closed", async () => {
+  const editor = picking();
+  typed(editor, "@app");
+  await settle();
+  editor.handle({ name: "escape" });
+  typed(editor, ".ts");
+  expect(editor.pickerOpen).toBe(false);
+});
+
+test("the selection marker moves with the arrow keys", async () => {
+  const editor = picking();
+  typed(editor, "@");
+  await settle();
+  editor.handle({ name: "down" });
+  expect(rowsOf(editor).slice(0, 2)).toEqual(["  README.md", "› src/"]);
+});

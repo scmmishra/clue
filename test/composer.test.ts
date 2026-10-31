@@ -492,3 +492,86 @@ test("a terminal already inside tmux gets no kitty request", async () => {
   expect(clue.raw()).not.toContain("\x1b[>1u");
   expect(clue.raw()).toContain("\x1b[>4;2m");
 }, 25_000);
+
+test("@ picks a file in the real app, and the prompt carries its path", async () => {
+  const cwd = scratch("clue-mention-");
+  writeFileSync(join(cwd, "notes.md"), "hello");
+  writeFileSync(join(cwd, "other.ts"), "");
+  const clue = await startClue({ cwd });
+  await clue.type("read @not");
+  await clue.seen("notes.md");
+  await clue.type(ENTER);
+  await clue.type("please");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(clue.wasSent("read @notes.md please")).toBe(true);
+}, 25_000);
+
+test("the picker works while a turn runs, and takes up, tab and enter from the queue", async () => {
+  const cwd = scratch("clue-mention-run-");
+  writeFileSync(join(cwd, "notes.md"), "hello");
+  const clue = await startClue({ cwd, delay: 30 });
+  await clue.type("first");
+  await clue.type(ENTER);
+  await clue.working();
+  await clue.type("@not");
+  await clue.seen("notes.md");
+  await clue.type(TAB);
+  await clue.type("now");
+  await clue.type(TAB);
+  await clue.seen("Queued: @notes.md now");
+  await clue.turns(2);
+  expect(clue.wasSent("@notes.md now")).toBe(true);
+}, 25_000);
+
+test("escape in the picker during a turn doesn't count toward an interrupt", async () => {
+  const cwd = scratch("clue-mention-esc-");
+  writeFileSync(join(cwd, "notes.md"), "hello");
+  const clue = await startClue({ cwd, delay: 30 });
+  await clue.type("first");
+  await clue.type(ENTER);
+  await clue.working();
+  await clue.type("@not");
+  await clue.seen("notes.md");
+  await clue.type("\x1b");
+  await clue.type("\x1b");
+  await clue.turns(1);
+  expect(clue.screen()).not.toContain("Interrupting");
+}, 25_000);
+
+test("arrow keys move the picker selection in the real app", async () => {
+  const cwd = scratch("clue-mention-arrows-");
+  for (const name of ["a.md", "b.md", "c.md", "d.md"]) writeFileSync(join(cwd, name), "");
+  const clue = await startClue({ cwd });
+  await clue.type("@");
+  await clue.seen("d.md");
+  await clue.type("\x1b[B");
+  await clue.type("\x1b[B");
+  await clue.type("\x1b[A");
+  await clue.type("\x1b[B");
+  await clue.type(ENTER);
+  await clue.type("go");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(clue.wasSent("@c.md go")).toBe(true);
+}, 25_000);
+
+test("arrow keys that report num lock move the picker selection", async () => {
+  const cwd = scratch("clue-mention-numlock-");
+  for (const name of ["a.md", "b.md"]) writeFileSync(join(cwd, name), "");
+  const clue = await startClue({ cwd });
+  await clue.type("@");
+  await clue.seen("› a.md");
+  await clue.type("\x1b[1;129B");
+  await clue.seen("› b.md");
+}, 25_000);
+
+test("the selected row is marked on the screen, without relying on colour", async () => {
+  const cwd = scratch("clue-mention-mark-");
+  for (const name of ["a.md", "b.md"]) writeFileSync(join(cwd, name), "");
+  const clue = await startClue({ cwd, env: { NO_COLOR: "1" } });
+  await clue.type("@");
+  await clue.seen("› a.md");
+  await clue.type("\x1b[B");
+  await clue.seen("› b.md");
+}, 25_000);

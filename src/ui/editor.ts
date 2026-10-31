@@ -1,13 +1,15 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { CLUE_HOME, ensureDir, paths } from "../config";
 import type { PromptImage } from "../session";
-import { columns, style, width } from "./ansi";
+import { columns, rows, style, width } from "./ansi";
+import { FilePicker, MAX_ROWS, mentionText } from "./file-mention";
 import type { Key, LiveFrame } from "./screen";
 
 const PROMPT = "┃ ";
 const HISTORY_LIMIT = 500;
 const PASTE_FOLD_LINES = 12;
 const IMAGE_PLACEHOLDER = /\[Image #(\d+)\]/g;
+const PICKER_MIN_ROWS = 3;
 
 // Splits a line into rows of at most `room` columns. An escape code in pasted text can make
 // the native slice differ from the source, and then one character moves on instead.
@@ -39,8 +41,14 @@ export class Editor {
   // comes back from the queue can't clash with what was typed since.
   private attached = new Map<number, PromptImage>();
   private nextImage = 1;
+  private picker: FilePicker;
 
-  constructor(private commands: Command[]) {
+  constructor(
+    private commands: Command[],
+    readPaths: () => Promise<string[]> = async () => [],
+    onPathsRead: () => void = () => {},
+  ) {
+    this.picker = new FilePicker(readPaths, onPathsRead);
     try {
       if (existsSync(paths.history)) {
         // parseChunk keeps what comes before a damaged line.
@@ -70,7 +78,42 @@ export class Editor {
   }
 
   get hasCompletions() {
-    return this.matches().length > 0;
+    return this.matches().length > 0 || this.pickerOpen;
+  }
+
+  get pickerOpen() {
+    return this.picks().length > 0;
+  }
+
+  private picks() {
+    this.picker.update(this.text, this.cursor);
+    return this.picker.matches;
+  }
+
+  // A draft that comes back already holds its mentions, so it doesn't open the picker.
+  private closePicker() {
+    this.picker.update(this.text, this.cursor);
+    this.picker.close();
+  }
+
+  private pickKey(key: Key): "handled" | null {
+    if (key.name === "up" || (key.ctrl && key.name === "p")) this.picker.move(-1);
+    else if (key.name === "down" || (key.ctrl && key.name === "n")) this.picker.move(1);
+    else if (key.name === "escape") this.picker.close();
+    else if (key.name === "enter" || key.name === "tab") this.acceptPick(key.name === "tab");
+    else return null;
+    return "handled";
+  }
+
+  // Tab on a folder keeps the mention open, so the search continues inside the folder.
+  private acceptPick(openFolder: boolean) {
+    const { mention, matches, index } = this.picker;
+    if (!mention) return;
+    const path = matches[index];
+    const written = mentionText(path);
+    const value = openFolder && path.endsWith("/") ? written.replace(/"$/, "") : `${written} `;
+    this.text = this.text.slice(0, mention.start) + value + this.text.slice(mention.end);
+    this.cursor = mention.start + value.length;
   }
 
   // Adds an image at the cursor, shown as a placeholder.
@@ -103,6 +146,7 @@ export class Editor {
     this.cursor = this.text.length;
     this.historyIndex = -1;
     this.completionIndex = 0;
+    this.closePicker();
   }
 
   private placeholderFor(image: PromptImage) {
@@ -154,6 +198,14 @@ export class Editor {
 
   // Returns "submit" when Enter should send the text.
   handle(key: Key): "submit" | "handled" | "ignored" {
+    const picked = this.pickerOpen ? this.pickKey(key) : null;
+    if (picked) return picked;
+    const result = this.edit(key);
+    this.picker.update(this.text, this.cursor);
+    return result;
+  }
+
+  private edit(key: Key): "submit" | "handled" | "ignored" {
     switch (key.name) {
       case "char":
         this.insert(key.text ?? "");
@@ -290,11 +342,12 @@ export class Editor {
       } else this.text = this.history[this.historyIndex];
     }
     this.cursor = this.text.length;
+    this.closePicker();
     return "handled";
   }
 
   // The input as live lines, with the cursor position. `footer` goes under it,
-  // after a blank line, unless command completions take its place.
+  // after a blank line, unless the file picker or command completions take its place.
   frame(footer: string): LiveFrame {
     const max = columns() - 1;
     const prompt = style.brand(PROMPT);
@@ -337,8 +390,16 @@ export class Editor {
       cursorCol = width(PROMPT) + width(logical.at(-1) ?? "");
     }
     const matches = this.matches();
+    const picks = this.picks();
     lines.push("");
-    if (matches.length) {
+    if (picks.length) {
+      const room = Math.max(PICKER_MIN_ROWS, Math.min(MAX_ROWS, rows() - lines.length - 2));
+      const top = Math.max(0, this.picker.index - room + 1);
+      picks.slice(top, top + room).forEach((path, offset) => {
+        const shown = width(path) > max - 2 ? `…${Bun.sliceAnsi(path, 3 - max)}` : path;
+        lines.push(offset + top === this.picker.index ? style.brand(`› ${style.accent(shown)}`) : style.muted(`  ${shown}`));
+      });
+    } else if (matches.length) {
       const size = Math.max(...matches.map((command) => command.name.length)) + 3;
       for (const [index, command] of matches.slice(0, 8).entries()) {
         const active = index === this.completionIndex % matches.length;
