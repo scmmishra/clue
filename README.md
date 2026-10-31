@@ -43,7 +43,7 @@ clue doctor                 # check your setup
 | Topic | Page |
 | --- | --- |
 | Install and sign in | [Quick start](https://clue.shivam.dev/docs) |
-| `@` file mentions, images and queued messages | [Prompts](https://clue.shivam.dev/docs/prompts) |
+| `@` file mentions, images, steering and queued messages | [Prompts](https://clue.shivam.dev/docs/prompts) |
 | Resume and undo | [Sessions](https://clue.shivam.dev/docs/sessions) |
 | `/compact` and long sessions | [Compaction](https://clue.shivam.dev/docs/compaction) |
 | `clue ask` and JSON output | [Scripts](https://clue.shivam.dev/docs/scripts) |

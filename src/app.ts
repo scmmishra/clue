@@ -1,7 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import { Agent, type AgentEvents } from "./agent/loop";
+import { Agent, type AgentEvents, type Steer } from "./agent/loop";
 import { msSince, now, uptimeMs } from "./clock";
 import { describeError } from "./errors";
 import { gitBranch, prefetchGitStatus } from "./agent/context";
@@ -92,7 +92,9 @@ export class App {
   private settings: Settings;
   private branch: string | null = null;
   // The message waiting for the turn to end. Only one can wait.
-  private queued: { text: string; images: PromptImage[] } | null = null;
+  private queued: Steer | null = null;
+  // The message waiting to reach the running turn with the next tool results. More text adds to it.
+  private steering: Steer | null = null;
 
   constructor(private options: AppOptions) {
     this.settings = options.settings;
@@ -139,6 +141,14 @@ export class App {
       confirm: (label, subject, pattern) => view()?.confirm(label, subject, pattern) ?? Promise.resolve("no"),
       question: (question: Question) => view()?.question(question) ?? Promise.resolve(null),
       notice: (text, tone) => view()?.notice(text, tone),
+      steer: () => {
+        const steer = this.steering;
+        if (!steer) return null;
+        this.steering = null;
+        view()?.steered(steer.text);
+        this.screen.refresh();
+        return steer;
+      },
     };
   }
 
@@ -237,11 +247,19 @@ export class App {
         ? style.muted(this.hint)
         : statusLine(this.permissions.mode, this.settings.model, this.settings.effort, this.cwd, this.branch),
     );
-    if (!this.queued) return frame;
-    const preview = this.queued.text.replace(/\s+/g, " ").trim();
+    const preview = (message: Steer) => message.text.replace(/\s+/g, " ").trim();
+    const waiting = [
+      ...(this.queued ? [`Queued: ${preview(this.queued)}`] : []),
+      ...(this.steering ? [`Steering: ${preview(this.steering)}`] : []),
+    ];
+    if (!waiting.length) return frame;
+    // ↑ takes back the bottom line first.
+    const lines = waiting.map(
+      (line, index) => `  ${style.muted(line)}${index === waiting.length - 1 ? `  ${style.faint("↑ edit")}` : ""}`,
+    );
     return {
-      lines: [`  ${style.muted(`Queued: ${preview}`)}  ${style.faint("↑ edit")}`, ...frame.lines],
-      cursor: frame.cursor && { row: frame.cursor.row + 1, col: frame.cursor.col },
+      lines: [...lines, ...frame.lines],
+      cursor: frame.cursor && { row: frame.cursor.row + lines.length, col: frame.cursor.col },
     };
   };
 
@@ -342,10 +360,37 @@ export class App {
     this.screen.refresh();
   }
 
+  // Enter during a turn. A command can't steer, because Claude would get it as text, so it queues.
+  private steerDraft() {
+    const text = this.editor.text;
+    if (!text.trim()) return;
+    if (text.trim().startsWith("/")) return this.queueDraft();
+    const images = this.editor.images();
+    this.steering = this.steering
+      ? { text: `${this.steering.text}\n\n${text}`, images: [...this.steering.images, ...images] }
+      : { text, images };
+    this.editor.remember(text);
+    this.editor.clear();
+    this.screen.refresh();
+  }
+
+  // ↑ during a turn: the steering message comes back first, then the queued one.
+  private takeBack() {
+    if (this.steering) {
+      this.editor.restore(this.steering.text, this.steering.images);
+      this.steering = null;
+    } else if (this.queued) {
+      this.editor.restore(this.queued.text, this.queued.images);
+      this.queued = null;
+    }
+    this.screen.refresh();
+  }
+
+  // Both waiting messages back to the editor, so nothing typed is lost. Each goes in front
+  // of the text, so the steering message ends up first.
   private unqueue() {
-    if (!this.queued) return;
-    this.editor.restore(this.queued.text, this.queued.images);
-    this.queued = null;
+    for (const message of [this.queued, this.steering]) if (message) this.editor.restore(message.text, message.images);
+    this.queued = this.steering = null;
     this.screen.refresh();
   }
 
@@ -505,10 +550,12 @@ export class App {
     this.screen.status(turnStatus(turn), view.unattendedMs);
     this.view = null;
     this.turn = null;
-    // A turn that ended early leaves the queued message for the user to decide on.
-    const next = this.queued;
+    // A turn that ended early leaves the waiting messages for the user to decide on. A steering
+    // message that found no tool results to ride along with goes first, and the queued one waits for it.
+    const next = this.steering ?? this.queued;
     if (next && turn && turn.stop !== "interrupted") {
-      this.queued = null;
+      if (next === this.steering) this.steering = null;
+      else this.queued = null;
       return void this.submit(next.text, next.images);
     }
     this.unqueue();
@@ -531,9 +578,9 @@ export class App {
     }
     this.hint = "";
     if (this.cycleKey(key) || this.pasteKey(key)) return;
-    if (key.name === "up" && this.queued && !this.editor.pickerOpen) return this.unqueue();
+    if (key.name === "up" && (this.queued || this.steering) && !this.editor.pickerOpen) return this.takeBack();
     if (key.name === "tab" && !this.editor.hasCompletions) return this.queueDraft();
-    if (this.editor.handle(key) === "submit") return this.queueDraft();
+    if (this.editor.handle(key) === "submit") return this.steerDraft();
     this.screen.refresh();
   }
 
@@ -565,7 +612,7 @@ export class App {
           ),
           "",
           `  ${style.muted("enter send · shift+enter, alt+enter or \\ newline · ↑↓ history · @ file · tab complete · shift+tab permission mode · ctrl+v paste image")}`,
-          `  ${style.muted("while clue works: tab queue a message · ↑ edit it")}`,
+          `  ${style.muted("while clue works: enter steer the turn · tab queue for after it · ↑ edit")}`,
           `  ${style.muted("esc esc interrupt, or rewind when idle · ctrl+c interrupt · ctrl+o detail · ctrl+d exit")}`,
           "",
         ]);

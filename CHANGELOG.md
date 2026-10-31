@@ -7,6 +7,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - Rewind lists prompts oldest first, like the scrollback. The cursor starts on the newest prompt at the bottom, and `up` goes further back.
 - Rewind shows when each prompt was sent: minutes ago for the last 30 minutes, then the time, and the date too for an earlier day. Before, prompts from the same hours all read `3h ago`.
 - `clue -r` and `/resume` list only the sessions of the current folder, without a folder column. `clue -r <id or name>` still resumes a session from any folder.
+- `Enter` during a run steers the turn. clue sends the message with the next tool results, so Claude reads it before its next step, and the message shows where Claude got it. If the turn ends first, it goes as the next prompt. `Tab` still queues a message for after the turn. Before, both keys queued.
 
 ## 0.7.4
 

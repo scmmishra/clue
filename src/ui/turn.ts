@@ -441,6 +441,13 @@ export class TurnView implements AgentEvents {
     });
   }
 
+  // A steering message reached Claude. It goes in the scrollback after the tool runs it follows.
+  steered(text: string) {
+    this.foldTools();
+    this.screen.commit([...(this.wroteText ? [""] : []), ...promptLines(text), ""]);
+    this.wroteText = false;
+  }
+
   notice(text: string, tone: "info" | "warn" | "error" = "info") {
     const color = tone === "error" ? style.red : tone === "warn" ? style.orange : style.muted;
     this.screen.commit([`  ${color(text)}`]);

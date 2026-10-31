@@ -1,4 +1,4 @@
-import { promptText, type Session, type ToolRecord, type TurnRecord } from "../session";
+import { promptText, steerText, type Session, type ToolRecord, type TurnRecord } from "../session";
 import { columns, duration, money, rows, style, truncate, wrapLine } from "./ansi";
 import { renderMarkdown } from "./markdown";
 import type { Key } from "./screen";
@@ -6,6 +6,7 @@ import { footerLine, promptLines, toolTree, wrappedPromptLines } from "./turn";
 
 type Entry =
   | { type: "prompt"; text: string; at?: number }
+  | { type: "steer"; text: string }
   | { type: "text"; text: string }
   | { type: "tools"; tools: ToolRecord[] }
   | { type: "footer"; turn: TurnRecord };
@@ -22,7 +23,15 @@ export function sessionEntries(session: Session): Entry[] {
   for (const message of session.transcript) {
     if (message.role === "user") {
       const text = promptText(message);
-      if (text === null) continue; // tool results
+      if (text === null) {
+        // Tool results, maybe with a message that steered the turn.
+        const steer = steerText(message);
+        if (steer) {
+          flush();
+          entries.push({ type: "steer", text: steer });
+        }
+        continue;
+      }
       flush();
       if (prompt > 0 && session.turns[prompt - 1]) entries.push({ type: "footer", turn: session.turns[prompt - 1] });
       entries.push({ type: "prompt", text, at: session.turns[prompt]?.startedAt });
@@ -62,7 +71,7 @@ export function sessionEntries(session: Session): Entry[] {
 }
 
 function entryLines(entry: Entry, width: number) {
-  if (entry.type === "prompt") return [...promptLines(entry.text), ""];
+  if (entry.type === "prompt" || entry.type === "steer") return [...promptLines(entry.text), ""];
   if (entry.type === "text") return [...renderMarkdown(entry.text, width), ""];
   if (entry.type === "tools") return [...toolTree(entry.tools), ""];
   return [footerLine(entry.turn), ""];
@@ -135,7 +144,8 @@ export function detailLines(session: Session): string[] {
       lines.push(style.faint("─".repeat(width - 1)));
       if (entry.at) lines.push(style.faint(new Date(entry.at).toLocaleString()));
       lines.push(...wrappedPromptLines(entry.text), "");
-    } else if (entry.type === "text") lines.push(...renderMarkdown(entry.text, width), "");
+    } else if (entry.type === "steer") lines.push(...wrappedPromptLines(entry.text), "");
+    else if (entry.type === "text") lines.push(...renderMarkdown(entry.text, width), "");
     else if (entry.type === "tools") {
       for (const tool of entry.tools) lines.push(...toolDetail(tool, width), "");
     } else {

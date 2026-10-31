@@ -38,7 +38,12 @@ export type AgentEvents = {
   confirm(label: string, subject: string, pattern: string): Promise<ConfirmAnswer>;
   question(question: Question): Promise<string | null>;
   notice(text: string, tone?: "info" | "warn" | "error"): void;
+  // A message the user typed to steer the running turn, taken once. The loop sends it with
+  // the next tool results, so Claude reads it before its next step.
+  steer?(): Steer | null;
 };
+
+export type Steer = { text: string; images: PromptImage[] };
 
 export type AgentOptions = {
   cwd: string;
@@ -249,7 +254,12 @@ export class Agent {
 
       toolCount += toolUses.length;
       const results = await this.runTools(toolUses, prompt, signal, usage);
-      session.appendMessage({ role: "user", content: results });
+      // Text after the results is allowed, unless a server tool still waits for its result.
+      const steer = signal.aborted || awaitsServerTool(message.content) ? null : (events.steer?.() ?? null);
+      session.appendMessage({
+        role: "user",
+        content: steer ? [...results, { type: "text", text: steer.text }, ...steer.images] : results,
+      });
       if (signal.aborted) {
         stop = "interrupted";
         break;
@@ -549,6 +559,12 @@ function addUsage(total: Usage, usage: Anthropic.Beta.Messages.BetaUsage) {
   total.cacheRead += usage.cache_read_input_tokens ?? 0;
   total.cacheWrite += usage.cache_creation_input_tokens ?? 0;
   total.webSearches += usage.server_tool_use?.web_search_requests ?? 0;
+}
+
+// A server tool call with no result block yet. The next user message must then hold only tool results.
+export function awaitsServerTool(content: ContentBlock[]) {
+  const answered = new Set(content.flatMap((block) => ("tool_use_id" in block ? [block.tool_use_id] : [])));
+  return content.some((block) => block.type === "server_tool_use" && !answered.has(block.id));
 }
 
 function parseJson(text: string): Record<string, unknown> {

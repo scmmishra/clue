@@ -87,6 +87,15 @@ export function promptText(message: MessageParam) {
     .join("\n");
 }
 
+// A message the user sent mid-turn, after tool results, to steer the turn. It is part of the
+// turn, not a prompt, so rewind doesn't list it.
+export function steerText(message: MessageParam) {
+  if (message.role !== "user" || typeof message.content === "string") return null;
+  if (!message.content.some((block) => block.type === "tool_result")) return null;
+  const text = message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
+  return text || null;
+}
+
 // A prompt the session can go back to. Rewinding drops it and everything after it.
 export type RewindPoint = { text: string; transcript: number; turns: number; at?: number };
 

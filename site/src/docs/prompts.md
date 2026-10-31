@@ -12,4 +12,4 @@ Paste or drag an image file into the prompt. It shows as `[Image #1]`, and delet
 
 ## While clue works
 
-You can keep typing while clue works. `Tab` or `Enter` queues one message, and clue sends it when the turn ends. `↑` takes it back to edit. Press `esc` twice or `ctrl+c` to interrupt. An interrupt returns the queued message to the input. `shift+tab` changes the permission mode, even during a run.
+You can keep typing while clue works. `Enter` steers the turn: clue sends your message with the next tool results, so Claude reads it before its next step. If the turn ends first, the message goes as the next prompt. `Tab` queues one message for after the turn instead. A command such as `/usage` always queues. `↑` takes back the steering message, then the queued one, to edit. Press `esc` twice or `ctrl+c` to interrupt. An interrupt returns both to the input. `shift+tab` changes the permission mode, even during a run.

@@ -243,23 +243,105 @@ test("tab queues the typed message, and it sends when the turn ends", async () =
   expect(clue.wasSent("second message")).toBe(true);
 }, 25_000);
 
-test("a second message sent right after the first queues, and never starts a second turn", async () => {
-  const clue = await startClue({ delay: 30 });
-  await clue.type(`first${ENTER}second${ENTER}`);
-  await clue.seen("Queued: second");
-  await clue.turns(2);
-  expect(clue.wasSent("second")).toBe(true);
-}, 25_000);
+// The user message that carries the tool results a steering message rode along with.
+const steeredBlocks = (text: string): any[] =>
+  requests
+    .flatMap((request) => request.messages as { role: string; content: any }[])
+    .find(
+      (message) =>
+        message.role === "user" &&
+        Array.isArray(message.content) &&
+        message.content.some((block: any) => block.type === "tool_result") &&
+        message.content.some((block: any) => block.type === "text" && block.text.includes(text)),
+    )?.content ?? [];
 
-test("enter also queues during a run", async () => {
+test("enter during a run steers: the message reaches Claude after the next tool results", async () => {
   const clue = await startClue({ delay: 30 });
   await clue.type("first");
   await clue.type(ENTER);
   await clue.working();
-  await clue.type("second message");
+  await clue.type("change course");
   await clue.type(ENTER);
-  await clue.seen("Queued: second message");
+  await clue.seen("Steering: change course");
+  await clue.turns(1);
+  const blocks = steeredBlocks("change course");
+  expect(blocks.map((block) => block.type)).toEqual(["tool_result", "text"]);
+  await Bun.sleep(300);
+  expect(requests.some((request) => JSON.stringify(request.messages).includes('"content":"change course"'))).toBe(
+    false,
+  );
+}, 25_000);
+
+test("a second message sent right after the first steers it, and never starts a second turn", async () => {
+  const clue = await startClue({ delay: 30 });
+  await clue.type(`first${ENTER}second${ENTER}`);
+  await clue.turns(1);
+  expect(steeredBlocks("second")).toHaveLength(2);
+  await Bun.sleep(300);
+  // One request for the prompt, one for the tool results that carried the steer.
+  expect(requests).toHaveLength(2);
+}, 25_000);
+
+test("more text while a steer waits adds to it", async () => {
+  const clue = await startClue({ delay: 30 });
+  await clue.type("first");
+  await clue.type(ENTER);
+  await clue.working();
+  await clue.type(`one${ENTER}`);
+  await clue.type(`two${ENTER}`);
+  await clue.seen("Steering: one two");
+  await clue.turns(1);
+  expect(steeredBlocks("one\n\ntwo")).toHaveLength(2);
+}, 25_000);
+
+test("a steer that finds no more tool calls starts the next turn", async () => {
+  const clue = await startClue({ delay: 30 });
+  await clue.type("first");
+  await clue.type(ENTER);
+  const deadline = Date.now() + 8000;
+  while (requests.length < 2 && Date.now() < deadline) await Bun.sleep(10);
+  await clue.type(`late steer${ENTER}`);
   await clue.turns(2);
+  expect(steeredBlocks("late steer")).toEqual([]);
+  expect(clue.wasSent("late steer")).toBe(true);
+}, 25_000);
+
+test("a command typed during a run queues, because it can't steer", async () => {
+  const clue = await startClue({ delay: 30 });
+  await clue.type("first");
+  await clue.type(ENTER);
+  await clue.working();
+  await clue.type(`/usage${ENTER}`);
+  await clue.seen("Queued: /usage");
+}, 25_000);
+
+test("up takes back the steering message first, then the queued one", async () => {
+  const clue = await startClue({ delay: 30 });
+  await clue.type("first");
+  await clue.type(ENTER);
+  await clue.working();
+  await clue.type(`later${TAB}`);
+  await clue.type(`steer${ENTER}`);
+  await clue.seen("Steering: steer");
+  await clue.type(UP);
+  await clue.turns(2);
+  expect(clue.wasSent("later")).toBe(true);
+  expect(clue.wasSent("steer")).toBe(false);
+}, 25_000);
+
+test("an interrupt returns the steering message to the editor instead of sending it", async () => {
+  const clue = await startClue({ delay: 30 });
+  await clue.type("first");
+  await clue.type(ENTER);
+  await clue.working();
+  await clue.type(`wait${ENTER}`);
+  await clue.seen("Steering: wait");
+  await clue.type(CTRL_C);
+  await Bun.sleep(400);
+  expect(clue.wasSent("wait")).toBe(false);
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(clue.wasSent("wait")).toBe(true);
 }, 25_000);
 
 test("only one message can be queued", async () => {
