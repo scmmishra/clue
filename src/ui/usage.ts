@@ -14,7 +14,10 @@ function contextRows(turns: TurnRecord[]) {
   const filled = Math.min(BAR_WIDTH, Math.round(share * BAR_WIDTH));
   const bar = style.brand("█".repeat(filled)) + style.faint("░".repeat(BAR_WIDTH - filled));
   return [
-    row("Context", `${style.accent(tokens(used))} ${style.muted(`of ${tokens(COMPACTION_TRIGGER_TOKENS)} before compaction (${Math.round(share * 100)}%)`)}`),
+    row(
+      "Context",
+      `${style.accent(tokens(used))} ${style.muted(`of ${tokens(COMPACTION_TRIGGER_TOKENS)} before compaction (${Math.round(share * 100)}%)`)}`,
+    ),
     row("", bar),
   ];
 }
@@ -36,12 +39,30 @@ export function usageReport(turns: TurnRecord[]) {
   const allInput = total.input + total.cacheRead + total.cacheWrite;
   return [
     ...contextRows(turns),
-    row("Cost", `${style.accent(money(cost))} ${style.muted(`across ${prompts}`)}${unpriced ? style.orange(`, ${unpriced} with no known price`) : ""}`),
-    row("Tokens", style.muted(`${tokens(total.input)} in · ${tokens(total.cacheRead)} cache read · ${tokens(total.cacheWrite)} cache write · ${tokens(total.output)} out`)),
-    row("Cache", style.muted(`${allInput ? Math.round((total.cacheRead / allInput) * 100) : 0}% of input came from the cache`)),
-    ...(total.webSearches ? [row("Web", style.muted(`${total.webSearches} ${total.webSearches === 1 ? "search" : "searches"}`))] : []),
+    row(
+      "Cost",
+      `${style.accent(money(cost))} ${style.muted(`across ${prompts}`)}${unpriced ? style.orange(`, ${unpriced} with no known price`) : ""}`,
+    ),
+    row(
+      "Tokens",
+      style.muted(
+        `${tokens(total.input)} in · ${tokens(total.cacheRead)} cache read · ${tokens(total.cacheWrite)} cache write · ${tokens(total.output)} out`,
+      ),
+    ),
+    row(
+      "Cache",
+      style.muted(`${allInput ? Math.round((total.cacheRead / allInput) * 100) : 0}% of input came from the cache`),
+    ),
+    ...(total.webSearches
+      ? [row("Web", style.muted(`${total.webSearches} ${total.webSearches === 1 ? "search" : "searches"}`))]
+      : []),
     ...(models.size > 1
-      ? [row("Models", style.muted([...models].map(([model, spent]) => `${modelLabel(model)} ${money(spent)}`).join(" · ")))]
+      ? [
+          row(
+            "Models",
+            style.muted([...models].map(([model, spent]) => `${modelLabel(model)} ${money(spent)}`).join(" · ")),
+          ),
+        ]
       : []),
     "",
   ];

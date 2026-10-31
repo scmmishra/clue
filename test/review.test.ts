@@ -58,7 +58,8 @@ beforeEach(() => {
 });
 afterEach(resetReviewers);
 
-const review = (setting?: object, signal = new AbortController().signal) => reviewAction("shell", { command: "deploy" }, "ship it", setting as never, signal);
+const review = (setting?: object, signal = new AbortController().signal) =>
+  reviewAction("shell", { command: "deploy" }, "ship it", setting as never, signal);
 
 test("anthropic reviews with Haiku at low effort, and OpenRouter never hears of it", async () => {
   expect(await review({ provider: "anthropic" })).toEqual({ approved: true, reviewer: "haiku" });
@@ -87,7 +88,11 @@ test("a flag is a decision, so it stands and nothing else is asked", async () =>
 
 test("a Claude reviewer's flag keeps its reason", async () => {
   reviewers.decision = "caution";
-  expect(await review({ provider: "anthropic" })).toEqual({ approved: false, reviewer: "haiku", reason: "the reviewer's reason" });
+  expect(await review({ provider: "anthropic" })).toEqual({
+    approved: false,
+    reviewer: "haiku",
+    reason: "the reviewer's reason",
+  });
 });
 
 test("when Jev breaks, Haiku at low effort reviews instead, and the label says so", async () => {
@@ -103,7 +108,10 @@ test("Jev's answer that is neither clear nor caution counts as broken", async ()
 
 test("when another Claude model breaks, Haiku reviews instead", async () => {
   reviewers.failing.add("claude-sonnet-5-5");
-  expect(await review({ provider: "anthropic", model: "sonnet" })).toEqual({ approved: true, reviewer: "haiku (sonnet failed)" });
+  expect(await review({ provider: "anthropic", model: "sonnet" })).toEqual({
+    approved: true,
+    reviewer: "haiku (sonnet failed)",
+  });
 });
 
 test("a setting that can't work falls back to Haiku", async () => {

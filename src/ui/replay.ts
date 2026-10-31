@@ -26,7 +26,9 @@ export function sessionEntries(session: Session): Entry[] {
       let text: string | null = null;
       if (typeof message.content === "string") text = message.content;
       else if (!message.content.some((block) => block.type === "tool_result")) {
-        text = message.content.flatMap((block) => (block.type === "text" && !isContext(block.text) ? [block.text] : [])).join("\n");
+        text = message.content
+          .flatMap((block) => (block.type === "text" && !isContext(block.text) ? [block.text] : []))
+          .join("\n");
       }
       if (text === null) continue; // tool results
       flush();
@@ -46,7 +48,19 @@ export function sessionEntries(session: Session): Entry[] {
         entries.push({ type: "text", text: block.text });
       } else if (block.type === "tool_use" || block.type === "server_tool_use") {
         const record = session.tools.get(block.id);
-        group.push(record ?? { id: block.id, name: block.name, input: block.input, label: block.name, kind: "mcp", output: "", isError: false, startedAt: 0, ms: 0 });
+        group.push(
+          record ?? {
+            id: block.id,
+            name: block.name,
+            input: block.input,
+            label: block.name,
+            kind: "mcp",
+            output: "",
+            isError: false,
+            startedAt: 0,
+            ms: 0,
+          },
+        );
       }
     }
   }
@@ -98,7 +112,9 @@ function time(at: number) {
 
 function toolDetail(tool: ToolRecord, width: number) {
   const mark = tool.isError ? style.red("✗") : style.green("✓");
-  const lines = [`  ${mark} ${style.bold(tool.label)}  ${style.faint([tool.startedAt ? time(tool.startedAt) : "", tool.ms ? duration(tool.ms) : "", tool.review ?? ""].filter(Boolean).join("   "))}`];
+  const lines = [
+    `  ${mark} ${style.bold(tool.label)}  ${style.faint([tool.startedAt ? time(tool.startedAt) : "", tool.ms ? duration(tool.ms) : "", tool.review ?? ""].filter(Boolean).join("   "))}`,
+  ];
   if (tool.input && Object.keys(tool.input as object).length && tool.name !== "shell") {
     const input = Bun.inspect(tool.input, { colors: true, depth: 4 });
     for (const line of input.split("\n").slice(0, 40)) lines.push(`    ${line}`);
@@ -113,7 +129,8 @@ function toolDetail(tool: ToolRecord, width: number) {
     for (const line of outputLines.slice(0, MAX_OUTPUT_LINES)) {
       for (const piece of wrapLine(line, width - 6)) lines.push(`    ${tool.isError ? style.red(piece) : piece}`);
     }
-    if (outputLines.length > MAX_OUTPUT_LINES) lines.push(`    ${style.faint(`… ${outputLines.length - MAX_OUTPUT_LINES} more lines`)}`);
+    if (outputLines.length > MAX_OUTPUT_LINES)
+      lines.push(`    ${style.faint(`… ${outputLines.length - MAX_OUTPUT_LINES} more lines`)}`);
   }
   return lines;
 }
@@ -185,12 +202,15 @@ export class Pager {
     const position = content.length <= height ? "all" : `${Math.round(((this.top + height) / content.length) * 100)}%`;
     const bar = style.inverse(` ${this.title}  ${position}  ↑↓ scroll  pgup/pgdn  g/G top/end  esc close `);
     const max = columns();
-    process.stdout.write(`\x1b[H${view.map((line) => `\x1b[2K${truncate(line, max)}\x1b[0m`).join("\n")}\n\x1b[2K${truncate(bar, max)}`);
+    process.stdout.write(
+      `\x1b[H${view.map((line) => `\x1b[2K${truncate(line, max)}\x1b[0m`).join("\n")}\n\x1b[2K${truncate(bar, max)}`,
+    );
   }
 
   handle(key: Key) {
     const height = rows() - 1;
-    if (key.name === "escape" || key.text === "q" || (key.ctrl && (key.name === "o" || key.name === "c"))) return this.shut();
+    if (key.name === "escape" || key.text === "q" || (key.ctrl && (key.name === "o" || key.name === "c")))
+      return this.shut();
     if (key.name === "up" || key.text === "k") this.top -= 1;
     else if (key.name === "down" || key.text === "j") this.top += 1;
     else if (key.name === "pageup" || key.text === "b") this.top -= height;

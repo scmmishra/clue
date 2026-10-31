@@ -45,7 +45,10 @@ test("an empty session says so", () => {
 });
 
 test("a second model and web searches get their own rows", () => {
-  const text = report([turn({ usage: { ...turn().usage, webSearches: 3 } }), turn({ model: "claude-haiku-5-5", cost: 0.25 })]).join("\n");
+  const text = report([
+    turn({ usage: { ...turn().usage, webSearches: 3 } }),
+    turn({ model: "claude-haiku-5-5", cost: 0.25 }),
+  ]).join("\n");
   expect(text).toContain("3 searches");
   expect(text).toContain("opus 5.5 $0.50 · haiku 5.5 $0.25");
 });
@@ -61,7 +64,14 @@ test("a model with no price is called out", () => {
 });
 
 test("context size is everything sent in the request", () => {
-  expect(contextTokens({ input_tokens: 10, cache_read_input_tokens: 200, cache_creation_input_tokens: 30, output_tokens: 5 } as never)).toBe(240);
+  expect(
+    contextTokens({
+      input_tokens: 10,
+      cache_read_input_tokens: 200,
+      cache_creation_input_tokens: 30,
+      output_tokens: 5,
+    } as never),
+  ).toBe(240);
 });
 
 test("after a compaction, context size comes from the last message entry", () => {
@@ -70,7 +80,13 @@ test("after a compaction, context size comes from the last message entry", () =>
     output_tokens: 5,
     iterations: [
       { type: "compaction", input_tokens: 180_000, output_tokens: 2000 },
-      { type: "message", input_tokens: 4000, cache_read_input_tokens: 0, cache_creation_input_tokens: 1000, output_tokens: 5 },
+      {
+        type: "message",
+        input_tokens: 4000,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 1000,
+        output_tokens: 5,
+      },
     ],
   };
   expect(contextTokens(usage as never)).toBe(5000);

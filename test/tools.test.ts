@@ -150,7 +150,11 @@ test("grep_files stops at 400 lines and says so, instead of reading every match"
   mkdirSync(folder, { recursive: true });
   for (let file = 0; file < 12; file++) writeFileSync(join(folder, `f${file}.txt`), "needle line\n".repeat(100));
   const result = await grepFiles.run({ pattern: "needle", path: "many" }, context());
-  expect(String(result.content).split("\n").filter((line) => line.includes("needle line")).length).toBe(400);
+  expect(
+    String(result.content)
+      .split("\n")
+      .filter((line) => line.includes("needle line")).length,
+  ).toBe(400);
   expect(result.content).toContain("Narrow the search");
   expect(result.note).toContain("400+ matches");
 });
@@ -185,15 +189,39 @@ async function referenceGlob(root: string, pattern: string) {
 test("glob_files returns what a full scan would, without walking ignored folders", async () => {
   const tree = join(dir, "tree");
   const files = [
-    "a.ts", "b.md", "c.json", "src/x.ts", "src/y.md", "src/deep/z.ts", "src/deep/er/w.ts", "docs/a.md", "docs/sub/b.md",
-    "node_modules/pkg/i.ts", "src/node_modules/inner/j.ts", ".hidden/h.ts", "dist/o.ts", "src/.dot.ts",
+    "a.ts",
+    "b.md",
+    "c.json",
+    "src/x.ts",
+    "src/y.md",
+    "src/deep/z.ts",
+    "src/deep/er/w.ts",
+    "docs/a.md",
+    "docs/sub/b.md",
+    "node_modules/pkg/i.ts",
+    "src/node_modules/inner/j.ts",
+    ".hidden/h.ts",
+    "dist/o.ts",
+    "src/.dot.ts",
   ];
   for (const file of files) {
     mkdirSync(join(tree, file, ".."), { recursive: true });
     writeFileSync(join(tree, file), "x");
   }
   const ctx = { ...context(), cwd: tree };
-  for (const pattern of ["**/*.ts", "src/**/*.ts", "*.md", "*.ts", "docs/*.md", "docs/**/*.md", "**/*.{ts,md}", "src/*.ts", "src/deep/*.ts", "**/b.md", "nothing/**"]) {
+  for (const pattern of [
+    "**/*.ts",
+    "src/**/*.ts",
+    "*.md",
+    "*.ts",
+    "docs/*.md",
+    "docs/**/*.md",
+    "**/*.{ts,md}",
+    "src/*.ts",
+    "src/deep/*.ts",
+    "**/b.md",
+    "nothing/**",
+  ]) {
     const result = await globFiles.run({ pattern }, ctx);
     const got = result.content === "No files match." ? [] : String(result.content).split("\n");
     expect({ pattern, got }).toEqual({ pattern, got: await referenceGlob(tree, pattern) });
@@ -223,20 +251,30 @@ test("read_file reads only the top of a big file, with the same numbering as a f
   const ctx = context();
 
   const top = await readFile.run({ path: "big.log", limit: 3 }, ctx);
-  expect(String(top.content).split("\n").slice(0, 3)).toEqual([`     1\t${row(1)}`, `     2\t${row(2)}`, `     3\t${row(3)}`]);
+  expect(String(top.content).split("\n").slice(0, 3)).toEqual([
+    `     1\t${row(1)}`,
+    `     2\t${row(2)}`,
+    `     3\t${row(3)}`,
+  ]);
   expect(top.content).toContain("Continue with offset 4");
   expect(top.note).toBe("3 lines");
 
   // A window deep in the file takes the full-read path and agrees on the numbering.
   const deep = await readFile.run({ path: "big.log", offset: 15_000, limit: 2 }, ctx);
-  expect(String(deep.content).split("\n").slice(0, 2)).toEqual([15_000, 15_001].map((n) => `${String(n).padStart(6)}\t${row(n)}`));
+  expect(String(deep.content).split("\n").slice(0, 2)).toEqual(
+    [15_000, 15_001].map((n) => `${String(n).padStart(6)}\t${row(n)}`),
+  );
 
   // A window that starts partway down the top still numbers correctly.
   const middle = await readFile.run({ path: "big.log", offset: 10, limit: 5 }, ctx);
-  expect(String(middle.content).split("\n").slice(0, 5)).toEqual([10, 11, 12, 13, 14].map((n) => `${String(n).padStart(6)}\t${row(n)}`));
+  expect(String(middle.content).split("\n").slice(0, 5)).toEqual(
+    [10, 11, 12, 13, 14].map((n) => `${String(n).padStart(6)}\t${row(n)}`),
+  );
 });
 
 test("read_file says plainly when a path is missing or is a folder", async () => {
-  expect((await readFile.run({ path: "no-such-file.txt" }, context())).content).toContain("No file at no-such-file.txt");
+  expect((await readFile.run({ path: "no-such-file.txt" }, context())).content).toContain(
+    "No file at no-such-file.txt",
+  );
   expect((await readFile.run({ path: "tree" }, context())).content).toContain("is a folder");
 });

@@ -83,10 +83,21 @@ export class Agent {
     if (!this.options.subagent) this.undo.beginTurn();
     session.closeUnfinishedTools();
     if (session.isEmpty) {
-      const context = await buildContext(this.options.cwd, this.options.skills(), this.options.mcp.configuredNames(), this.seenInstructions);
-      session.appendMessage({ role: "user", content: [{ type: "text", text: context }, { type: "text", text: prompt }, ...images] });
+      const context = await buildContext(
+        this.options.cwd,
+        this.options.skills(),
+        this.options.mcp.configuredNames(),
+        this.seenInstructions,
+      );
+      session.appendMessage({
+        role: "user",
+        content: [{ type: "text", text: context }, { type: "text", text: prompt }, ...images],
+      });
     } else {
-      session.appendMessage({ role: "user", content: images.length ? [{ type: "text", text: prompt }, ...images] : prompt });
+      session.appendMessage({
+        role: "user",
+        content: images.length ? [{ type: "text", text: prompt }, ...images] : prompt,
+      });
     }
 
     let jsonRetries = 0;
@@ -111,7 +122,11 @@ export class Agent {
           stop = "interrupted";
           break;
         }
-        if (error instanceof Sdk.BadRequestError && featureRetries < MAX_FEATURE_RETRIES && dropRejectedFeature(error)) {
+        if (
+          error instanceof Sdk.BadRequestError &&
+          featureRetries < MAX_FEATURE_RETRIES &&
+          dropRejectedFeature(error)
+        ) {
           featureRetries += 1;
           continue;
         }
@@ -125,7 +140,10 @@ export class Agent {
 
       addUsage(usage, message.usage);
       context = contextTokens(message.usage);
-      session.appendMessage({ role: "assistant", content: message.content as Anthropic.Beta.Messages.BetaContentBlockParam[] });
+      session.appendMessage({
+        role: "assistant",
+        content: message.content as Anthropic.Beta.Messages.BetaContentBlockParam[],
+      });
       stop = message.stop_reason ?? "end_turn";
 
       if (stop === "pause_turn") continue;
@@ -178,7 +196,10 @@ export class Agent {
   // One streamed model request. Forwards text, progress notes and tool activity as they arrive.
   private async request(model: string, effort: Effort, signal: AbortSignal, onFirstToken: () => void) {
     const { events } = this.options;
-    const response = await stream({ model, effort, messages: this.session.messages, subagent: this.options.subagent }, signal);
+    const response = await stream(
+      { model, effort, messages: this.session.messages, subagent: this.options.subagent },
+      signal,
+    );
     const blocks = new Map<number, { type: string; id?: string; name?: string; json: string }>();
     let inText = false;
     events.thinking("");
@@ -186,7 +207,12 @@ export class Agent {
     for await (const event of response) {
       if (event.type === "content_block_start") {
         const block = event.content_block as ContentBlock;
-        blocks.set(event.index, { type: block.type, id: (block as { id?: string }).id, name: (block as { name?: string }).name, json: "" });
+        blocks.set(event.index, {
+          type: block.type,
+          id: (block as { id?: string }).id,
+          name: (block as { name?: string }).name,
+          json: "",
+        });
         if (block.type === "tool_use") {
           const tool = findTool(block.name);
           events.toolStart(block.id, tool ? safeLabel(tool, {}, false) : block.name, tool ? toolKind(tool, {}) : "mcp");
@@ -241,9 +267,12 @@ export class Agent {
     let index = 0;
     while (index < uses.length) {
       const batch: number[] = [];
-      while (index < uses.length && findTool(uses[index].name)?.readOnly && uses[index].name !== "ask_user_question") batch.push(index++);
+      while (index < uses.length && findTool(uses[index].name)?.readOnly && uses[index].name !== "ask_user_question")
+        batch.push(index++);
       if (batch.length === 0) batch.push(index++);
-      await Promise.all(batch.map(async (position) => (results[position] = await this.runTool(uses[position], prompt, signal, usage))));
+      await Promise.all(
+        batch.map(async (position) => (results[position] = await this.runTool(uses[position], prompt, signal, usage))),
+      );
     }
     return results;
   }
@@ -271,7 +300,9 @@ export class Agent {
         ms: msSince(clock),
         review,
         // A failed call without its own note shows the error's first line.
-        note: output.note ?? (output.isError && !review ? full.trim().split("\n")[0].slice(0, ERROR_NOTE_CHARS) || undefined : undefined),
+        note:
+          output.note ??
+          (output.isError && !review ? full.trim().split("\n")[0].slice(0, ERROR_NOTE_CHARS) || undefined : undefined),
       };
       session.append({ t: "tool", tool: record });
       events.toolEnd(record);
@@ -283,23 +314,59 @@ export class Agent {
     const invalid = tool.validate(input);
     const kind = toolKind(tool, input);
     if (invalid) {
-      return finish({ content: JSON.stringify({ INVALID_INPUT: invalid, received: input }), isError: true }, `${tool.name}: invalid input`, kind);
+      return finish(
+        { content: JSON.stringify({ INVALID_INPUT: invalid, received: input }), isError: true },
+        `${tool.name}: invalid input`,
+        kind,
+      );
     }
     const label = safeLabel(tool, input, false);
     events.toolUpdate(use.id, label);
-    if (signal.aborted) return finish({ content: "Interrupted by the user before it ran.", isError: true }, safeLabel(tool, input, true), kind);
+    if (signal.aborted)
+      return finish(
+        { content: "Interrupted by the user before it ran.", isError: true },
+        safeLabel(tool, input, true),
+        kind,
+      );
 
     const decision = permissions.decide(tool, input);
     let review: string | undefined;
     if (decision.action === "deny") {
-      return finish({ content: `clue refused this action because of ${decision.reason}. Tell the user, and don't try to work around it.`, isError: true }, label, kind, "denied");
+      return finish(
+        {
+          content: `clue refused this action because of ${decision.reason}. Tell the user, and don't try to work around it.`,
+          isError: true,
+        },
+        label,
+        kind,
+        "denied",
+      );
     }
     if (decision.action === "ask") {
       if (!this.options.interactive) {
-        return finish({ content: "This action needs the user's approval, and clue is running non-interactively. Report what you wanted to do instead.", isError: true }, label, kind, "needs approval");
+        return finish(
+          {
+            content:
+              "This action needs the user's approval, and clue is running non-interactively. Report what you wanted to do instead.",
+            isError: true,
+          },
+          label,
+          kind,
+          "needs approval",
+        );
       }
-      const answer = await events.confirm(approvalQuestion(tool, input), decision.subject, Permissions.grantPattern(tool, decision.subject));
-      if (answer === "no") return finish({ content: "The user declined this action. Ask how they want to proceed.", isError: true }, label, kind, "declined");
+      const answer = await events.confirm(
+        approvalQuestion(tool, input),
+        decision.subject,
+        Permissions.grantPattern(tool, decision.subject),
+      );
+      if (answer === "no")
+        return finish(
+          { content: "The user declined this action. Ask how they want to proceed.", isError: true },
+          label,
+          kind,
+          "declined",
+        );
       if (answer === "always") permissions.grant(tool.name, Permissions.grantPattern(tool, decision.subject));
       review = answer === "always" ? "allowed always" : "allowed once";
     }
@@ -309,7 +376,10 @@ export class Agent {
       if (!verdict.approved) {
         events.review(use.id, "held", `${verdict.reviewer}: ${verdict.reason ?? "held"}`);
         return finish(
-          { content: `clue held this action: ${verdict.reviewer} reviewed it and ${verdict.reason ?? "did not approve it"}. Tell the user what you wanted to do and why.`, isError: true },
+          {
+            content: `clue held this action: ${verdict.reviewer} reviewed it and ${verdict.reason ?? "did not approve it"}. Tell the user what you wanted to do and why.`,
+            isError: true,
+          },
           label,
           kind,
           `held by ${verdict.reviewer}`,
@@ -342,7 +412,13 @@ export class Agent {
     return finish(output, safeLabel(tool, input, true), kind, review);
   }
 
-  private async runSubagent(task: string, description: string, signal: AbortSignal, parentId: string, usage: Usage): Promise<ToolOutput> {
+  private async runSubagent(
+    task: string,
+    description: string,
+    signal: AbortSignal,
+    parentId: string,
+    usage: Usage,
+  ): Promise<ToolOutput> {
     const child = new Session(`${this.session.id}-sub`, this.options.cwd);
     child.ephemeral = true;
     let calls = 0;
@@ -374,7 +450,11 @@ export class Agent {
       last?.role === "assistant" && Array.isArray(last.content)
         ? last.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n")
         : text;
-    return { content: finalText.trim() || "The subagent finished without an answer.", note: `${calls} tool calls`, isError: turn.stop === "interrupted" };
+    return {
+      content: finalText.trim() || "The subagent finished without an answer.",
+      note: `${calls} tool calls`,
+      isError: turn.stop === "interrupted",
+    };
   }
 }
 
@@ -425,7 +505,10 @@ export function previewInput(input: string): Record<string, string> | null {
 
 function safeLabel(tool: NonNullable<ReturnType<typeof findTool>>, input: unknown, done: boolean) {
   try {
-    return tool.label(input as never, done).replace(/\s+undefined\b/g, "").trim();
+    return tool
+      .label(input as never, done)
+      .replace(/\s+undefined\b/g, "")
+      .trim();
   } catch {
     return tool.name;
   }

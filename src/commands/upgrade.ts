@@ -37,7 +37,9 @@ export async function upgrade() {
   // CLUE_VERSION pins a tag, which may be older on purpose.
   if (!env.CLUE_VERSION && !env.CLUE_LOCAL_RELEASE) {
     console.log("Finding the latest release");
-    const latest = await latestTag().catch((error) => stop(`Could not find the latest release: ${(error as Error).message}.`, 1));
+    const latest = await latestTag().catch((error) =>
+      stop(`Could not find the latest release: ${(error as Error).message}.`, 1),
+    );
     if (!isNewer(latest, VERSION)) return console.log(`clue ${VERSION} is up to date.`);
     env.CLUE_VERSION = latest;
   }

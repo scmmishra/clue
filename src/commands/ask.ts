@@ -32,7 +32,8 @@ export async function runAsk(prompt: string, settings: Settings, session: Sessio
       current = "";
     },
     toolUpdate: () => {},
-    toolEnd: (record) => progress(`${record.isError ? "✗" : "✓"} ${record.label}${record.note ? `  ${record.note}` : ""}`),
+    toolEnd: (record) =>
+      progress(`${record.isError ? "✗" : "✓"} ${record.label}${record.note ? `  ${record.note}` : ""}`),
     review: () => {},
     confirm: async () => "no",
     question: async () => null,

@@ -6,22 +6,22 @@ Results from 30 October 2026: an Apple silicon Mac (darwin-arm64), Bun 1.4.3, cl
 
 ## Start
 
-| | median | p90 |
-|---|---|---|
-| `clue --version`, start to exit | 8.9 ms | 9.4 ms |
-| `clue --version` from source (`bun src/main.ts`) | 11.1 ms | 12.3 ms |
-| Start to ready prompt, measured inside the process | 7.3 ms | 7.8 ms |
-| Start to ready prompt, wall clock including exit | 13.5 ms | 14.3 ms |
-| Start to ready prompt from source | 17.4 ms | 17.9 ms |
+|                                                    | median  | p90     |
+| -------------------------------------------------- | ------- | ------- |
+| `clue --version`, start to exit                    | 8.9 ms  | 9.4 ms  |
+| `clue --version` from source (`bun src/main.ts`)   | 11.1 ms | 12.3 ms |
+| Start to ready prompt, measured inside the process | 7.3 ms  | 7.8 ms  |
+| Start to ready prompt, wall clock including exit   | 13.5 ms | 14.3 ms |
+| Start to ready prompt from source                  | 17.4 ms | 17.9 ms |
 
 ## Resume
 
 A seeded session of 120 prompts, each with two tool calls. The benchmark first checks that `clue -c` really shows the session.
 
-| | median | p90 |
-|---|---|---|
-| `clue -c` to ready prompt, session printed, inside the process | 8.7 ms | 10.1 ms |
-| `clue -c` wall clock including exit | 14.9 ms | 16.7 ms |
+|                                                                | median  | p90     |
+| -------------------------------------------------------------- | ------- | ------- |
+| `clue -c` to ready prompt, session printed, inside the process | 8.7 ms  | 10.1 ms |
+| `clue -c` wall clock including exit                            | 14.9 ms | 16.7 ms |
 
 Warming the prompt cache runs after the prompt is ready, so it is not part of these numbers.
 
@@ -29,20 +29,20 @@ Warming the prompt cache runs after the prompt is ready, so it is not part of th
 
 These rows use a local stand-in for the API that answers at once, so they measure clue's own overhead, not the model.
 
-| | median | p90 |
-|---|---|---|
-| Prompt sent to first streamed token | 5.2 ms | 5.5 ms |
+|                                          | median  | p90     |
+| ---------------------------------------- | ------- | ------- |
+| Prompt sent to first streamed token      | 5.2 ms  | 5.5 ms  |
 | `clue ask` with one tool call, whole run | 23.7 ms | 25.6 ms |
 
 With the real API, the model's own time to first token is added on top.
 
 ## Hot paths
 
-| | median | p90 |
-|---|---|---|
+|                                               | median | p90    |
+| --------------------------------------------- | ------ | ------ |
 | Render a Markdown reply (`Bun.markdown.ansi`) | 4.3 µs | 5.0 µs |
-| Load a 120-prompt session file (`Bun.JSONL`) | 39 µs | 49 µs |
-| Render all of it for resume | 52 µs | 65 µs |
+| Load a 120-prompt session file (`Bun.JSONL`)  | 39 µs  | 49 µs  |
+| Render all of it for resume                   | 52 µs  | 65 µs  |
 
 A larger session, 610 KB and 120 prompts with long tool results, loads in about 0.65 ms.
 
@@ -50,9 +50,9 @@ A larger session, 610 KB and 120 prompts with long tool results, loads in about 
 
 `bun run bench:check` builds clue and fails if the p90 inside the process isn't under these limits, which are set in [`budget.ts`](budget.ts). Run it on your own machine. CI doesn't run it, because CI machines are too slow for these limits.
 
-| Wait | Budget |
-|---|---|
-| Start to ready prompt | under 10 ms |
+| Wait                                   | Budget      |
+| -------------------------------------- | ----------- |
+| Start to ready prompt                  | under 10 ms |
 | `clue -c` to ready prompt, 120 prompts | under 15 ms |
 
 ## Method notes
@@ -67,23 +67,23 @@ A larger session, 610 KB and 120 prompts with long tool results, loads in about 
 
 `bun run bench:tools` calls each tool's `run()` directly, outside the agent loop, against a generated repository: 1,500 source files, 9,000 files in `node_modules`, a `.git` folder and a 20 MB log. Each row is compared with the fastest simple way to do the same job. 50 runs each, medians.
 
-| Tool and case | Before | Now | Floor |
-|---|---|---|---|
-| `shell`, `echo hi` | 49.4 ms | **7.1 ms** | 3.6 ms, plain pipes, no terminal |
-| `shell`, `git status` | 65.4 ms | **23.9 ms** | git's own time |
-| `read_file`, first 50 lines of the 20 MB log | 7.77 ms | **94 µs** | 26 µs, reading the first 16 KB |
-| `read_file`, 100 lines from the middle of the log | 7.71 ms | 7.67 ms | needs to count 150,000 lines |
-| `read_file`, a 200-line source file | 102 µs | 96 µs | 24 µs, `Bun.file().text()` |
-| `glob_files`, `**/*.ts` over the repo | 17.5 ms | **5.4 ms** | 10.6 ms, `rg --files` |
-| `glob_files`, `src/**/*.ts` | 4.64 ms | 5.06 ms | |
-| `grep_files`, a rare literal | 29.7 ms | 29.1 ms | 29.2 ms, a bare `rg` spawn |
-| `grep_files`, a common word | 61.2 ms | **4.3 ms** | |
-| `grep_files`, regex with a glob filter | 45.5 ms | **16.2 ms** | |
-| `edit_file`, one change in a 200-line file | 211 µs | 226 µs | 110 µs, read, replace, write |
-| `write_file`, a new 5 KB file | 171 µs | 193 µs | 129 µs, `Bun.write` |
-| `capability_search` over 500 MCP tools | 161 µs | 156 µs | |
-| Permission decision for a command | 2 µs | 3 µs | |
-| `buildContext`, first-turn setup | 19.4 ms | **2.4 ms** | git status runs while you type |
+| Tool and case                                     | Before  | Now         | Floor                            |
+| ------------------------------------------------- | ------- | ----------- | -------------------------------- |
+| `shell`, `echo hi`                                | 49.4 ms | **7.1 ms**  | 3.6 ms, plain pipes, no terminal |
+| `shell`, `git status`                             | 65.4 ms | **23.9 ms** | git's own time                   |
+| `read_file`, first 50 lines of the 20 MB log      | 7.77 ms | **94 µs**   | 26 µs, reading the first 16 KB   |
+| `read_file`, 100 lines from the middle of the log | 7.71 ms | 7.67 ms     | needs to count 150,000 lines     |
+| `read_file`, a 200-line source file               | 102 µs  | 96 µs       | 24 µs, `Bun.file().text()`       |
+| `glob_files`, `**/*.ts` over the repo             | 17.5 ms | **5.4 ms**  | 10.6 ms, `rg --files`            |
+| `glob_files`, `src/**/*.ts`                       | 4.64 ms | 5.06 ms     |                                  |
+| `grep_files`, a rare literal                      | 29.7 ms | 29.1 ms     | 29.2 ms, a bare `rg` spawn       |
+| `grep_files`, a common word                       | 61.2 ms | **4.3 ms**  |                                  |
+| `grep_files`, regex with a glob filter            | 45.5 ms | **16.2 ms** |                                  |
+| `edit_file`, one change in a 200-line file        | 211 µs  | 226 µs      | 110 µs, read, replace, write     |
+| `write_file`, a new 5 KB file                     | 171 µs  | 193 µs      | 129 µs, `Bun.write`              |
+| `capability_search` over 500 MCP tools            | 161 µs  | 156 µs      |                                  |
+| Permission decision for a command                 | 2 µs    | 3 µs        |                                  |
+| `buildContext`, first-turn setup                  | 19.4 ms | **2.4 ms**  | git status runs while you type   |
 
 What changed:
 

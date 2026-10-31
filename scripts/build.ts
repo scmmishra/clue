@@ -44,7 +44,12 @@ async function build(target: string, outfile: string, bytecodeOrder: string | fa
 async function recordProfile(binary: string) {
   const terminal = new Bun.Terminal({ cols: 100, rows: 30, data() {} });
   const proc = Bun.spawn([binary], {
-    env: { ...process.env, CLUE_BENCH_READY: "1", BUN_BYTECODE_ORDER_OUT: PROFILE, CLUE_HOME: join(DIST, ".profile-home") },
+    env: {
+      ...process.env,
+      CLUE_BENCH_READY: "1",
+      BUN_BYTECODE_ORDER_OUT: PROFILE,
+      CLUE_HOME: join(DIST, ".profile-home"),
+    },
     terminal,
   });
   await proc.exited;

@@ -72,14 +72,16 @@ export const skillTool: Tool<{ name: string; resource?: string }> = {
   },
   kind: "skill",
   readOnly: true,
-  label: (input, done) => `${done ? "Read" : "Reading"} skill ${input.name}${input.resource ? ` ${input.resource}` : ""}`,
+  label: (input, done) =>
+    `${done ? "Read" : "Reading"} skill ${input.name}${input.resource ? ` ${input.resource}` : ""}`,
   validate: (input) => checkFields(input, { name: "string", resource: "string?" }),
   async run(input, context) {
     const skill = context.skills().find((item) => item.name === input.name);
     if (!skill) return { content: `No skill named ${input.name}.`, isError: true };
     if (input.resource) {
       const file = resolve(skill.dir, input.resource);
-      if (!file.startsWith(skill.dir) || !existsSync(file)) return { content: `No file ${input.resource} in skill ${skill.name}.`, isError: true };
+      if (!file.startsWith(skill.dir) || !existsSync(file))
+        return { content: `No file ${input.resource} in skill ${skill.name}.`, isError: true };
       return { content: readFileSync(file, "utf8") };
     }
     const resources = listResources(skill.dir);
@@ -90,7 +92,8 @@ export const skillTool: Tool<{ name: string; resource?: string }> = {
 
 export const installSkill: Tool<{ source: string }> = {
   name: "install_skill",
-  description: "Install a skill into ~/.clue/skills from a local folder or a git repository URL. The folder must contain SKILL.md.",
+  description:
+    "Install a skill into ~/.clue/skills from a local folder or a git repository URL. The folder must contain SKILL.md.",
   schema: {
     type: "object",
     properties: { source: { type: "string", description: "Local folder path or git URL." } },
@@ -105,7 +108,11 @@ export const installSkill: Tool<{ source: string }> = {
     if (/^(https?:|git@)/.test(input.source)) {
       const target = join(paths.skills, basename(input.source).replace(/\.git$/, ""));
       if (existsSync(target)) return { content: `${target} already exists.`, isError: true };
-      const proc = Bun.spawn(["git", "clone", "--depth", "1", input.source, target], { stdout: "pipe", stderr: "pipe", signal: context.signal });
+      const proc = Bun.spawn(["git", "clone", "--depth", "1", input.source, target], {
+        stdout: "pipe",
+        stderr: "pipe",
+        signal: context.signal,
+      });
       if ((await proc.exited) !== 0) return { content: await new Response(proc.stderr).text(), isError: true };
       dir = target;
     } else {
@@ -115,7 +122,8 @@ export const installSkill: Tool<{ source: string }> = {
       cpSync(dir, target, { recursive: true });
       dir = target;
     }
-    if (!existsSync(join(dir, "SKILL.md"))) return { content: `Installed ${dir}, but it has no SKILL.md at its root.`, isError: true };
+    if (!existsSync(join(dir, "SKILL.md")))
+      return { content: `Installed ${dir}, but it has no SKILL.md at its root.`, isError: true };
     return { content: `Installed skill at ${dir}. It is available from the next session.` };
   },
 };

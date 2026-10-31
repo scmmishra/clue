@@ -225,7 +225,11 @@ export class Editor {
           return "handled";
         }
         const matches = this.matches();
-        if (matches.length && this.text.slice(1) !== matches[0].name && !this.commands.some((command) => command.name === this.text.slice(1))) {
+        if (
+          matches.length &&
+          this.text.slice(1) !== matches[0].name &&
+          !this.commands.some((command) => command.name === this.text.slice(1))
+        ) {
           this.text = `/${matches[this.completionIndex % matches.length].name}`;
           this.cursor = this.text.length;
         }
@@ -359,7 +363,9 @@ export class Editor {
     // A long paste shows folded until the cursor moves into it.
     const folded = logical.length > PASTE_FOLD_LINES && this.cursor === this.text.length;
     let offset = 0;
-    const visible = folded ? [...logical.slice(0, 3), `… ${logical.length - 6} more lines`, ...logical.slice(-3)] : logical;
+    const visible = folded
+      ? [...logical.slice(0, 3), `… ${logical.length - 6} more lines`, ...logical.slice(-3)]
+      : logical;
     visible.forEach((line, index) => {
       const lead = prompt;
       const leadWidth = width(PROMPT);
@@ -397,7 +403,9 @@ export class Editor {
       const top = Math.max(0, this.picker.index - room + 1);
       picks.slice(top, top + room).forEach((path, offset) => {
         const shown = width(path) > max - 2 ? `…${Bun.sliceAnsi(path, 3 - max)}` : path;
-        lines.push(offset + top === this.picker.index ? style.brand(`› ${style.accent(shown)}`) : style.muted(`  ${shown}`));
+        lines.push(
+          offset + top === this.picker.index ? style.brand(`› ${style.accent(shown)}`) : style.muted(`  ${shown}`),
+        );
       });
     } else if (matches.length) {
       const size = Math.max(...matches.map((command) => command.name.length)) + 3;

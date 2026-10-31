@@ -76,8 +76,24 @@ function seedSession(turns: number) {
         { type: "tool_use", id: `toolu_${index}_b`, name: "shell", input: { command: "bun test" } },
       ],
     });
-    for (const [suffix, kind, label] of [["a", "read", "Read src/handler.ts"], ["b", "command", "Ran bun test"]] as const) {
-      session.append({ t: "tool", tool: { id: `toolu_${index}_${suffix}`, name: kind === "read" ? "read_file" : "shell", input: {}, label, kind, output: "x".repeat(2000), isError: false, startedAt: Date.now(), ms: 120 } });
+    for (const [suffix, kind, label] of [
+      ["a", "read", "Read src/handler.ts"],
+      ["b", "command", "Ran bun test"],
+    ] as const) {
+      session.append({
+        t: "tool",
+        tool: {
+          id: `toolu_${index}_${suffix}`,
+          name: kind === "read" ? "read_file" : "shell",
+          input: {},
+          label,
+          kind,
+          output: "x".repeat(2000),
+          isError: false,
+          startedAt: Date.now(),
+          ms: 120,
+        },
+      });
     }
     session.appendMessage({
       role: "user",
@@ -86,8 +102,24 @@ function seedSession(turns: number) {
         { type: "tool_result", tool_use_id: `toolu_${index}_b`, content: "12 pass\n0 fail" },
       ],
     });
-    session.appendMessage({ role: "assistant", content: [{ type: "text", text: `## Done\n\nUpdated the handler. **12 tests pass.**\n\n- one\n- two\n` }] });
-    session.append({ t: "turn", turn: { prompt: `Change number ${index}`, startedAt: Date.now(), ms: 9000, firstTokenMs: 800, tools: 2, usage: { input: 100, output: 300, cacheRead: 40000, cacheWrite: 900, webSearches: 0 }, cost: 0.02, model: "claude-opus-5-5", stop: "end_turn" } });
+    session.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `## Done\n\nUpdated the handler. **12 tests pass.**\n\n- one\n- two\n` }],
+    });
+    session.append({
+      t: "turn",
+      turn: {
+        prompt: `Change number ${index}`,
+        startedAt: Date.now(),
+        ms: 9000,
+        firstTokenMs: 800,
+        tools: 2,
+        usage: { input: 100, output: 300, cacheRead: 40000, cacheWrite: 900, webSearches: 0 },
+        cost: 0.02,
+        model: "claude-opus-5-5",
+        stop: "end_turn",
+      },
+    });
   }
   return session;
 }
@@ -98,9 +130,12 @@ function row(name: string, value: Stats | null) {
 }
 
 const lines: string[] = [];
-const table = (title: string, rows: string[]) => lines.push(`\n### ${title}\n`, "| | median ms | p90 ms | min ms |", "|---|---|---|---|", ...rows);
+const table = (title: string, rows: string[]) =>
+  lines.push(`\n### ${title}\n`, "| | median ms | p90 ms | min ms |", "|---|---|---|---|", ...rows);
 
-console.error(`clue benchmarks: ${RUNS} runs each after ${WARMUP} warmups, Bun ${Bun.version}, ${process.platform}-${process.arch}`);
+console.error(
+  `clue benchmarks: ${RUNS} runs each after ${WARMUP} warmups, Bun ${Bun.version}, ${process.platform}-${process.arch}`,
+);
 
 // 1. Process start and exit, no UI.
 const versionBinary = await sample([BINARY, "--version"]);
@@ -121,7 +156,10 @@ seedSession(120);
 const check = await inPty([BINARY, "-c"], { CLUE_BENCH_READY: "1" });
 if (!Bun.stripANSI(check.output).includes("120 prompts")) throw new Error("clue -c did not resume the seeded session");
 const resumeBinary = await sample([BINARY, "-c"], { CLUE_BENCH_READY: "1" }, readyMs);
-table("Resume a 120-prompt session to ready prompt (clue -c)", [row("binary, inside the process", resumeBinary.internal), row("binary, wall clock incl. exit", resumeBinary.wall)]);
+table("Resume a 120-prompt session to ready prompt (clue -c)", [
+  row("binary, inside the process", resumeBinary.internal),
+  row("binary, wall clock incl. exit", resumeBinary.wall),
+]);
 
 // 4. First token, client side: against a local stand-in API, so this is clue's own overhead.
 const server = startMockApi();
@@ -176,7 +214,10 @@ rmSync(home, { recursive: true, force: true });
 
 // --check fails the run when a wait is over its budget. `bun run bench:check` uses it.
 if (process.argv.includes("--check")) {
-  const problems = overBudget({ launch: readyBinary.internal?.p90 ?? null, resume: resumeBinary.internal?.p90 ?? null });
+  const problems = overBudget({
+    launch: readyBinary.internal?.p90 ?? null,
+    resume: resumeBinary.internal?.p90 ?? null,
+  });
   for (const problem of problems) console.error(`Over budget: ${problem}`);
   if (problems.length) process.exit(1);
   console.error(`Within budget: launch under ${BUDGETS_MS.launch} ms, resume under ${BUDGETS_MS.resume} ms.`);

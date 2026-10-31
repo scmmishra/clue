@@ -17,9 +17,17 @@ export type Decision = { action: "run" | "ask" | "review" | "deny"; reason?: str
 // A test for the arguments after a routine prefix. True when they make the command unsafe.
 type UnsafeArgs = (args: string[]) => boolean;
 
-const anyArg = (pattern: RegExp): UnsafeArgs => (args) => args.some((arg) => pattern.test(arg));
-const routine = (commands: string, unsafe: UnsafeArgs | null = null) => commands.split(",").map((command) => [command, unsafe] as const);
-const forEach = (programs: string, commands: string) => programs.split(" ").flatMap((program) => commands.split(" ").map((command) => `${program} ${command}`)).join(",");
+const anyArg =
+  (pattern: RegExp): UnsafeArgs =>
+  (args) =>
+    args.some((arg) => pattern.test(arg));
+const routine = (commands: string, unsafe: UnsafeArgs | null = null) =>
+  commands.split(",").map((command) => [command, unsafe] as const);
+const forEach = (programs: string, commands: string) =>
+  programs
+    .split(" ")
+    .flatMap((program) => commands.split(" ").map((command) => `${program} ${command}`))
+    .join(",");
 
 // git reads these as prefixes of the long options --output, --ext-diff and --open-files-in-pager.
 const GIT_READ = anyArg(/^(--ou|--ext|--op|-O)/);
@@ -30,7 +38,9 @@ const NOT_A_SCRIPT_NAME: UnsafeArgs = ([name = ""]) => !/^\w[\w:-]*$/.test(name)
 // their leading words. Everything else goes to review, so this list stays short.
 // Programs that run other programs, such as env, find, awk, node or xargs, stay off it.
 const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
-  ...routine("ls,pwd,cat,head,tail,wc,echo,printf,which,file,stat,du,df,true,false,cut,tr,cmp,basename,dirname,realpath,grep,egrep,fgrep,jq"),
+  ...routine(
+    "ls,pwd,cat,head,tail,wc,echo,printf,which,file,stat,du,df,true,false,cut,tr,cmp,basename,dirname,realpath,grep,egrep,fgrep,jq",
+  ),
   ...routine("sort", anyArg(/^(-[a-zA-Z]*o|--o|--c)/)),
   ...routine("uniq", (args) => args.filter((arg) => !arg.startsWith("-")).length > 1),
   ...routine("diff", anyArg(/^--o/)),
@@ -39,7 +49,10 @@ const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
   ...routine("tree", anyArg(/^(-[a-zA-Z]*o|--fromfile)/)),
   ...routine("date", anyArg(/^(-[a-zA-Z]*s|--s)/)),
 
-  ...routine("git status,git diff,git log,git show,git grep,git blame,git ls-files,git rev-parse,git describe,git stash list,git worktree list", GIT_READ),
+  ...routine(
+    "git status,git diff,git log,git show,git grep,git blame,git ls-files,git rev-parse,git describe,git stash list,git worktree list",
+    GIT_READ,
+  ),
   ...routine("git branch", anyArg(/^(?!(-a|-r|-v|-vv|--all|--remotes|--verbose|--list|--show-current)$)/)),
   ...routine("git remote -v", anyArg(/./)),
   ...routine("git tag --list,git tag -l", anyArg(/^-/)),
@@ -56,7 +69,9 @@ const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
   ...routine(forEach("npx bunx", "tsc vitest jest eslint prettier biome")),
 
   ...routine("tsc,vitest,jest,eslint,prettier,biome,pytest,rspec,rubocop,ruff,mypy,black,make,ninja"),
-  ...routine("python -m pytest,python3 -m pytest,bundle exec rspec,bundle exec rubocop,rails test,gradle test,gradle build,mvn test,zig build"),
+  ...routine(
+    "python -m pytest,python3 -m pytest,bundle exec rspec,bundle exec rubocop,rails test,gradle test,gradle build,mvn test,zig build",
+  ),
   ...routine(forEach("cargo", "test build check clippy fmt")),
   ...routine(forEach("go", "test build vet fmt")),
   ...routine(forEach("swift", "test build")),
@@ -64,7 +79,8 @@ const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
   ...routine("docker ps,docker images,docker logs,docker compose ps,docker compose logs"),
 ]);
 
-const SENSITIVE_PATH = /(^|\/)(\.env(\..*)?|\.git\/|\.ssh\/|\.aws\/|\.npmrc|\.netrc|\.gnupg\/|id_rsa|\.clue\/settings\.json|credentials)/;
+const SENSITIVE_PATH =
+  /(^|\/)(\.env(\..*)?|\.git\/|\.ssh\/|\.aws\/|\.npmrc|\.netrc|\.gnupg\/|id_rsa|\.clue\/settings\.json|credentials)/;
 
 function wordsAreRoutine(words: string[]) {
   for (let length = words.length; length > 0; length--) {
@@ -87,7 +103,8 @@ function insideProject(cwd: string, path: string) {
 
 // The text rules match against: the command, the file path, or "server.tool".
 export function subjectOf(tool: Tool, input: any): string {
-  if (tool.name === "shell") return input?.action && input.action !== "run" ? `${input.action} ${input.id}` : (input?.command ?? "");
+  if (tool.name === "shell")
+    return input?.action && input.action !== "run" ? `${input.action} ${input.id}` : (input?.command ?? "");
   if (tool.name === "mcp_call") return `${input?.server}.${input?.tool}`;
   if (input?.path) return String(input.path);
   if (tool.name === "install_skill") return String(input?.source ?? "");
@@ -95,7 +112,12 @@ export function subjectOf(tool: Tool, input: any): string {
 }
 
 const globToRegex = (pattern: string) =>
-  new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`);
+  new RegExp(
+    `^${pattern
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*/g, ".*")
+      .replace(/\?/g, ".")}$`,
+  );
 
 // The last matching rule wins: a tool-wide value, then patterns in order.
 export function ruleFor(rules: PermissionRules, toolName: string, subject: string): RuleValue | null {
@@ -167,7 +189,9 @@ export class Permissions {
   static grantPattern(tool: Tool, subject: string) {
     if (tool.name === "shell") {
       const words = subject.trim().split(/\s+/);
-      return words[0] === "git" || words[0] === "npm" || words[0] === "bun" ? `${words.slice(0, 2).join(" ")} *` : `${words[0]} *`;
+      return words[0] === "git" || words[0] === "npm" || words[0] === "bun"
+        ? `${words.slice(0, 2).join(" ")} *`
+        : `${words[0]} *`;
     }
     if (tool.name === "mcp_call") return subject;
     return "*";
@@ -196,11 +220,17 @@ export class Permissions {
     if (tool.name === "subagent") return { action: "run", subject };
     if (tool.name === "write_file" || tool.name === "edit_file") {
       if (insideProject(this.cwd, subject) && !SENSITIVE_PATH.test(subject)) return { action: "run", subject };
-      return { action: "review", subject, reason: insideProject(this.cwd, subject) ? "sensitive file" : "outside the project" };
+      return {
+        action: "review",
+        subject,
+        reason: insideProject(this.cwd, subject) ? "sensitive file" : "outside the project",
+      };
     }
     if (tool.name === "shell") {
       if (input?.action === "interact" || input?.action === "stop") return { action: "run", subject };
-      return commandIsRoutine(subject) ? { action: "run", subject } : { action: "review", subject, reason: "unrecognized command" };
+      return commandIsRoutine(subject)
+        ? { action: "run", subject }
+        : { action: "review", subject, reason: "unrecognized command" };
     }
     return { action: "review", subject, reason: tool.name === "mcp_call" ? "MCP tool call" : "not routine" };
   }
@@ -213,7 +243,12 @@ export class Permissions {
 // anything, and nothing falls back the other way.
 
 // The reviewer's wording lives in prompts/review.yaml, embedded at build time.
-const { instructions: REVIEW_INSTRUCTIONS, clear: CLEAR, caution: CAUTION, policy: POLICY } = reviewPrompt as Record<"instructions" | "clear" | "caution" | "policy", string>;
+const {
+  instructions: REVIEW_INSTRUCTIONS,
+  clear: CLEAR,
+  caution: CAUTION,
+  policy: POLICY,
+} = reviewPrompt as Record<"instructions" | "clear" | "caution" | "policy", string>;
 
 export type Review = { approved: boolean; reviewer: string; reason?: string };
 export type Reviewer = { provider: "anthropic" | "openrouter"; model: string };
@@ -227,7 +262,8 @@ const REVIEW_TIMEOUT_MS = 20_000;
 export function chooseReviewer(review: ReviewSetting = {}, openrouterKey?: string): Reviewer {
   const { model } = review;
   const jev = model?.match(JEV);
-  const provider = review.provider ?? (model ? (jev ? "openrouter" : "anthropic") : openrouterKey ? "openrouter" : "anthropic");
+  const provider =
+    review.provider ?? (model ? (jev ? "openrouter" : "anthropic") : openrouterKey ? "openrouter" : "anthropic");
   if (provider === "openrouter") {
     if (!openrouterKey) throw new Error("OPENROUTER_API_KEY isn't set");
     if (model && !jev) throw new Error(`OpenRouter can't run ${model}`);
@@ -239,24 +275,34 @@ export function chooseReviewer(review: ReviewSetting = {}, openrouterKey?: strin
   return { provider, model: id };
 }
 
-const reviewerName = ({ provider, model }: Reviewer) => (provider === "openrouter" ? "jev" : modelLabel(model).split(" ")[0]);
+const reviewerName = ({ provider, model }: Reviewer) =>
+  provider === "openrouter" ? "jev" : modelLabel(model).split(" ")[0];
 
 async function askJev(model: string, state: object, signal: AbortSignal): Promise<Verdict> {
   const response = await fetch(`${process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai"}/api/alpha/decisions`, {
     method: "POST",
     signal,
-    headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, "Content-Type": "application/json", "X-Title": "clue" },
+    headers: {
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+      "X-Title": "clue",
+    },
     body: JSON.stringify({
       model,
       state: JSON.stringify(state),
-      questions: { decision: { type: "choice", instructions: REVIEW_INSTRUCTIONS, criteria: { clear: CLEAR, caution: CAUTION } } },
+      questions: {
+        decision: { type: "choice", instructions: REVIEW_INSTRUCTIONS, criteria: { clear: CLEAR, caution: CAUTION } },
+      },
     }),
   });
   const body = (await response.json().catch(() => null)) as any;
   if (!response.ok || body?.error) throw new Error(body?.error?.message ?? `Jev returned ${response.status}`);
   const choice = body?.answers?.decision?.choice;
   if (choice !== "clear" && choice !== "caution") throw new Error(`Jev answered ${choice}`);
-  return { approved: choice === "clear", reason: choice === "clear" ? undefined : "Jev flagged it as possible prompt injection or harmful activity" };
+  return {
+    approved: choice === "clear",
+    reason: choice === "clear" ? undefined : "Jev flagged it as possible prompt injection or harmful activity",
+  };
 }
 
 async function askClaude(model: string, state: object, signal: AbortSignal): Promise<Verdict> {
@@ -288,7 +334,13 @@ async function askClaude(model: string, state: object, signal: AbortSignal): Pro
   return { approved: decision === "clear", reason: decision === "clear" ? undefined : reason };
 }
 
-export async function reviewAction(toolName: string, input: unknown, userRequest: string, review: ReviewSetting | undefined, signal: AbortSignal): Promise<Review> {
+export async function reviewAction(
+  toolName: string,
+  input: unknown,
+  userRequest: string,
+  review: ReviewSetting | undefined,
+  signal: AbortSignal,
+): Promise<Review> {
   const state = {
     review_policy: POLICY,
     user_request: userRequest.slice(0, 4000),
@@ -317,7 +369,10 @@ export async function reviewAction(toolName: string, input: unknown, userRequest
   // An interrupt isn't a broken reviewer, and Haiku shouldn't be asked the same thing twice.
   if (signal.aborted || chosen?.model === fallback.model) return held(chosen ? reviewerName(chosen) : "haiku", failure);
   try {
-    return { ...(await ask(fallback)), reviewer: `haiku (${chosen ? reviewerName(chosen) : "the review setting"} failed)` };
+    return {
+      ...(await ask(fallback)),
+      reviewer: `haiku (${chosen ? reviewerName(chosen) : "the review setting"} failed)`,
+    };
   } catch (error) {
     return held("haiku", failure, error);
   }

@@ -3,8 +3,27 @@
 // parse flags, read settings, and hand off. Everything slow loads afterwards.
 
 import { existsSync } from "node:fs";
-import { loadSettings, PERMISSION_MODES, settingsWarnings, VERSION, EFFORTS, type Effort, type PermissionMode, type Settings } from "./config";
-import { Session, findSession, latestSessionFile, nameFormatProblem, realFolder, resolveSession, sessionFile, sessionNamedIn, type SessionMeta } from "./session";
+import {
+  loadSettings,
+  PERMISSION_MODES,
+  settingsWarnings,
+  VERSION,
+  EFFORTS,
+  type Effort,
+  type PermissionMode,
+  type Settings,
+} from "./config";
+import {
+  Session,
+  findSession,
+  latestSessionFile,
+  nameFormatProblem,
+  realFolder,
+  resolveSession,
+  sessionFile,
+  sessionNamedIn,
+  type SessionMeta,
+} from "./session";
 
 const HELP = `clue ${VERSION}: a coding agent for the terminal
 
@@ -78,7 +97,8 @@ function settingsFrom(flags: Parsed["flags"]): Settings {
     overrides.effort = flags.effort as Effort;
   }
   if (typeof flags["permission-mode"] === "string") {
-    if (!PERMISSION_MODES.includes(flags["permission-mode"] as PermissionMode)) fail(`--permission-mode must be one of ${PERMISSION_MODES.join(", ")}`);
+    if (!PERMISSION_MODES.includes(flags["permission-mode"] as PermissionMode))
+      fail(`--permission-mode must be one of ${PERMISSION_MODES.join(", ")}`);
     overrides.permission_mode = flags["permission-mode"] as PermissionMode;
   }
   if (flags["full-access"]) overrides.permission_mode = "full-access";
@@ -96,7 +116,10 @@ function sessionById(id: string): Session {
 function sessionByReference(reference: string): Session {
   const matches = resolveSession(reference, realFolder(process.cwd()));
   if (matches.length === 0) fail(`no session named ${reference} or with that id. Run clue -r to pick one.`);
-  if (matches.length > 1) fail(`several sessions are named ${reference}. Resume one by id:\n${matches.map((meta) => `  ${meta.id}  ${meta.cwd}`).join("\n")}`);
+  if (matches.length > 1)
+    fail(
+      `several sessions are named ${reference}. Resume one by id:\n${matches.map((meta) => `  ${meta.id}  ${meta.cwd}`).join("\n")}`,
+    );
   return openSession(matches[0]);
 }
 
@@ -150,7 +173,8 @@ async function main() {
   if (flags.name !== undefined) {
     if (command === "ask") fail("--name doesn't work with clue ask.");
     if (flags.name === true) fail("--name needs a name.");
-    if (flags.continue || flags.pick || flags.resume) fail("--name only works for a new session. Use /rename after resuming.");
+    if (flags.continue || flags.pick || flags.resume)
+      fail("--name only works for a new session. Use /rename after resuming.");
     const problem = nameFormatProblem(String(flags.name));
     if (problem) fail(problem);
   }
@@ -171,7 +195,8 @@ async function main() {
     return runAsk(prompt, settings, session, flags.json === true);
   }
 
-  if (!process.stdin.isTTY || !process.stdout.isTTY) fail("the interactive shell needs a terminal. Use `clue ask` in scripts.");
+  if (!process.stdin.isTTY || !process.stdout.isTTY)
+    fail("the interactive shell needs a terminal. Use `clue ask` in scripts.");
 
   let session: Session | null = null;
   let resumed = false;

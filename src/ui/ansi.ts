@@ -44,7 +44,8 @@ export const columns = () => Math.max(process.stdout.columns || 80, 20);
 export const rows = () => Math.max(process.stdout.rows || 24, 8);
 
 // Cuts a styled string to a display width, keeping escape codes and links intact.
-export const truncate = (text: string, max: number, ellipsis = "…") => (width(text) <= max ? text : Bun.sliceAnsi(text, 0, max, ellipsis));
+export const truncate = (text: string, max: number, ellipsis = "…") =>
+  width(text) <= max ? text : Bun.sliceAnsi(text, 0, max, ellipsis);
 
 // Word-wraps a styled line to `max` columns. Long words break mid-word.
 export const wrapLine = (text: string, max: number): string[] =>

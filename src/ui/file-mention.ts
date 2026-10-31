@@ -59,7 +59,8 @@ function tier(query: string, path: string) {
 
 type Ranked = { path: string; tier: number };
 
-const compare = (a: Ranked, b: Ranked) => a.tier - b.tier || a.path.length - b.path.length || (a.path < b.path ? -1 : 1);
+const compare = (a: Ranked, b: Ranked) =>
+  a.tier - b.tier || a.path.length - b.path.length || (a.path < b.path ? -1 : 1);
 
 // The best matches for a query, best first. This runs on a keypress, so it doesn't sort everything.
 export function rankPaths(query: string, paths: string[]) {
@@ -84,7 +85,11 @@ export function rankPaths(query: string, paths: string[]) {
 
 async function gitPaths(cwd: string) {
   try {
-    const git = Bun.spawn(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd, stdout: "pipe", stderr: "ignore" });
+    const git = Bun.spawn(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
+      cwd,
+      stdout: "pipe",
+      stderr: "ignore",
+    });
     const output = await git.stdout.text();
     return (await git.exited) === 0 ? output.split("\0").filter(Boolean) : null;
   } catch {
@@ -114,7 +119,8 @@ export async function listPaths(cwd: string) {
   const paths = new Set<string>();
   for (const file of files.slice(0, MAX_PATHS)) {
     paths.add(file);
-    for (let slash = file.indexOf("/"); slash !== -1; slash = file.indexOf("/", slash + 1)) paths.add(file.slice(0, slash + 1));
+    for (let slash = file.indexOf("/"); slash !== -1; slash = file.indexOf("/", slash + 1))
+      paths.add(file.slice(0, slash + 1));
   }
   return [...paths].sort();
 }

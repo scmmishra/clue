@@ -1,4 +1,14 @@
-import { chmodSync, existsSync, lstatSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
 
 const MAX_TURNS = 20;
@@ -78,7 +88,13 @@ export class UndoStack {
     const changed = files.filter(([path, { after }]) => contentHash(path) !== after).map(([path]) => path);
     if (changed.length && !force) return { kind: "changed", paths: changed };
     this.turns.pop();
-    const result = { kind: "done" as const, restored: [] as string[], deleted: [] as string[], failed: [] as string[], ranShell: turn.ranShell };
+    const result = {
+      kind: "done" as const,
+      restored: [] as string[],
+      deleted: [] as string[],
+      failed: [] as string[],
+      ranShell: turn.ranShell,
+    };
     for (const [path, { previous }] of files) {
       try {
         restore(path, previous);

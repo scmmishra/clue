@@ -4,7 +4,8 @@ import type { Session } from "../session";
 import type { McpManager } from "../mcp/manager";
 import type { Skill } from "./skills";
 
-export type ToolResultContent = string | Array<Anthropic.Beta.Messages.BetaTextBlockParam | Anthropic.Beta.Messages.BetaImageBlockParam>;
+export type ToolResultContent =
+  string | Array<Anthropic.Beta.Messages.BetaTextBlockParam | Anthropic.Beta.Messages.BetaImageBlockParam>;
 
 export type ToolOutput = {
   content: ToolResultContent;
@@ -37,7 +38,8 @@ export type ToolContext = {
 };
 
 // Categories for the folded summary line: "3 tool calls  1 read  2 commands".
-export type ToolKind = "read" | "search" | "edit" | "write" | "command" | "web" | "subagent" | "skill" | "mcp" | "question" | "result";
+export type ToolKind =
+  "read" | "search" | "edit" | "write" | "command" | "web" | "subagent" | "skill" | "mcp" | "question" | "result";
 
 export type Tool<Input = any> = {
   name: string;
@@ -53,10 +55,17 @@ export type Tool<Input = any> = {
   run: (input: Input, context: ToolContext) => Promise<ToolOutput>;
 };
 
-export const toolKind = (tool: Tool, input: unknown) => (typeof tool.kind === "function" ? tool.kind(input) : tool.kind);
+export const toolKind = (tool: Tool, input: unknown) =>
+  typeof tool.kind === "function" ? tool.kind(input) : tool.kind;
 
 // Checks that every required field exists and has the declared primitive type.
-export function checkFields(input: any, fields: Record<string, "string" | "number" | "boolean" | "object" | "array" | "string?" | "number?" | "boolean?" | "object?" | "array?">) {
+export function checkFields(
+  input: any,
+  fields: Record<
+    string,
+    "string" | "number" | "boolean" | "object" | "array" | "string?" | "number?" | "boolean?" | "object?" | "array?"
+  >,
+) {
   if (!input || typeof input !== "object") return "Input must be a JSON object.";
   for (const [key, spec] of Object.entries(fields)) {
     const optional = spec.endsWith("?");

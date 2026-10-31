@@ -7,7 +7,10 @@ import { statusReport, type ProgramStatus } from "../src/ui/status";
 import { requests, startMockApi } from "./mock-api";
 
 // A 1×1 PNG.
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64",
+);
 const ENTER = "\r";
 const TAB = "\t";
 const UP = "\x1b[A";
@@ -19,16 +22,30 @@ const paste = (text: string) => `\x1b[200~${text}\x1b[201~`;
 let stop = async () => {};
 afterEach(() => stop());
 
-async function startClue(options: { delay?: number; env?: Record<string, string>; args?: string[]; cwd?: string; home?: string } = {}) {
+async function startClue(
+  options: { delay?: number; env?: Record<string, string>; args?: string[]; cwd?: string; home?: string } = {},
+) {
   requests.length = 0;
   const server = startMockApi(0, options.delay ?? 0);
   const cwd = options.cwd ?? realpathSync(mkdtempSync(join(tmpdir(), "clue-composer-")));
   let output = "";
   const decoder = new TextDecoder();
-  const terminal = new Bun.Terminal({ cols: 120, rows: 40, data: (_terminal, data) => (output += decoder.decode(data, { stream: true })) });
+  const terminal = new Bun.Terminal({
+    cols: 120,
+    rows: 40,
+    data: (_terminal, data) => (output += decoder.decode(data, { stream: true })),
+  });
   const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), ...(options.args ?? [])], {
     cwd,
-    env: { ...process.env, SHELL: "/bin/sh", CLUE_HOME: options.home ?? mkdtempSync(join(tmpdir(), "clue-composer-home-")), ANTHROPIC_BASE_URL: server.url.origin, ANTHROPIC_API_KEY: "sk-ant-test", OPENROUTER_API_KEY: "", ...options.env },
+    env: {
+      ...process.env,
+      SHELL: "/bin/sh",
+      CLUE_HOME: options.home ?? mkdtempSync(join(tmpdir(), "clue-composer-home-")),
+      ANTHROPIC_BASE_URL: server.url.origin,
+      ANTHROPIC_API_KEY: "sk-ant-test",
+      OPENROUTER_API_KEY: "",
+      ...options.env,
+    },
     terminal,
   });
   stop = async () => {
@@ -57,7 +74,11 @@ async function startClue(options: { delay?: number; env?: Record<string, string>
     seen: (text: string) => waitFor(() => Bun.stripANSI(output).includes(text), `"${text}" on screen`),
     turns: (count: number) => waitFor(() => reports("done") >= count, `${count} finished turns`),
     working: () => waitFor(() => reports("working") >= 1, "a turn to start"),
-    sent: (text: string) => waitFor(() => requests.some((request) => JSON.stringify(request.messages).includes(text)), `a request with "${text}"`),
+    sent: (text: string) =>
+      waitFor(
+        () => requests.some((request) => JSON.stringify(request.messages).includes(text)),
+        `a request with "${text}"`,
+      ),
     wasSent: (text: string) => requests.some((request) => JSON.stringify(request.messages).includes(text)),
   };
   await waitFor(() => reports("idle") >= 1, "the prompt");
@@ -68,7 +89,12 @@ async function startClue(options: { delay?: number; env?: Record<string, string>
 const promptBlocks = (text: string) => {
   for (const request of requests) {
     for (const message of request.messages as { role: string; content: any }[]) {
-      if (message.role === "user" && Array.isArray(message.content) && message.content.some((block: any) => block.type === "text" && block.text.includes(text))) return message.content;
+      if (
+        message.role === "user" &&
+        Array.isArray(message.content) &&
+        message.content.some((block: any) => block.type === "text" && block.text.includes(text))
+      )
+        return message.content;
     }
   }
   return [];
@@ -85,7 +111,9 @@ test("a pasted image path becomes a placeholder and is sent as an image", async 
   await clue.type(ENTER);
   await clue.turns(1);
   const blocks = promptBlocks("[Image #1] describe it");
-  expect(imagesIn(blocks)).toEqual([{ type: "image", source: { type: "base64", media_type: "image/png", data: PNG.toString("base64") } }]);
+  expect(imagesIn(blocks)).toEqual([
+    { type: "image", source: { type: "base64", media_type: "image/png", data: PNG.toString("base64") } },
+  ]);
 }, 25_000);
 
 test("a path with escaped spaces, as a dragged file arrives, attaches", async () => {
@@ -123,7 +151,9 @@ test("a resumed-style prompt with no image keeps a plain string", async () => {
   await clue.type("second");
   await clue.type(ENTER);
   await clue.turns(2);
-  const last = requests.at(-1)!.messages.filter((message) => message.role === "user" && typeof message.content === "string");
+  const last = requests
+    .at(-1)!
+    .messages.filter((message) => message.role === "user" && typeof message.content === "string");
   expect(last.map((message) => message.content)).toContain("second");
 }, 25_000);
 
@@ -149,7 +179,11 @@ function fakeOsascript(succeeds: boolean, delay = 0) {
   const png = join(bin, "fixture.png");
   writeFileSync(png, PNG);
   const wait = delay ? `sleep ${delay}\n` : "";
-  const body = wait + (succeeds ? `path=$(printf '%s' "$2" | sed -n 's/.*POSIX file "\\(.*\\)".*/\\1/p' | head -n 1)\ncp "${png}" "$path"\n` : "exit 1\n");
+  const body =
+    wait +
+    (succeeds
+      ? `path=$(printf '%s' "$2" | sed -n 's/.*POSIX file "\\(.*\\)".*/\\1/p' | head -n 1)\ncp "${png}" "$path"\n`
+      : "exit 1\n");
   writeFileSync(join(bin, "osascript"), `#!/bin/sh\n${body}`);
   chmodSync(join(bin, "osascript"), 0o755);
   return { PATH: `${bin}:${process.env.PATH}` };
@@ -161,28 +195,40 @@ macOnly.each([
   ["ctrl+v", CTRL_V],
   ["an empty paste", paste("")],
   ["/paste", `/paste${ENTER}`],
-])("%s attaches the image on the clipboard", async (_name, keys) => {
-  const clue = await startClue({ env: fakeOsascript(true) });
-  await clue.type(keys);
-  await clue.seen("[Image #1]");
-  await clue.type(" what is this");
-  await clue.type(ENTER);
-  await clue.turns(1);
-  expect(imagesIn(promptBlocks("what is this"))).toHaveLength(1);
-}, 25_000);
+])(
+  "%s attaches the image on the clipboard",
+  async (_name, keys) => {
+    const clue = await startClue({ env: fakeOsascript(true) });
+    await clue.type(keys);
+    await clue.seen("[Image #1]");
+    await clue.type(" what is this");
+    await clue.type(ENTER);
+    await clue.turns(1);
+    expect(imagesIn(promptBlocks("what is this"))).toHaveLength(1);
+  },
+  25_000,
+);
 
-macOnly("keys typed while the clipboard is read stay in order, and enter waits for the image", async () => {
-  const clue = await startClue({ env: fakeOsascript(true, 0.3) });
-  await clue.type(`${CTRL_V}what is this${ENTER}`);
-  await clue.turns(1);
-  expect(imagesIn(promptBlocks("[Image #1]what is this"))).toHaveLength(1);
-}, 25_000);
+macOnly(
+  "keys typed while the clipboard is read stay in order, and enter waits for the image",
+  async () => {
+    const clue = await startClue({ env: fakeOsascript(true, 0.3) });
+    await clue.type(`${CTRL_V}what is this${ENTER}`);
+    await clue.turns(1);
+    expect(imagesIn(promptBlocks("[Image #1]what is this"))).toHaveLength(1);
+  },
+  25_000,
+);
 
-macOnly("clue says so when the clipboard has no image", async () => {
-  const clue = await startClue({ env: fakeOsascript(false) });
-  await clue.type(CTRL_V);
-  await clue.seen("No image on the clipboard.");
-}, 25_000);
+macOnly(
+  "clue says so when the clipboard has no image",
+  async () => {
+    const clue = await startClue({ env: fakeOsascript(false) });
+    await clue.type(CTRL_V);
+    await clue.seen("No image on the clipboard.");
+  },
+  25_000,
+);
 
 test("tab queues the typed message, and it sends when the turn ends", async () => {
   const clue = await startClue({ delay: 30 });
@@ -356,7 +402,8 @@ test("/new clears the name", async () => {
 }, 25_000);
 
 const scratch = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), name)));
-const clueFirstRun = (cwd: string, home: string, prompt: string) => startClue({ cwd, home, args: ["--name", "thread-1", prompt] });
+const clueFirstRun = (cwd: string, home: string, prompt: string) =>
+  startClue({ cwd, home, args: ["--name", "thread-1", prompt] });
 
 test("a prompt on the command line runs as the first turn", async () => {
   const clue = await startClue({ args: ["summarise this"] });
@@ -616,16 +663,20 @@ test("shift+tab doesn't accept a pick in the file picker", async () => {
   expect(clue.wasSent("@notes.md go")).toBe(true);
 }, 25_000);
 
-test.each(["/usage", "/cost"])("%s reports context and cost after a reply", async (command) => {
-  const clue = await startClue();
-  await clue.type("hello");
-  await clue.type(ENTER);
-  await clue.turns(1);
-  await clue.type(command);
-  await clue.type(ENTER);
-  await clue.seen("before compaction");
-  await clue.seen("across 1 prompt");
-}, 25_000);
+test.each(["/usage", "/cost"])(
+  "%s reports context and cost after a reply",
+  async (command) => {
+    const clue = await startClue();
+    await clue.type("hello");
+    await clue.type(ENTER);
+    await clue.turns(1);
+    await clue.type(command);
+    await clue.type(ENTER);
+    await clue.seen("before compaction");
+    await clue.seen("across 1 prompt");
+  },
+  25_000,
+);
 
 test("/undo removes what the turn wrote and leaves the conversation alone", async () => {
   const cwd = scratch("clue-undo-");

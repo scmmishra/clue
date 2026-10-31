@@ -1,7 +1,13 @@
 // A stand-in for the Anthropic Messages API, for tests without credentials.
 // It streams a reply that calls read_file, then a final answer once the tool result arrives.
 
-type Body = { model?: string; messages: { role: string; content: unknown }[]; max_tokens: number; stream?: boolean; output_config?: { effort?: string } };
+type Body = {
+  model?: string;
+  messages: { role: string; content: unknown }[];
+  max_tokens: number;
+  stream?: boolean;
+  output_config?: { effort?: string };
+};
 
 export const requests: Body[] = [];
 
@@ -44,7 +50,16 @@ function sse(events: Record<string, unknown>[], delay: number) {
 const usage = { input_tokens: 120, output_tokens: 40, cache_read_input_tokens: 2000, cache_creation_input_tokens: 300 };
 
 function message(content: unknown[], stop: string) {
-  return { id: `msg_${Math.random().toString(36).slice(2)}`, type: "message", role: "assistant", model: "claude-opus-5-5", content, stop_reason: stop, stop_sequence: null, usage };
+  return {
+    id: `msg_${Math.random().toString(36).slice(2)}`,
+    type: "message",
+    role: "assistant",
+    model: "claude-opus-5-5",
+    content,
+    stop_reason: stop,
+    stop_sequence: null,
+    usage,
+  };
 }
 
 function streamText(text: string, index: number) {
@@ -67,18 +82,35 @@ export function startMockApi(port = 0, delay = DELAY) {
         if (reviewers.jev === "error") return Response.json({ error: { message: "limit reached" } }, { status: 500 });
         return Response.json({ answers: { decision: { choice: reviewers.jev } } });
       }
-      if (url.pathname.includes("/v1/models/")) return Response.json({ id: url.pathname.split("/").at(-1), type: "model", display_name: "mock", created_at: "2026-01-01T00:00:00Z" });
+      if (url.pathname.includes("/v1/models/"))
+        return Response.json({
+          id: url.pathname.split("/").at(-1),
+          type: "model",
+          display_name: "mock",
+          created_at: "2026-01-01T00:00:00Z",
+        });
       if (!url.pathname.endsWith("/v1/messages")) return new Response("not found", { status: 404 });
       const body = (await request.json()) as Body;
       // A review is the one request that doesn't stream and asks for a reply.
       if (!body.stream && body.max_tokens !== 0) {
         reviewers.claudeCalls.push({ model: body.model!, effort: body.output_config?.effort });
-        if (reviewers.failing.has(body.model!)) return Response.json({ type: "error", error: { type: "invalid_request_error", message: "reviewer is down" } }, { status: 400 });
-        return Response.json(message([{ type: "text", text: JSON.stringify({ decision: reviewers.decision, reason: "the reviewer's reason" }) }], "end_turn"));
+        if (reviewers.failing.has(body.model!))
+          return Response.json(
+            { type: "error", error: { type: "invalid_request_error", message: "reviewer is down" } },
+            { status: 400 },
+          );
+        return Response.json(
+          message(
+            [{ type: "text", text: JSON.stringify({ decision: reviewers.decision, reason: "the reviewer's reason" }) }],
+            "end_turn",
+          ),
+        );
       }
       requests.push(body);
       const last = body.messages.at(-1);
-      const hasToolResult = Array.isArray(last?.content) && (last.content as { type: string }[]).some((block) => block.type === "tool_result");
+      const hasToolResult =
+        Array.isArray(last?.content) &&
+        (last.content as { type: string }[]).some((block) => block.type === "tool_result");
       if (body.max_tokens === 0) {
         return Response.json(message([], "max_tokens"));
       }
@@ -86,30 +118,67 @@ export function startMockApi(port = 0, delay = DELAY) {
       if (!hasToolResult) {
         const wantsPush = promptText.includes("push");
         const wantsWrite = promptText.includes("create the note");
-        const input = JSON.stringify(wantsPush ? { command: "deploy-preview --dry-run" } : wantsWrite ? { path: "note.txt", content: "from clue" } : { path: "package.json" });
+        const input = JSON.stringify(
+          wantsPush
+            ? { command: "deploy-preview --dry-run" }
+            : wantsWrite
+              ? { path: "note.txt", content: "from clue" }
+              : { path: "package.json" },
+        );
         const toolName = wantsPush ? "shell" : wantsWrite ? "write_file" : "read_file";
-        return sse([
-          { type: "message_start", message: message([], "") },
-          { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } },
-          { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Checking the package file." } },
-          { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "sig" } },
-          { type: "content_block_stop", index: 0 },
-          ...streamText("I'll read the package file first.", 1),
-          { type: "content_block_start", index: 2, content_block: { type: "tool_use", id: `toolu_${requests.length}`, name: toolName, input: {} } },
-          { type: "content_block_delta", index: 2, delta: { type: "input_json_delta", partial_json: input.slice(0, 8) } },
-          { type: "content_block_delta", index: 2, delta: { type: "input_json_delta", partial_json: input.slice(8) } },
-          { type: "content_block_stop", index: 2 },
-          { type: "message_delta", delta: { stop_reason: "tool_use", stop_sequence: null }, usage: { output_tokens: 40 } },
-          { type: "message_stop" },
-        ], delay);
+        return sse(
+          [
+            { type: "message_start", message: message([], "") },
+            { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } },
+            {
+              type: "content_block_delta",
+              index: 0,
+              delta: { type: "thinking_delta", thinking: "Checking the package file." },
+            },
+            { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "sig" } },
+            { type: "content_block_stop", index: 0 },
+            ...streamText("I'll read the package file first.", 1),
+            {
+              type: "content_block_start",
+              index: 2,
+              content_block: { type: "tool_use", id: `toolu_${requests.length}`, name: toolName, input: {} },
+            },
+            {
+              type: "content_block_delta",
+              index: 2,
+              delta: { type: "input_json_delta", partial_json: input.slice(0, 8) },
+            },
+            {
+              type: "content_block_delta",
+              index: 2,
+              delta: { type: "input_json_delta", partial_json: input.slice(8) },
+            },
+            { type: "content_block_stop", index: 2 },
+            {
+              type: "message_delta",
+              delta: { stop_reason: "tool_use", stop_sequence: null },
+              usage: { output_tokens: 40 },
+            },
+            { type: "message_stop" },
+          ],
+          delay,
+        );
       }
-      const answer = "## Done\n\nThe package is called **clue**. It uses:\n\n- `@anthropic-ai/sdk`\n- `@modelcontextprotocol/sdk`\n\n| Field | Value |\n|---|---|\n| name | clue |\n| version | 0.1.0 |\n";
-      return sse([
-        { type: "message_start", message: message([], "") },
-        ...streamText(answer, 0),
-        { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 60 } },
-        { type: "message_stop" },
-      ], delay);
+      const answer =
+        "## Done\n\nThe package is called **clue**. It uses:\n\n- `@anthropic-ai/sdk`\n- `@modelcontextprotocol/sdk`\n\n| Field | Value |\n|---|---|\n| name | clue |\n| version | 0.1.0 |\n";
+      return sse(
+        [
+          { type: "message_start", message: message([], "") },
+          ...streamText(answer, 0),
+          {
+            type: "message_delta",
+            delta: { stop_reason: "end_turn", stop_sequence: null },
+            usage: { output_tokens: 60 },
+          },
+          { type: "message_stop" },
+        ],
+        delay,
+      );
     },
   });
 }

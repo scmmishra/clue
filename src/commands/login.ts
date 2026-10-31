@@ -54,7 +54,11 @@ export async function login() {
   console.log(`${style.green("Saved")} in ${where}.`);
   const auth = await resolveAuth();
   if (auth.source !== "clue-login") {
-    console.log(style.muted(`Note: clue uses ${auth.source === "env" ? "ANTHROPIC_API_KEY from your environment" : "your ant profile"} first, before this key.`));
+    console.log(
+      style.muted(
+        `Note: clue uses ${auth.source === "env" ? "ANTHROPIC_API_KEY from your environment" : "your ant profile"} first, before this key.`,
+      ),
+    );
   }
 }
 

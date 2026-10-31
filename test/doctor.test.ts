@@ -67,7 +67,13 @@ test("a terminal that answers the key query is reported", async () => {
   });
   const proc = Bun.spawn(["bun", main, "doctor"], {
     cwd: home,
-    env: { ...process.env, TMUX: "", CLUE_HOME: home, ANTHROPIC_BASE_URL: server.url.origin, ANTHROPIC_API_KEY: "test" },
+    env: {
+      ...process.env,
+      TMUX: "",
+      CLUE_HOME: home,
+      ANTHROPIC_BASE_URL: server.url.origin,
+      ANTHROPIC_API_KEY: "test",
+    },
     terminal,
   });
   await proc.exited;

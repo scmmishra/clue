@@ -17,11 +17,21 @@ afterAll(() => server.stop(true));
 const run = async (args: string[], options: { cwd?: string; home?: string } = {}) => {
   const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), ...args], {
     cwd: options.cwd ?? join(import.meta.dir, ".."),
-    env: { ...process.env, CLUE_HOME: options.home ?? home, ANTHROPIC_BASE_URL: server.url.origin, ANTHROPIC_API_KEY: "sk-ant-test", OPENROUTER_API_KEY: "" },
+    env: {
+      ...process.env,
+      CLUE_HOME: options.home ?? home,
+      ANTHROPIC_BASE_URL: server.url.origin,
+      ANTHROPIC_API_KEY: "sk-ant-test",
+      OPENROUTER_API_KEY: "",
+    },
     stdout: "pipe",
     stderr: "pipe",
   });
-  const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   return { stdout, stderr, code };
 };
 
@@ -59,7 +69,10 @@ test("a session that crashed during a tool call continues, and a torn line loses
   const id = JSON.parse(stdout).session_id;
   const [file] = [...new Bun.Glob(`sessions/*/${id}.jsonl`).scanSync({ cwd: home, absolute: true })];
   // The crash: a tool call with no result, then a record cut off mid-line.
-  const orphan = { role: "assistant", content: [{ type: "tool_use", id: "toolu_orphan", name: "shell", input: { command: "sleep 100" } }] };
+  const orphan = {
+    role: "assistant",
+    content: [{ type: "tool_use", id: "toolu_orphan", name: "shell", input: { command: "sleep 100" } }],
+  };
   appendFileSync(file, `${JSON.stringify({ t: "message", message: orphan })}\n{"t":"tool","tool":{"id":"toolu_or`);
 
   const before = requests.length;
@@ -98,12 +111,20 @@ test("clue mcp passes --, --project and --all through to the command", async () 
   const project = join(cwd, ".mcp.json");
 
   await run(["mcp", "add", "local", "--", "true", "--flag"], { cwd, home: mcpHome });
-  expect(JSON.parse(readFileSync(join(mcpHome, "mcp.json"), "utf8")).mcpServers.local).toEqual({ command: "true", args: ["--flag"] });
+  expect(JSON.parse(readFileSync(join(mcpHome, "mcp.json"), "utf8")).mcpServers.local).toEqual({
+    command: "true",
+    args: ["--flag"],
+  });
 
   await run(["mcp", "add", "--project", "web", "http://127.0.0.1:9/mcp"], { cwd, home: mcpHome });
   expect(JSON.parse(readFileSync(project, "utf8")).mcpServers.web.url).toBe("http://127.0.0.1:9/mcp");
 
-  writeFileSync(project, JSON.stringify({ mcpServers: { web: { url: "http://127.0.0.1:9/mcp" }, other: { url: "http://127.0.0.1:9/mcp" } } }));
+  writeFileSync(
+    project,
+    JSON.stringify({
+      mcpServers: { web: { url: "http://127.0.0.1:9/mcp" }, other: { url: "http://127.0.0.1:9/mcp" } },
+    }),
+  );
   const { stdout } = await run(["mcp", "approve", "--all"], { cwd, home: mcpHome });
   expect(stdout).toContain("Approved");
   expect(JSON.parse(readFileSync(join(mcpHome, "mcp-approvals.json"), "utf8"))[cwd].other).toBe("approved");

@@ -39,15 +39,24 @@ export function pickSession(screen: Screen, keyboard: Keyboard, cwd: string): Pr
       const height = visible();
       if (selected < offset) offset = selected;
       if (selected >= offset + height) offset = selected - height + 1;
-      const folderWidth = Math.min(28, Math.max(...items.slice(offset, offset + height).map((meta) => width(homePath(meta.cwd))), 8));
+      const folderWidth = Math.min(
+        28,
+        Math.max(...items.slice(offset, offset + height).map((meta) => width(homePath(meta.cwd))), 8),
+      );
       for (const [index, meta] of items.slice(offset, offset + height).entries()) {
         const active = offset + index === selected;
         // Cut long folders from the left, so the project name stays visible.
         const path = homePath(meta.cwd);
-        const folder = pad(width(path) > folderWidth ? Bun.sliceAnsi(path, -folderWidth, undefined, "…") : path, folderWidth);
+        const folder = pad(
+          width(path) > folderWidth ? Bun.sliceAnsi(path, -folderWidth, undefined, "…") : path,
+          folderWidth,
+        );
         const right = `${pad(ago(meta.updated), 9)} ${String(meta.prompts).padStart(4)}`;
         const titleWidth = Math.max(10, max - folderWidth - width(right) - 8);
-        const title = pad(truncate(meta.name ? `${meta.name} · ${meta.title}` : meta.title || "(empty)", titleWidth), titleWidth);
+        const title = pad(
+          truncate(meta.name ? `${meta.name} · ${meta.title}` : meta.title || "(empty)", titleWidth),
+          titleWidth,
+        );
         const line = `${active ? style.accent("›") : " "} ${active ? style.bold(folder) : style.muted(folder)}  ${active ? title : style.muted(title)}  ${style.faint(right)}`;
         lines.push(` ${line}`);
       }
@@ -66,7 +75,8 @@ export function pickSession(screen: Screen, keyboard: Keyboard, cwd: string): Pr
       if (key.name === "escape" || (key.ctrl && key.name === "c")) return finish(null);
       if (key.name === "enter") return finish(items[selected] ?? null);
       if (key.name === "up" || (key.ctrl && key.name === "p")) selected = Math.max(0, selected - 1);
-      else if (key.name === "down" || (key.ctrl && key.name === "n")) selected = Math.min(items.length - 1, selected + 1);
+      else if (key.name === "down" || (key.ctrl && key.name === "n"))
+        selected = Math.min(items.length - 1, selected + 1);
       else if (key.name === "backspace") {
         query = query.slice(0, -1);
         load();

@@ -23,7 +23,11 @@ export async function clipboardImage(): Promise<PromptImage | null> {
     "close access fileRef",
   ].join("\n");
   try {
-    const proc = Bun.spawn(["osascript", "-e", script], { stdout: "ignore", stderr: "ignore", timeout: READ_TIMEOUT_MS });
+    const proc = Bun.spawn(["osascript", "-e", script], {
+      stdout: "ignore",
+      stderr: "ignore",
+      timeout: READ_TIMEOUT_MS,
+    });
     if ((await proc.exited) !== 0) return null;
     return (await encodeImage(file, statSync(file).size)).block;
   } catch {

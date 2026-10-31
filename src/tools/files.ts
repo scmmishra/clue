@@ -17,7 +17,17 @@ const IMAGE_TYPES: Record<string, "image/png" | "image/jpeg" | "image/gif" | "im
   ".gif": "image/gif",
   ".webp": "image/webp",
 };
-const IGNORED_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "target", "vendor", ".venv", "__pycache__"]);
+const IGNORED_DIRS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  ".next",
+  "target",
+  "vendor",
+  ".venv",
+  "__pycache__",
+]);
 // Stops collecting matches here. Past this, the answer is "narrow the pattern" either way.
 const MAX_WALK_FILES = 20_000;
 const YIELD_EVERY = 2048;
@@ -37,9 +47,19 @@ export async function encodeImage(file: string, size: number) {
   const { width, height } = await image.metadata();
   const large = Math.max(width, height) > MAX_IMAGE_EDGE || size > MAX_IMAGE_BYTES;
   const data = large
-    ? await image.resize(MAX_IMAGE_EDGE, MAX_IMAGE_EDGE, { fit: "inside", withoutEnlargement: true }).webp({ quality: 85 }).toBase64()
+    ? await image
+        .resize(MAX_IMAGE_EDGE, MAX_IMAGE_EDGE, { fit: "inside", withoutEnlargement: true })
+        .webp({ quality: 85 })
+        .toBase64()
     : Buffer.from(await Bun.file(file).bytes()).toString("base64");
-  const block = { type: "image" as const, source: { type: "base64" as const, media_type: large ? ("image/webp" as const) : IMAGE_TYPES[extname(file).toLowerCase()], data } };
+  const block = {
+    type: "image" as const,
+    source: {
+      type: "base64" as const,
+      media_type: large ? ("image/webp" as const) : IMAGE_TYPES[extname(file).toLowerCase()],
+      data,
+    },
+  };
   return { block, width, height, large };
 }
 
@@ -55,7 +75,10 @@ const FIRST_READ_BYTES = 64 * 1024;
 const numberLines = (lines: string[], start: number, end: number) =>
   lines
     .slice(start - 1, end)
-    .map((line, index) => `${String(start + index).padStart(6)}\t${line.length > MAX_LINE_CHARS ? `${line.slice(0, MAX_LINE_CHARS)}…` : line}`)
+    .map(
+      (line, index) =>
+        `${String(start + index).padStart(6)}\t${line.length > MAX_LINE_CHARS ? `${line.slice(0, MAX_LINE_CHARS)}…` : line}`,
+    )
     .join("\n");
 
 // Reads the start of a file until at least `needed` complete lines are in, doubling the
@@ -114,9 +137,14 @@ export const readFile: Tool<{ path: string; offset?: number; limit?: number }> =
       const last = Math.min(head.lines.length, wanted);
       const text = numberLines(head.lines, start, last);
       const more = head.complete
-        ? last < head.lines.length ? `\n\n[${head.lines.length - last} more lines. Continue with offset ${last + 1}.]` : ""
+        ? last < head.lines.length
+          ? `\n\n[${head.lines.length - last} more lines. Continue with offset ${last + 1}.]`
+          : ""
         : `\n\n[More lines follow. Continue with offset ${last + 1}.]`;
-      return { content: withNestedInstructions(context, file, (text || "(empty file)") + more), note: `${Math.max(0, last - start + 1)} lines` };
+      return {
+        content: withNestedInstructions(context, file, (text || "(empty file)") + more),
+        note: `${Math.max(0, last - start + 1)} lines`,
+      };
     }
     const text = await Bun.file(file).text();
     const lines = text.split("\n");
@@ -132,7 +160,7 @@ export const readFile: Tool<{ path: string; offset?: number; limit?: number }> =
 
 export const globFiles: Tool<{ pattern: string; path?: string }> = {
   name: "glob_files",
-  description: "Find files by glob pattern, such as \"src/**/*.ts\". Skips node_modules, .git and build folders.",
+  description: 'Find files by glob pattern, such as "src/**/*.ts". Skips node_modules, .git and build folders.',
   schema: {
     type: "object",
     properties: {
@@ -153,8 +181,14 @@ export const globFiles: Tool<{ pattern: string; path?: string }> = {
     const prefix = input.path ? `${display(context.cwd, root)}/` : "";
     const body = shown.map((file) => prefix + file).join("\n");
     const total = `${files.length}${capped ? "+" : ""}`;
-    const more = files.length > MAX_GLOB_RESULTS ? `\n[${total} files match. Showing the first ${MAX_GLOB_RESULTS}. Narrow the pattern.]` : "";
-    return { content: body ? body + more : "No files match.", note: `${files.length > MAX_GLOB_RESULTS ? `${MAX_GLOB_RESULTS} of ${total}` : total} files` };
+    const more =
+      files.length > MAX_GLOB_RESULTS
+        ? `\n[${total} files match. Showing the first ${MAX_GLOB_RESULTS}. Narrow the pattern.]`
+        : "";
+    return {
+      content: body ? body + more : "No files match.",
+      note: `${files.length > MAX_GLOB_RESULTS ? `${MAX_GLOB_RESULTS} of ${total}` : total} files`,
+    };
   },
 };
 
@@ -215,7 +249,14 @@ async function walkGlob(root: string, pattern: string, signal: AbortSignal) {
   return { files, capped: false };
 }
 
-export const grepFiles: Tool<{ pattern: string; path?: string; glob?: string; regex?: boolean; ignore_case?: boolean; context?: number }> = {
+export const grepFiles: Tool<{
+  pattern: string;
+  path?: string;
+  glob?: string;
+  regex?: boolean;
+  ignore_case?: boolean;
+  context?: number;
+}> = {
   name: "grep_files",
   description:
     "Search file contents. Matches literal text by default; set regex for a regular expression. Returns file:line:text. Respects .gitignore.",
@@ -224,7 +265,7 @@ export const grepFiles: Tool<{ pattern: string; path?: string; glob?: string; re
     properties: {
       pattern: { type: "string", description: "Text or regular expression to find." },
       path: { type: "string", description: "File or folder to search. Defaults to the project folder." },
-      glob: { type: "string", description: "Only search files matching this glob, such as \"*.ts\"." },
+      glob: { type: "string", description: 'Only search files matching this glob, such as "*.ts".' },
       regex: { type: "boolean", description: "Treat pattern as a regular expression." },
       ignore_case: { type: "boolean" },
       context: { type: "number", description: "Lines of context around each match." },
@@ -234,32 +275,62 @@ export const grepFiles: Tool<{ pattern: string; path?: string; glob?: string; re
   kind: "search",
   readOnly: true,
   label: (input, done) => `${done ? "Searched" : "Searching"} "${input.pattern}"`,
-  validate: (input) => checkFields(input, { pattern: "string", path: "string?", glob: "string?", regex: "boolean?", ignore_case: "boolean?", context: "number?" }),
+  validate: (input) =>
+    checkFields(input, {
+      pattern: "string",
+      path: "string?",
+      glob: "string?",
+      regex: "boolean?",
+      ignore_case: "boolean?",
+      context: "number?",
+    }),
   async run(input, context) {
     const rg = Bun.which("rg");
     const target = input.path ? absolute(context.cwd, input.path) : ".";
     let args: string[];
     if (rg) {
-      args = [rg, "--no-config", "--line-number", "--no-heading", "--color", "never", "--max-columns", "400", "--max-count", "50"];
+      args = [
+        rg,
+        "--no-config",
+        "--line-number",
+        "--no-heading",
+        "--color",
+        "never",
+        "--max-columns",
+        "400",
+        "--max-count",
+        "50",
+      ];
       if (!input.regex) args.push("--fixed-strings");
       if (input.ignore_case) args.push("--ignore-case");
       if (input.context) args.push("--context", String(Math.min(input.context, 10)));
       if (input.glob) args.push("--glob", input.glob);
       args.push("--", input.pattern, target);
     } else {
-      args = ["grep", "-rn", input.regex ? "-E" : "-F", ...(input.ignore_case ? ["-i"] : []), "--", input.pattern, target];
+      args = [
+        "grep",
+        "-rn",
+        input.regex ? "-E" : "-F",
+        ...(input.ignore_case ? ["-i"] : []),
+        "--",
+        input.pattern,
+        target,
+      ];
     }
     const proc = Bun.spawn(args, { cwd: context.cwd, stdout: "pipe", stderr: "pipe", signal: context.signal });
     const { lines, truncated } = await readLines(proc.stdout, MAX_GREP_LINES, () => proc.kill());
     const code = truncated ? 0 : await proc.exited;
     // ripgrep exits 2 when it hit an unreadable file, even if it found matches. Only no output is a failure.
-    if (code === 2 && lines.length === 0) return { content: (await new Response(proc.stderr).text()).trim() || "Search failed.", isError: true };
+    if (code === 2 && lines.length === 0)
+      return { content: (await new Response(proc.stderr).text()).trim() || "Search failed.", isError: true };
     const files = new Set(lines.map((line) => line.split(":")[0]));
     const body = lines.join("\n");
     const more = truncated ? `\n[More matches than ${MAX_GREP_LINES} lines. Narrow the search.]` : "";
     return {
       content: body ? body + more : "No matches.",
-      note: lines.length ? `${lines.length}${truncated ? "+" : ""} matches in ${files.size}${truncated ? "+" : ""} files` : "no matches",
+      note: lines.length
+        ? `${lines.length}${truncated ? "+" : ""} matches in ${files.size}${truncated ? "+" : ""} files`
+        : "no matches",
     };
   },
 };
@@ -302,17 +373,20 @@ function replacementDiff(before: string, after: string, index: number, oldText: 
   const afterLines = after.split("\n");
   const CONTEXT = 2;
   const out: string[] = [];
-  for (let line = Math.max(1, startLine - CONTEXT); line < startLine; line++) out.push(`  ${line} ${beforeLines[line - 1]}`);
+  for (let line = Math.max(1, startLine - CONTEXT); line < startLine; line++)
+    out.push(`  ${line} ${beforeLines[line - 1]}`);
   oldLines.forEach((text, offset) => out.push(`- ${startLine + offset} ${text}`));
   newLines.forEach((text, offset) => out.push(`+ ${startLine + offset} ${text}`));
   const resume = startLine + newLines.length;
-  for (let line = resume; line < resume + CONTEXT && line <= afterLines.length; line++) out.push(`  ${line} ${afterLines[line - 1]}`);
+  for (let line = resume; line < resume + CONTEXT && line <= afterLines.length; line++)
+    out.push(`  ${line} ${afterLines[line - 1]}`);
   return { diff: out.join("\n"), added: newLines.length, removed: oldLines.length };
 }
 
 export const writeFile: Tool<{ path: string; content: string }> = {
   name: "write_file",
-  description: "Create a file, or replace a whole file you have already read. Prefer edit_file for changes to existing files.",
+  description:
+    "Create a file, or replace a whole file you have already read. Prefer edit_file for changes to existing files.",
   schema: {
     type: "object",
     properties: {
@@ -346,7 +420,11 @@ export const writeFile: Tool<{ path: string; content: string }> = {
       .map((line, index) => `+ ${index + 1} ${line}`)
       .join("\n");
     return {
-      content: withNestedInstructions(context, file, `${exists ? "Replaced" : "Created"} ${input.path} (${added} lines).`),
+      content: withNestedInstructions(
+        context,
+        file,
+        `${exists ? "Replaced" : "Created"} ${input.path} (${added} lines).`,
+      ),
       diff,
       added,
       removed,
@@ -370,7 +448,8 @@ export const editFile: Tool<{ path: string; old_string: string; new_string: stri
   },
   kind: "edit",
   label: (input, done) => `${done ? "Edited" : "Editing"} ${input.path}`,
-  validate: (input) => checkFields(input, { path: "string", old_string: "string", new_string: "string", replace_all: "boolean?" }),
+  validate: (input) =>
+    checkFields(input, { path: "string", old_string: "string", new_string: "string", replace_all: "boolean?" }),
   async run(input, context) {
     const file = absolute(context.cwd, input.path);
     if (!existsSync(file)) return { content: `No file at ${input.path}. Use write_file to create it.`, isError: true };
@@ -378,15 +457,25 @@ export const editFile: Tool<{ path: string; old_string: string; new_string: stri
     if (context.readStamps.get(file) !== mtime(file)) {
       return { content: `${input.path} changed since you last read it. Read it again, then edit.`, isError: true };
     }
-    if (input.old_string === input.new_string) return { content: "old_string and new_string are the same.", isError: true };
+    if (input.old_string === input.new_string)
+      return { content: "old_string and new_string are the same.", isError: true };
     const before = readFileSync(file, "utf8");
     const first = before.indexOf(input.old_string);
-    if (first === -1) return { content: `old_string was not found in ${input.path}. Check whitespace and read the file again.`, isError: true };
+    if (first === -1)
+      return {
+        content: `old_string was not found in ${input.path}. Check whitespace and read the file again.`,
+        isError: true,
+      };
     const count = before.split(input.old_string).length - 1;
     if (count > 1 && !input.replace_all) {
-      return { content: `old_string appears ${count} times in ${input.path}. Add surrounding lines to make it unique, or set replace_all.`, isError: true };
+      return {
+        content: `old_string appears ${count} times in ${input.path}. Add surrounding lines to make it unique, or set replace_all.`,
+        isError: true,
+      };
     }
-    const after = input.replace_all ? before.split(input.old_string).join(input.new_string) : before.replace(input.old_string, () => input.new_string);
+    const after = input.replace_all
+      ? before.split(input.old_string).join(input.new_string)
+      : before.replace(input.old_string, () => input.new_string);
     const previous = snapshotFile(file);
     writeFileSync(file, after);
     context.undo.record(file, previous);

@@ -125,11 +125,14 @@ async function terminalChecks() {
 
 export function formatChecks(checks: Check[]) {
   const size = Math.max(...checks.map((check) => width(check.name))) + 2;
-  const lines = checks.map(({ status, name, detail }) => `  ${ICONS[status]} ${name.padEnd(size)}${style.muted(detail)}`);
+  const lines = checks.map(
+    ({ status, name, detail }) => `  ${ICONS[status]} ${name.padEnd(size)}${style.muted(detail)}`,
+  );
   const count = (status: Check["status"]) => checks.filter((check) => check.status === status).length;
   const [failed, warned] = [count("fail"), count("warn")];
   const plural = (size: number, word: string) => `${size} ${word}${size === 1 ? "" : "s"}`;
-  const summary = failed || warned ? `${plural(failed, "problem")}, ${plural(warned, "warning")}.` : "Everything looks fine.";
+  const summary =
+    failed || warned ? `${plural(failed, "problem")}, ${plural(warned, "warning")}.` : "Everything looks fine.";
   return [...lines, "", summary];
 }
 

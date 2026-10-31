@@ -87,7 +87,8 @@ export async function saveSetting<K extends keyof Settings>(key: K, value: Setti
 
 const REVIEW_PROVIDERS = ["anthropic", "openrouter"];
 const isObject = (value: unknown) => typeof value === "object" && value !== null && !Array.isArray(value);
-const oneOf = (options: readonly string[]) => (value: unknown) => (options.includes(value as string) ? null : `must be one of ${options.join(", ")}`);
+const oneOf = (options: readonly string[]) => (value: unknown) =>
+  options.includes(value as string) ? null : `must be one of ${options.join(", ")}`;
 const aString = (value: unknown) => (typeof value === "string" ? null : "must be a string");
 const anObject = (value: unknown) => (isObject(value) ? null : "must be an object");
 
@@ -125,7 +126,11 @@ export function settingsProblems(text: string): string[] {
   if (!isObject(settings)) return ["settings.json must be a JSON object"];
   const problems = Object.entries(settings).flatMap(([key, value]) => checkSetting(key, value) ?? []);
   if (isObject(settings.review)) {
-    problems.push(...Object.entries(settings.review as object).flatMap(([key, value]) => checkSetting(`review.${key}`, value) ?? []));
+    problems.push(
+      ...Object.entries(settings.review as object).flatMap(
+        ([key, value]) => checkSetting(`review.${key}`, value) ?? [],
+      ),
+    );
   }
   return problems;
 }
@@ -133,5 +138,7 @@ export function settingsProblems(text: string): string[] {
 // The problems with the file on disk, as warnings for startup.
 export function settingsWarnings() {
   if (!existsSync(paths.settings)) return [];
-  return settingsProblems(readFileSync(paths.settings, "utf8")).map((problem) => `${problem}. Fix it with clue config edit.`);
+  return settingsProblems(readFileSync(paths.settings, "utf8")).map(
+    (problem) => `${problem}. Fix it with clue config edit.`,
+  );
 }

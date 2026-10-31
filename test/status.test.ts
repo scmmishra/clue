@@ -119,10 +119,21 @@ const runSession = async (settings?: object) => {
   if (settings) writeFileSync(join(home, "settings.json"), JSON.stringify(settings));
   let output = "";
   const decoder = new TextDecoder();
-  const terminal = new Bun.Terminal({ cols: 100, rows: 30, data: (_terminal, data) => (output += decoder.decode(data, { stream: true })) });
+  const terminal = new Bun.Terminal({
+    cols: 100,
+    rows: 30,
+    data: (_terminal, data) => (output += decoder.decode(data, { stream: true })),
+  });
   const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), "--permission-mode", "ask"], {
     cwd: mkdtempSync(join(tmpdir(), "clue-status-")),
-    env: { ...process.env, SHELL: "/bin/sh", CLUE_HOME: home, ANTHROPIC_BASE_URL: server.url.origin, ANTHROPIC_API_KEY: "sk-ant-test", OPENROUTER_API_KEY: "" },
+    env: {
+      ...process.env,
+      SHELL: "/bin/sh",
+      CLUE_HOME: home,
+      ANTHROPIC_BASE_URL: server.url.origin,
+      ANTHROPIC_API_KEY: "sk-ant-test",
+      OPENROUTER_API_KEY: "",
+    },
     terminal,
   });
   const until = async (status: ProgramStatus) => {
@@ -158,7 +169,11 @@ test("a session with the bell off never rings", async () => {
   expect(output).not.toContain("\x07");
 }, 15_000);
 
-const fruits = { question: "Which fruits?", options: [{ label: "apple" }, { label: "mango" }, { label: "kiwi" }], multiple: true };
+const fruits = {
+  question: "Which fruits?",
+  options: [{ label: "apple" }, { label: "mango" }, { label: "kiwi" }],
+  multiple: true,
+};
 const press = (view: TurnView, ...keys: Key[]) => keys.forEach((key) => view.handleKey(key));
 const typed = (text: string): Key[] => [...text].map((char) => ({ name: "char", text: char }));
 const down: Key = { name: "down" };
@@ -223,7 +238,8 @@ test("while typing, the hint says what the keys do then", () => {
 });
 
 const multiLine = "Run cat > a <<'EOF'\none\ntwo\nEOF?";
-const frameOf = (view: TurnView) => (view as unknown as { frame(): { lines: string[]; cursor?: { row: number } } }).frame();
+const frameOf = (view: TurnView) =>
+  (view as unknown as { frame(): { lines: string[]; cursor?: { row: number } } }).frame();
 
 test("every live row is one line, so a redraw erases exactly what it drew", () => {
   const view = new TurnView(capture().screen);
@@ -235,7 +251,9 @@ test("every live row is one line, so a redraw erases exactly what it drew", () =
 test("a permission prompt still shows the whole command", () => {
   const view = new TurnView(capture().screen);
   void view.confirm(multiLine, "x", "x *");
-  const text = frameOf(view).lines.map((line) => Bun.stripANSI(line)).join("\n");
+  const text = frameOf(view)
+    .lines.map((line) => Bun.stripANSI(line))
+    .join("\n");
   for (const part of ["Run cat > a <<'EOF'", "one", "two", "EOF?"]) expect(text).toContain(part);
 });
 

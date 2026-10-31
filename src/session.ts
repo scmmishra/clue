@@ -57,7 +57,14 @@ export type SessionRecord =
   | { t: "turn"; turn: TurnRecord }
   | { t: "name"; name: string };
 
-export type SessionMeta = { id: string; cwd: string; name: string | null; title: string; updated: number; prompts: number };
+export type SessionMeta = {
+  id: string;
+  cwd: string;
+  name: string | null;
+  title: string;
+  updated: number;
+  prompts: number;
+};
 
 // The real path of a folder, so a symlink or /var vs /private/var maps to one project.
 export function realFolder(cwd: string) {
@@ -69,7 +76,10 @@ export function realFolder(cwd: string) {
 }
 
 // Folder name for a project: its real path with separators replaced.
-export const projectKey = (cwd: string) => realFolder(cwd).replace(/[/\\:]/g, "-").replace(/^-+/, "") || "root";
+export const projectKey = (cwd: string) =>
+  realFolder(cwd)
+    .replace(/[/\\:]/g, "-")
+    .replace(/^-+/, "") || "root";
 
 export function newSessionId() {
   const time = Date.now().toString(36);
@@ -146,7 +156,9 @@ export class Session {
       } else if (record.message.role === "user" && !this.title) {
         // The first prompt of a session sits in blocks, after the context.
         const blocks = record.message.content as Anthropic.Beta.Messages.BetaContentBlockParam[];
-        this.title = blocks.flatMap((block) => (block.type === "text" && !block.text.startsWith("<context>") ? [block.text] : [])).join(" ");
+        this.title = blocks
+          .flatMap((block) => (block.type === "text" && !block.text.startsWith("<context>") ? [block.text] : []))
+          .join(" ");
       }
     } else if (record.t === "tool") this.tools.set(record.tool.id, record.tool);
     else if (record.t === "turn") {
@@ -168,7 +180,13 @@ export class Session {
       const isNew = !existsSync(this.file);
       this.sink = Bun.file(openSync(this.file, "a", 0o600)).writer();
       if (isNew) {
-        const header: SessionRecord = { t: "session", id: this.id, cwd: this.cwd, created: this.created, version: VERSION };
+        const header: SessionRecord = {
+          t: "session",
+          id: this.id,
+          cwd: this.cwd,
+          created: this.created,
+          version: VERSION,
+        };
         this.sink.write(`${JSON.stringify(header)}\n`);
         this.records.unshift(header);
       }
@@ -219,7 +237,15 @@ export class Session {
     if (last?.role !== "assistant" || !Array.isArray(last.content)) return;
     const results = last.content.flatMap((block) =>
       block.type === "tool_use"
-        ? [{ type: "tool_result" as const, tool_use_id: block.id, is_error: true, content: "clue stopped before this tool call finished. It may have partly run, so check before repeating it." }]
+        ? [
+            {
+              type: "tool_result" as const,
+              tool_use_id: block.id,
+              is_error: true,
+              content:
+                "clue stopped before this tool call finished. It may have partly run, so check before repeating it.",
+            },
+          ]
         : [],
     );
     if (results.length) this.appendMessage({ role: "user", content: results });
@@ -264,7 +290,9 @@ function indexSession(meta: SessionMeta & { prompt: string }) {
   try {
     const index = db();
     index
-      .query("INSERT INTO sessions (id, cwd, title, updated, prompts, name) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated = excluded.updated, prompts = excluded.prompts, name = excluded.name")
+      .query(
+        "INSERT INTO sessions (id, cwd, title, updated, prompts, name) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated = excluded.updated, prompts = excluded.prompts, name = excluded.name",
+      )
       .run(meta.id, meta.cwd, meta.title, meta.updated, meta.prompts, meta.name);
     if (meta.prompt) index.query("INSERT INTO prompts (session_id, text) VALUES (?, ?)").run(meta.id, meta.prompt);
   } catch {
@@ -311,10 +339,12 @@ function sessionsNamed(name: string) {
   }
 }
 
-export const nameFormatProblem = (name: string) => (VALID_NAME.test(name) ? null : "A session name uses letters, digits, ., _ and -, up to 64 characters.");
+export const nameFormatProblem = (name: string) =>
+  VALID_NAME.test(name) ? null : "A session name uses letters, digits, ., _ and -, up to 64 characters.";
 
 // The session with this name in this folder. Other folders never match.
-export const sessionNamedIn = (cwd: string, name: string) => sessionsNamed(name).find((meta) => meta.cwd === cwd) ?? null;
+export const sessionNamedIn = (cwd: string, name: string) =>
+  sessionsNamed(name).find((meta) => meta.cwd === cwd) ?? null;
 
 // Why a session in this folder can't take this name, or null when it can.
 export function nameProblem(cwd: string, name: string, self?: string) {

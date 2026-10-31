@@ -1,5 +1,16 @@
 import { expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { UndoStack } from "../src/agent/undo";
@@ -48,7 +59,13 @@ test("one undo reverses every file a turn changed", async () => {
   await edit("b.ts", "two", "TWO");
   await write("new.ts", "fresh");
   const result = undo.undo();
-  expect(result).toEqual({ kind: "done", restored: [file("a.ts"), file("b.ts")], deleted: [file("new.ts")], failed: [], ranShell: false });
+  expect(result).toEqual({
+    kind: "done",
+    restored: [file("a.ts"), file("b.ts")],
+    deleted: [file("new.ts")],
+    failed: [],
+    ranShell: false,
+  });
   expect(read("a.ts")).toBe("one");
   expect(read("b.ts")).toBe("two");
   expect(existsSync(file("new.ts"))).toBe(false);

@@ -111,7 +111,10 @@ export function nestedInstructions(cwd: string, target: string, seen: Set<string
   for (const file of found) {
     seen.add(file);
     const text = readInstructions(file);
-    if (text) notes.push(`Instructions from ${relative(cwd, file)} apply to files under ${relative(cwd, dirname(file)) || "."}:\n${text}`);
+    if (text)
+      notes.push(
+        `Instructions from ${relative(cwd, file)} apply to files under ${relative(cwd, dirname(file)) || "."}:\n${text}`,
+      );
   }
   return notes;
 }
@@ -131,13 +134,17 @@ export async function buildContext(cwd: string, skills: Skill[], mcpServers: str
   for (const file of instructionFiles(cwd)) {
     seen.add(file);
     const text = readInstructions(file);
-    if (text) lines.push(`\n<instructions file="${file === paths.agents ? "~/.clue/AGENTS.md" : relative(cwd, file) || basename(file)}">\n${text}\n</instructions>`);
+    if (text)
+      lines.push(
+        `\n<instructions file="${file === paths.agents ? "~/.clue/AGENTS.md" : relative(cwd, file) || basename(file)}">\n${text}\n</instructions>`,
+      );
   }
   if (skills.length) {
     lines.push("\nskills (read one with the skill tool when it matches the task):");
     for (const skill of skills) lines.push(`- ${skill.name}: ${skill.description}`);
   }
-  if (mcpServers.length) lines.push(`\nmcp servers: ${mcpServers.join(", ")} (find their tools with capability_search)`);
+  if (mcpServers.length)
+    lines.push(`\nmcp servers: ${mcpServers.join(", ")} (find their tools with capability_search)`);
   lines.push("</context>");
   return lines.join("\n");
 }

@@ -13,7 +13,9 @@ export const capabilitySearch: Tool<{ query: string }> = {
     "Search installed skills and the tools of connected MCP servers by keywords. MCP results include each tool's input schema; call one with mcp_call.",
   schema: {
     type: "object",
-    properties: { query: { type: "string", description: "Keywords, such as \"slack post message\" or \"database query\"." } },
+    properties: {
+      query: { type: "string", description: 'Keywords, such as "slack post message" or "database query".' },
+    },
     required: ["query"],
   },
   kind: "search",
@@ -37,12 +39,18 @@ export const capabilitySearch: Tool<{ query: string }> = {
       .slice(0, 5);
     const parts: string[] = [];
     for (const { tool } of tools) {
-      parts.push(`mcp tool: server="${tool.server}" tool="${tool.name}"\n${tool.description}\ninput schema: ${JSON.stringify(tool.inputSchema)}`);
+      parts.push(
+        `mcp tool: server="${tool.server}" tool="${tool.name}"\n${tool.description}\ninput schema: ${JSON.stringify(tool.inputSchema)}`,
+      );
     }
     for (const { skill } of skills) parts.push(`skill: ${skill.name}\n${skill.description}`);
-    const unavailable = [...context.mcp.servers.values()].filter((state) => state.status !== "ready" && state.status !== "disabled");
+    const unavailable = [...context.mcp.servers.values()].filter(
+      (state) => state.status !== "ready" && state.status !== "disabled",
+    );
     if (unavailable.length) {
-      parts.push(`Not available: ${unavailable.map((state) => `${state.entry.name} (${state.status}${state.error ? `: ${state.error}` : ""})`).join(", ")}`);
+      parts.push(
+        `Not available: ${unavailable.map((state) => `${state.entry.name} (${state.status}${state.error ? `: ${state.error}` : ""})`).join(", ")}`,
+      );
     }
     return {
       content: parts.length ? parts.join("\n\n") : "Nothing matched. No connected MCP server or skill covers this.",
@@ -53,7 +61,8 @@ export const capabilitySearch: Tool<{ query: string }> = {
 
 export const mcpCall: Tool<{ server: string; tool: string; arguments?: Record<string, unknown> }> = {
   name: "mcp_call",
-  description: "Call a tool on a connected MCP server. Find the server, tool name and input schema with capability_search first.",
+  description:
+    "Call a tool on a connected MCP server. Find the server, tool name and input schema with capability_search first.",
   schema: {
     type: "object",
     properties: {
@@ -70,7 +79,9 @@ export const mcpCall: Tool<{ server: string; tool: string; arguments?: Record<st
     const result = await context.mcp.call(input.server, input.tool, input.arguments ?? {}, context.signal);
     const blocks = (result.content ?? []) as Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
     const text = blocks
-      .map((block) => (block.type === "text" ? block.text : `[${block.type}${block.mimeType ? ` ${block.mimeType}` : ""}]`))
+      .map((block) =>
+        block.type === "text" ? block.text : `[${block.type}${block.mimeType ? ` ${block.mimeType}` : ""}]`,
+      )
       .join("\n");
     const structured = result.structuredContent ? `\n${JSON.stringify(result.structuredContent, null, 2)}` : "";
     return { content: (text || "(no content)") + structured, isError: result.isError === true };

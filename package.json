@@ -15,6 +15,7 @@
     "bench:check": "bun run build && bun benchmarks/run.ts --check",
     "bench:tools": "bun benchmarks/tools.ts",
     "typecheck": "tsc --noEmit",
+    "fmt": "bun fmt --no-script src test scripts benchmarks",
     "test": "bun test"
   },
   "dependencies": {

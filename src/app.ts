@@ -159,7 +159,11 @@ export class App {
     this.mcp.startAll();
     this.noticeProjectServers();
     void getClient().catch((error) => {
-      if (error instanceof MissingCredentials) this.print([`  ${style.orange("No Claude credentials yet.")} ${style.muted("Run `clue login` in another terminal, or set ANTHROPIC_API_KEY.")}`, ""]);
+      if (error instanceof MissingCredentials)
+        this.print([
+          `  ${style.orange("No Claude credentials yet.")} ${style.muted("Run `clue login` in another terminal, or set ANTHROPIC_API_KEY.")}`,
+          "",
+        ]);
     });
     if (this.options.resumed) void this.warmResumedCache();
 
@@ -191,7 +195,10 @@ export class App {
     this.warming = new AbortController();
     const started = now();
     try {
-      const usage = await warmCache({ model: this.settings.model, effort: this.settings.effort, messages: this.session.messages }, this.warming.signal);
+      const usage = await warmCache(
+        { model: this.settings.model, effort: this.settings.effort, messages: this.session.messages },
+        this.warming.signal,
+      );
       if (usage) this.print([`  ${style.faint(`history cached in ${duration(msSince(started))}`)}`, ""]);
     } catch {
       // Warming is an optimization. The first real request caches the history anyway.
@@ -201,13 +208,23 @@ export class App {
   }
 
   private noticeProjectServers() {
-    const waiting = [...this.mcp.servers.values()].filter((state) => state.status === "needs-approval").map((state) => state.entry.name);
-    if (waiting.length) this.print([`  ${style.orange(`This project has MCP servers that need approval: ${waiting.join(", ")}.`)} ${style.muted("Run /mcp approve --all to start them.")}`, ""]);
+    const waiting = [...this.mcp.servers.values()]
+      .filter((state) => state.status === "needs-approval")
+      .map((state) => state.entry.name);
+    if (waiting.length)
+      this.print([
+        `  ${style.orange(`This project has MCP servers that need approval: ${waiting.join(", ")}.`)} ${style.muted("Run /mcp approve --all to start them.")}`,
+        "",
+      ]);
   }
 
   // The input, with the queued message above it.
   private composer = (): LiveFrame => {
-    const frame = this.editor.frame(this.hint ? style.muted(this.hint) : statusLine(this.permissions.mode, this.settings.model, this.settings.effort, this.cwd, this.branch));
+    const frame = this.editor.frame(
+      this.hint
+        ? style.muted(this.hint)
+        : statusLine(this.permissions.mode, this.settings.model, this.settings.effort, this.cwd, this.branch),
+    );
     if (!this.queued) return frame;
     const preview = this.queued.text.replace(/\s+/g, " ").trim();
     return {
@@ -247,7 +264,8 @@ export class App {
   }
 
   private async pasteClipboard() {
-    if (!clipboardSupported) return this.notice("Pasting an image from the clipboard works on macOS. Paste its file path instead.");
+    if (!clipboardSupported)
+      return this.notice("Pasting an image from the clipboard works on macOS. Paste its file path instead.");
     const image = await clipboardImage();
     if (!image) return this.notice("No image on the clipboard.");
     this.editor.attach(image);
@@ -414,11 +432,15 @@ export class App {
 
   private openDetail() {
     this.screen.suspend();
-    const pager = new Pager(() => detailLines(this.session), `clue  session ${this.session.name ?? this.session.id}`, () => {
-      this.pager = null;
-      clearInterval(timer);
-      this.screen.resume();
-    });
+    const pager = new Pager(
+      () => detailLines(this.session),
+      `clue  session ${this.session.name ?? this.session.id}`,
+      () => {
+        this.pager = null;
+        clearInterval(timer);
+        this.screen.resume();
+      },
+    );
     this.pager = pager;
     pager.open();
     // Keeps the view current while a turn is still running.
@@ -431,7 +453,9 @@ export class App {
     switch (name) {
       case "help":
         this.print([
-          ...COMMANDS.map((command) => `  ${style.accent(`/${command.name}`.padEnd(14))}${style.muted(command.description)}`),
+          ...COMMANDS.map(
+            (command) => `  ${style.accent(`/${command.name}`.padEnd(14))}${style.muted(command.description)}`,
+          ),
           "",
           `  ${style.muted("enter send · shift+enter, alt+enter or \\ newline · ↑↓ history · @ file · tab complete · shift+tab permission mode · ctrl+v paste image")}`,
           `  ${style.muted("while clue works: tab queue a message · ↑ edit it")}`,
@@ -442,7 +466,9 @@ export class App {
       case "model": {
         if (!args[0]) {
           this.print([
-            ...KNOWN_MODELS.map((id) => `  ${id === this.settings.model ? style.accent(`› ${id}`) : `  ${style.muted(id)}`}`),
+            ...KNOWN_MODELS.map(
+              (id) => `  ${id === this.settings.model ? style.accent(`› ${id}`) : `  ${style.muted(id)}`}`,
+            ),
             `  ${style.faint("Switch with /model <name>, such as /model sonnet.")}`,
             "",
           ]);
@@ -451,26 +477,31 @@ export class App {
         const model = resolveModel(args.join(" "));
         this.settings.model = model;
         this.agent.setModel(model);
-        say(`Model is now ${style.bold(modelLabel(model))} ${style.faint(`(${model}). The next request starts a fresh cache.`)}`);
+        say(
+          `Model is now ${style.bold(modelLabel(model))} ${style.faint(`(${model}). The next request starts a fresh cache.`)}`,
+        );
         return;
       }
       case "effort": {
         const effort = args[0] as Effort;
-        if (!EFFORTS.includes(effort)) return say(style.muted(`Effort is ${this.settings.effort}. Choose one of ${EFFORTS.join(", ")}.`));
+        if (!EFFORTS.includes(effort))
+          return say(style.muted(`Effort is ${this.settings.effort}. Choose one of ${EFFORTS.join(", ")}.`));
         this.settings.effort = effort;
         this.agent.setEffort(effort);
         return say(`Effort is now ${style.bold(effort)}.`);
       }
       case "permissions": {
         const mode = args[0] as PermissionMode;
-        if (!PERMISSION_MODES.includes(mode)) return say(style.muted(`Permission mode is ${this.permissions.mode}. Choose ask, auto or full-access.`));
+        if (!PERMISSION_MODES.includes(mode))
+          return say(style.muted(`Permission mode is ${this.permissions.mode}. Choose ask, auto or full-access.`));
         this.setPermissionMode(mode);
         return say(`Permission mode is now ${mode === "full-access" ? style.orange(mode) : style.bold(mode)}.`);
       }
       case "resume": {
         const choice = await pickSession(this.screen, this.keyboard, this.cwd);
         if (!choice) return;
-        if (!existsSync(choice.cwd)) return say(style.red(`That session's folder no longer exists: ${homePath(choice.cwd)}.`));
+        if (!existsSync(choice.cwd))
+          return say(style.red(`That session's folder no longer exists: ${homePath(choice.cwd)}.`));
         const session = Session.load(sessionFile(choice));
         if (!session) return say(style.red("That session file could not be read."));
         this.load(session);
@@ -481,7 +512,12 @@ export class App {
       }
       case "rename": {
         const name = args.join(" ");
-        if (!name) return say(this.session.name ? `This session is ${style.bold(this.session.name)}.` : style.muted("This session has no name. Set one with /rename <name>."));
+        if (!name)
+          return say(
+            this.session.name
+              ? `This session is ${style.bold(this.session.name)}.`
+              : style.muted("This session has no name. Set one with /rename <name>."),
+          );
         const problem = nameProblem(this.cwd, name, this.session.id);
         if (problem) return say(style.red(problem));
         this.session.rename(name);
@@ -523,7 +559,10 @@ export class App {
     this.keyboard.stop();
     stopAllProcesses();
     void this.mcp?.closeAll();
-    if (!quiet && !this.session.isEmpty) process.stdout.write(`${style.faint(`  Resume this session with: clue -r ${this.session.name ?? this.session.id}`)}\n`);
+    if (!quiet && !this.session.isEmpty)
+      process.stdout.write(
+        `${style.faint(`  Resume this session with: clue -r ${this.session.name ?? this.session.id}`)}\n`,
+      );
     process.exit(code);
   }
 }

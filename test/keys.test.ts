@@ -3,7 +3,10 @@ import { term } from "../src/ui/ansi";
 import { keyModes, parseKeys } from "../src/ui/screen";
 
 const one = (data: string) => parseKeys(data)[0];
-const SHIFT = 2, ALT = 3, CTRL = 5, SUPER = 9;
+const SHIFT = 2,
+  ALT = 3,
+  CTRL = 5,
+  SUPER = 9;
 const kitty = (code: number, mods = 1) => `\x1b[${code};${mods}u`;
 const other = (code: number, mods: number) => `\x1b[27;${mods};${code}~`;
 
@@ -22,7 +25,12 @@ test("plain enter still submits", () => {
 });
 
 test.each([
-  ["c", 99], ["d", 100], ["o", 111], ["v", 118], ["a", 97], ["u", 117],
+  ["c", 99],
+  ["d", 100],
+  ["o", 111],
+  ["v", 118],
+  ["a", 97],
+  ["u", 117],
 ])("ctrl+%s arrives as it always has", (name, code) => {
   expect(one(kitty(code, CTRL))).toEqual({ name, ctrl: true });
   expect(one(other(code, CTRL))).toEqual({ name, ctrl: true });
@@ -66,7 +74,12 @@ test("a key release is ignored", () => {
 });
 
 test("new keys parse beside plain text", () => {
-  expect(parseKeys(`a${kitty(13, SHIFT)}b\r`)).toEqual([{ name: "char", text: "a" }, { name: "newline" }, { name: "char", text: "b" }, { name: "enter" }]);
+  expect(parseKeys(`a${kitty(13, SHIFT)}b\r`)).toEqual([
+    { name: "char", text: "a" },
+    { name: "newline" },
+    { name: "char", text: "b" },
+    { name: "enter" },
+  ]);
 });
 
 test("the keys that were already understood are unchanged", () => {
@@ -77,7 +90,10 @@ test("the keys that were already understood are unchanged", () => {
 });
 
 test("clue asks for both key reports, and turns them back off", () => {
-  expect(keyModes(false)).toEqual({ on: term.kittyKeysOn + term.modifyKeysOn, off: term.kittyKeysOff + term.modifyKeysOff });
+  expect(keyModes(false)).toEqual({
+    on: term.kittyKeysOn + term.modifyKeysOn,
+    off: term.kittyKeysOff + term.modifyKeysOff,
+  });
   expect(term.kittyKeysOn).toBe("\x1b[>1u");
   expect(term.kittyKeysOff).toBe("\x1b[<u");
   expect(term.modifyKeysOn).toBe("\x1b[>4;2m");

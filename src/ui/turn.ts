@@ -57,9 +57,22 @@ const KIND_NAMES: Record<string, [string, string]> = {
 // A tool run shows at most this many calls. ctrl+o shows the rest.
 const MAX_TREE_ROWS = 8;
 
-type Row = { id: string; label: string; kind: string; done: boolean; isError?: boolean; note?: string; review?: string; reviewing?: boolean; added?: number; removed?: number; startedAt: number };
+type Row = {
+  id: string;
+  label: string;
+  kind: string;
+  done: boolean;
+  isError?: boolean;
+  note?: string;
+  review?: string;
+  reviewing?: boolean;
+  added?: number;
+  removed?: number;
+  startedAt: number;
+};
 
-const isHeld = (row: Pick<Row, "review">) => row.review?.startsWith("held") || row.review === "declined" || row.review === "denied";
+const isHeld = (row: Pick<Row, "review">) =>
+  row.review?.startsWith("held") || row.review === "declined" || row.review === "denied";
 
 // "5 tool calls · 2 reads · 1 edit · 2 commands · 1 failed". Line counts show on each edit's row.
 function summary(rows: Pick<Row, "kind" | "isError" | "review">[]) {
@@ -99,7 +112,14 @@ function rowText(row: Row, clock: string) {
     clock,
   ].filter(Boolean);
   const label = firstLine(row.label) || "…";
-  const text = row.done === false ? label : isHeld(row) ? style.orange(label) : row.isError ? style.red(label) : style.muted(label);
+  const text =
+    row.done === false
+      ? label
+      : isHeld(row)
+        ? style.orange(label)
+        : row.isError
+          ? style.red(label)
+          : style.muted(label);
   return `${text}${extra.length ? `  ${extra.join("  ")}` : ""}`;
 }
 
@@ -133,7 +153,14 @@ export function footerLine(turn: Pick<TurnRecord, "ms" | "cost" | "stop" | "usag
 
 type Prompt =
   | { type: "confirm"; label: string; subject: string; pattern: string; resolve: (answer: ConfirmAnswer) => void }
-  | { type: "question"; question: Question; selected: number; chosen: Set<number>; custom: string | null; resolve: (answer: string | null) => void };
+  | {
+      type: "question";
+      question: Question;
+      selected: number;
+      chosen: Set<number>;
+      custom: string | null;
+      resolve: (answer: string | null) => void;
+    };
 
 // Renders one turn as it streams, and implements the agent's event interface.
 export class TurnView implements AgentEvents {
@@ -185,7 +212,13 @@ export class TurnView implements AgentEvents {
     if (!prompt) return false;
     if (prompt.type === "confirm") {
       const answer: ConfirmAnswer | null =
-        key.text === "y" || key.name === "enter" ? "once" : key.text === "a" ? "always" : key.text === "n" || key.name === "escape" ? "no" : null;
+        key.text === "y" || key.name === "enter"
+          ? "once"
+          : key.text === "a"
+            ? "always"
+            : key.text === "n" || key.name === "escape"
+              ? "no"
+              : null;
       if (!answer) return true;
       this.prompt = null;
       this.answered();
@@ -292,13 +325,20 @@ export class TurnView implements AgentEvents {
       prompt.question.options.forEach((option, index) => {
         const active = index === prompt.selected;
         const mark = prompt.question.multiple ? (prompt.chosen.has(index) ? style.green("■ ") : style.faint("□ ")) : "";
-        const label = active ? style.accent(`› ${index + 1} ${option.label}`) : `  ${style.muted(`${index + 1}`)} ${option.label}`;
+        const label = active
+          ? style.accent(`› ${index + 1} ${option.label}`)
+          : `  ${style.muted(`${index + 1}`)} ${option.label}`;
         lines.push(`  ${mark}${label}${option.description ? `  ${style.faint(option.description)}` : ""}`);
       });
       const otherActive = prompt.selected === prompt.question.options.length;
       if (prompt.custom !== null) lines.push(`  ${style.accent("› ")}${prompt.custom}${style.inverse(" ")}`);
       else lines.push(`  ${otherActive ? style.accent("› Type my own answer") : style.faint("  Type my own answer")}`);
-      const keys = prompt.custom !== null ? "enter send · esc back to the list" : prompt.question.multiple ? "↑↓ move · space pick · enter send · esc dismiss" : "↑↓ move · enter pick · esc dismiss";
+      const keys =
+        prompt.custom !== null
+          ? "enter send · esc back to the list"
+          : prompt.question.multiple
+            ? "↑↓ move · space pick · enter send · esc dismiss"
+            : "↑↓ move · enter pick · esc dismiss";
       lines.push("", `  ${style.faint(keys)}`);
       return lines;
     }
@@ -388,7 +428,14 @@ export class TurnView implements AgentEvents {
 
   question(question: Question): Promise<string | null> {
     return new Promise((resolve) => {
-      this.prompt = { type: "question", question, selected: 0, chosen: new Set(), custom: question.options.length ? null : "", resolve };
+      this.prompt = {
+        type: "question",
+        question,
+        selected: 0,
+        chosen: new Set(),
+        custom: question.options.length ? null : "",
+        resolve,
+      };
       this.screen.status("blocked-question");
       this.screen.refresh();
     });

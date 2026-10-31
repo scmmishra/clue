@@ -1,2 +1,5 @@
 [test]
 preload = ["./test/setup.ts"]
+
+[fmt]
+printWidth = 120

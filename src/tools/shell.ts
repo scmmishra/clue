@@ -11,7 +11,9 @@ import { checkFields, type Tool } from "./types";
 const SHELL = process.env.SHELL || "/bin/sh";
 const IGNORE_HUP = "trap '' HUP";
 const ENV_CACHE = join(CLUE_HOME, "shell-env.json");
-const STARTUP_FILES = [".zshenv", ".zprofile", ".zshrc", ".bash_profile", ".bashrc", ".profile"].map((name) => join(homedir(), name));
+const STARTUP_FILES = [".zshenv", ".zprofile", ".zshrc", ".bash_profile", ".bashrc", ".profile"].map((name) =>
+  join(homedir(), name),
+);
 const DEFAULT_WAIT_MS = 120_000;
 const MAX_BUFFER = 2_000_000;
 const DRAIN_MAX_TURNS = 40;
@@ -30,7 +32,11 @@ async function captureEnv(): Promise<Record<string, string>> {
   } catch {}
   try {
     const marker = "__CLUE_ENV__";
-    const proc = Bun.spawn([SHELL, "-ilc", `printf '${marker}'; env -0`], { stdout: "pipe", stderr: "ignore", stdin: "ignore" });
+    const proc = Bun.spawn([SHELL, "-ilc", `printf '${marker}'; env -0`], {
+      stdout: "pipe",
+      stderr: "ignore",
+      stdin: "ignore",
+    });
     const timer = setTimeout(() => proc.kill(), 10_000);
     const text = await new Response(proc.stdout).text();
     clearTimeout(timer);
@@ -86,9 +92,24 @@ function plain(chunk: string) {
 // `terminal: { ... }` option makes every spawn wait about 16 ms for the PTY to
 // close; a Terminal object costs 0.4 ms to build and spawns as fast as pipes.
 async function start(command: string, cwd: string): Promise<Running> {
-  const env = { ...(await warmShellEnv()), AI_AGENT: "clue", PAGER: "cat", GIT_PAGER: "cat", NO_COLOR: "1", FORCE_COLOR: "0" };
+  const env = {
+    ...(await warmShellEnv()),
+    AI_AGENT: "clue",
+    PAGER: "cat",
+    GIT_PAGER: "cat",
+    NO_COLOR: "1",
+    FORCE_COLOR: "0",
+  };
   const decoder = new TextDecoder();
-  const running = { id: String(nextId++), command, output: "", read: 0, exitCode: null, orphaned: false, startedAt: Date.now() } as Running;
+  const running = {
+    id: String(nextId++),
+    command,
+    output: "",
+    read: 0,
+    exitCode: null,
+    orphaned: false,
+    startedAt: Date.now(),
+  } as Running;
   const append = (text: string) => {
     running.output += text;
     if (running.output.length > MAX_BUFFER) {
@@ -216,14 +237,20 @@ function report(running: Running, fresh: string) {
   return `${fresh.trimEnd() || "(no output)"}\n\n${status}`;
 }
 
-type ShellInput = { action?: "run" | "interact" | "stop"; command?: string; id?: string; input?: string; wait_ms?: number };
+type ShellInput = {
+  action?: "run" | "interact" | "stop";
+  command?: string;
+  id?: string;
+  input?: string;
+  wait_ms?: number;
+};
 
 export const shell: Tool<ShellInput> = {
   name: "shell",
   description: [
     "Run commands in the user's shell, in the project folder.",
     'action "run" (default) starts command and waits until it exits or wait_ms passes (default 120000).',
-    'A command still running after wait_ms keeps running in the background: use a short wait_ms for dev servers and watchers.',
+    "A command still running after wait_ms keeps running in the background: use a short wait_ms for dev servers and watchers.",
     'action "interact" reads new output from a running process and optionally writes input to its stdin.',
     'action "stop" ends a running process.',
     "Commands run in a pseudo-terminal, so interactive programs work; output comes back as plain text with no colors or pager.",
@@ -245,7 +272,13 @@ export const shell: Tool<ShellInput> = {
     return `${done ? "Ran" : "Running"} ${input.command ?? ""}`;
   },
   validate(input) {
-    const error = checkFields(input, { action: "string?", command: "string?", id: "string?", input: "string?", wait_ms: "number?" });
+    const error = checkFields(input, {
+      action: "string?",
+      command: "string?",
+      id: "string?",
+      input: "string?",
+      wait_ms: "number?",
+    });
     if (error) return error;
     const action = input.action ?? "run";
     if (action === "run" && !input.command) return 'action "run" needs a command.';

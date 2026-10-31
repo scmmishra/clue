@@ -10,7 +10,13 @@ test("a plain command becomes its words", () => {
 });
 
 test("&&, ||, ; and | separate commands", () => {
-  expect(parseCommand("bun test && git diff || ls; cat a | wc -l")).toEqual([["bun", "test"], ["git", "diff"], ["ls"], ["cat", "a"], ["wc", "-l"]]);
+  expect(parseCommand("bun test && git diff || ls; cat a | wc -l")).toEqual([
+    ["bun", "test"],
+    ["git", "diff"],
+    ["ls"],
+    ["cat", "a"],
+    ["wc", "-l"],
+  ]);
   expect(parseCommand("a&&b")).toEqual([["a"], ["b"]]);
 });
 
@@ -158,7 +164,7 @@ test.each([
   "sed -n 'w out' a.txt",
   "echo pwned >> ~/.zshrc",
   "cat ~/.ssh/id_rsa",
-  "node -e 'require(\"child_process\").execSync(\"id\")'",
+  'node -e \'require("child_process").execSync("id")\'',
   "python3 -c 'print(1)'",
   "python3 evil.py",
   "bun evil.ts",
@@ -262,7 +268,11 @@ test("a command that can't be parsed still matches a deny rule", () => {
 test("a rule still matches a command followed by an exit code check", () => {
   const permissions = new Permissions("auto", { shell: { "chatwoot auth *": "allow" } } as never, "/tmp/project");
   expect(action(permissions, `chatwoot auth status -o json; echo "exit=$?"`)).toBe("review");
-  const withEcho = new Permissions("auto", { shell: { "chatwoot auth *": "allow", "echo *": "allow" } } as never, "/tmp/project");
+  const withEcho = new Permissions(
+    "auto",
+    { shell: { "chatwoot auth *": "allow", "echo *": "allow" } } as never,
+    "/tmp/project",
+  );
   expect(action(withEcho, `chatwoot auth status -o json; echo "exit=$?"`)).toBe("run");
 });
 

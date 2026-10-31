@@ -26,7 +26,10 @@ test("an idle stream asks for no compression", async () => {
 
 test("a stream keeps its other headers, in any header form", async () => {
   const { seen, wrapped } = recording();
-  await wrapped("https://x.example/mcp", { method: "GET", headers: new Headers({ Accept: STREAM, Authorization: "Bearer t" }) });
+  await wrapped("https://x.example/mcp", {
+    method: "GET",
+    headers: new Headers({ Accept: STREAM, Authorization: "Bearer t" }),
+  });
   expect(seen[0].headers.get("authorization")).toBe("Bearer t");
   expect(seen[0].headers.get("accept-encoding")).toBe("identity");
 });
@@ -44,7 +47,10 @@ test("a plain GET, such as OAuth discovery, stays compressed", async () => {
   expect(seen.map(({ headers }) => headers.get("accept-encoding"))).toEqual([null, null]);
 });
 
-const sse = (first = ": open\n\n") => new Response(new ReadableStream({ start: (controller) => controller.enqueue(new TextEncoder().encode(first)) }), { headers: { "content-type": STREAM } });
+const sse = (first = ": open\n\n") =>
+  new Response(new ReadableStream({ start: (controller) => controller.enqueue(new TextEncoder().encode(first)) }), {
+    headers: { "content-type": STREAM },
+  });
 
 // A small real MCP server, so these tests see what the SDK sends.
 function mcpServer() {
@@ -60,9 +66,14 @@ function mcpServer() {
       if (request.method !== "POST") return new Response(null, { status: 200 });
       const body = (await request.json()) as { id?: number; method: string; params?: { protocolVersion?: string } };
       if (body.id === undefined) return new Response(null, { status: 202 });
-      const result = body.method === "initialize"
-        ? { protocolVersion: body.params?.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "test", version: "1" } }
-        : { tools: [] };
+      const result =
+        body.method === "initialize"
+          ? {
+              protocolVersion: body.params?.protocolVersion,
+              capabilities: { tools: {} },
+              serverInfo: { name: "test", version: "1" },
+            }
+          : { tools: [] };
       return Response.json({ jsonrpc: "2.0", id: body.id, result }, { headers: { "mcp-session-id": "s" } });
     },
   });
@@ -76,7 +87,11 @@ afterEach(async () => {
   rmSync(paths.mcp, { force: true });
 });
 
-async function connect(config: object, ready: (requests: { method: string }[]) => boolean, running: ReturnType<typeof mcpServer>) {
+async function connect(
+  config: object,
+  ready: (requests: { method: string }[]) => boolean,
+  running: ReturnType<typeof mcpServer>,
+) {
   mkdirSync(join(paths.mcp, ".."), { recursive: true });
   writeFileSync(paths.mcp, JSON.stringify({ mcpServers: { test: config } }));
   const manager = new McpManager(mkdtempSync(join(tmpdir(), "clue-mcp-stream-")));
@@ -91,7 +106,11 @@ async function connect(config: object, ready: (requests: { method: string }[]) =
 
 test("the streamable HTTP transport opens its idle stream uncompressed, and keeps compression on calls", async () => {
   const running = mcpServer();
-  await connect({ type: "http", url: `${running.server.url.origin}/mcp`, bearer_token_env: "CLUE_NO_TOKEN" }, (all) => all.some(({ method }) => method === "GET"), running);
+  await connect(
+    { type: "http", url: `${running.server.url.origin}/mcp`, bearer_token_env: "CLUE_NO_TOKEN" },
+    (all) => all.some(({ method }) => method === "GET"),
+    running,
+  );
   const gets = running.requests.filter(({ method }) => method === "GET");
   const posts = running.requests.filter(({ method }) => method === "POST");
   expect(gets.length).toBeGreaterThan(0);
@@ -102,6 +121,10 @@ test("the streamable HTTP transport opens its idle stream uncompressed, and keep
 
 test("the SSE transport opens its stream uncompressed too", async () => {
   const running = mcpServer();
-  await connect({ type: "sse", url: `${running.server.url.origin}/sse`, bearer_token_env: "CLUE_NO_TOKEN" }, (all) => all.some(({ method }) => method === "GET"), running);
+  await connect(
+    { type: "sse", url: `${running.server.url.origin}/sse`, bearer_token_env: "CLUE_NO_TOKEN" },
+    (all) => all.some(({ method }) => method === "GET"),
+    running,
+  );
   expect(running.requests.find(({ method }) => method === "GET")?.encoding).toBe("identity");
 });

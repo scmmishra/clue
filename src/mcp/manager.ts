@@ -1,6 +1,10 @@
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
-import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
+import type {
+  OAuthClientInformationMixed,
+  OAuthClientMetadata,
+  OAuthTokens,
+} from "@modelcontextprotocol/sdk/shared/auth.js";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ensureDir, paths, VERSION } from "../config";
@@ -120,7 +124,11 @@ export class McpManager {
 
   configuredNames() {
     return loadServers(this.cwd)
-      .filter((entry) => entry.config.enabled !== false && (entry.scope === "profile" || approvalOf(this.cwd, entry.name) === "approved"))
+      .filter(
+        (entry) =>
+          entry.config.enabled !== false &&
+          (entry.scope === "profile" || approvalOf(this.cwd, entry.name) === "approved"),
+      )
       .map((entry) => entry.name);
   }
 
@@ -131,7 +139,8 @@ export class McpManager {
       this.servers.set(entry.name, state);
       if (entry.config.enabled === false) state.status = "disabled";
       else if (entry.scope === "project" && approvalOf(this.cwd, entry.name) === "rejected") state.status = "rejected";
-      else if (entry.scope === "project" && approvalOf(this.cwd, entry.name) !== "approved") state.status = "needs-approval";
+      else if (entry.scope === "project" && approvalOf(this.cwd, entry.name) !== "approved")
+        state.status = "needs-approval";
       else void this.connect(state);
     }
     this.changed();
@@ -148,7 +157,10 @@ export class McpManager {
     state.error = undefined;
     this.changed();
     try {
-      const [{ Client }, transport] = await Promise.all([import("@modelcontextprotocol/sdk/client/index.js"), this.transport(state, interactiveLogin)]);
+      const [{ Client }, transport] = await Promise.all([
+        import("@modelcontextprotocol/sdk/client/index.js"),
+        this.transport(state, interactiveLogin),
+      ]);
       const client = new Client({ name: "clue", version: VERSION });
       await client.connect(transport);
       const listed = await client.listTools();
@@ -201,10 +213,13 @@ export class McpManager {
       });
     }
     const headers: Record<string, string> = { ...(config.headers ?? {}) };
-    if (config.bearer_token_env && process.env[config.bearer_token_env]) headers.Authorization = `Bearer ${process.env[config.bearer_token_env]}`;
-    const authProvider = config.bearer_token_env ? undefined : new StoredAuthProvider(name, (url) => {
-      if (interactiveLogin) void openBrowser(url.toString());
-    });
+    if (config.bearer_token_env && process.env[config.bearer_token_env])
+      headers.Authorization = `Bearer ${process.env[config.bearer_token_env]}`;
+    const authProvider = config.bearer_token_env
+      ? undefined
+      : new StoredAuthProvider(name, (url) => {
+          if (interactiveLogin) void openBrowser(url.toString());
+        });
     const url = new URL(config.url ?? "");
     if (kind === "sse") {
       const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
@@ -268,13 +283,18 @@ export class McpManager {
   // Waits briefly for servers still starting, so a search right after launch sees them.
   async settle(timeoutMs = 5000) {
     const deadline = Date.now() + timeoutMs;
-    while ([...this.servers.values()].some((state) => state.status === "starting") && Date.now() < deadline) await Bun.sleep(100);
+    while ([...this.servers.values()].some((state) => state.status === "starting") && Date.now() < deadline)
+      await Bun.sleep(100);
   }
 
   async call(server: string, tool: string, args: Record<string, unknown>, signal: AbortSignal) {
     const state = this.servers.get(server);
     if (!state?.client || state.status !== "ready") {
-      throw new Error(state ? `${server} is ${state.status}${state.error ? `: ${state.error}` : ""}.` : `No MCP server named ${server}.`);
+      throw new Error(
+        state
+          ? `${server} is ${state.status}${state.error ? `: ${state.error}` : ""}.`
+          : `No MCP server named ${server}.`,
+      );
     }
     return state.client.callTool({ name: tool, arguments: args }, undefined, { signal });
   }

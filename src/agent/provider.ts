@@ -91,8 +91,10 @@ export function buildRequest(options: RequestOptions) {
 export function dropRejectedFeature(error: unknown) {
   const message = String((error as Error)?.message ?? "").toLowerCase();
   if (features.fallbacks && message.includes("fallback")) return !(features.fallbacks = false);
-  if (features.progressNotes && (message.includes("display") || message.includes("updates"))) return !(features.progressNotes = false);
-  if (features.compaction && (message.includes("context_management") || message.includes("compact"))) return !(features.compaction = false);
+  if (features.progressNotes && (message.includes("display") || message.includes("updates")))
+    return !(features.progressNotes = false);
+  if (features.compaction && (message.includes("context_management") || message.includes("compact")))
+    return !(features.compaction = false);
   return false;
 }
 
@@ -119,6 +121,9 @@ export async function warmCache(options: RequestOptions, signal: AbortSignal) {
     last.content = [{ type: "text", text: last.content, cache_control: { type: "ephemeral" } }];
   }
   messages.push({ role: "user", content: "warmup" });
-  const response = await client.beta.messages.create({ ...(request as object), messages, max_tokens: 0 } as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming, { signal });
+  const response = await client.beta.messages.create(
+    { ...(request as object), messages, max_tokens: 0 } as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming,
+    { signal },
+  );
   return response.usage;
 }

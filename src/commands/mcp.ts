@@ -1,5 +1,13 @@
 import { paths } from "../config";
-import { loadServers, projectMcpFile, removeServer, saveServer, setApproval, transportOf, type ServerConfig } from "../mcp/config";
+import {
+  loadServers,
+  projectMcpFile,
+  removeServer,
+  saveServer,
+  setApproval,
+  transportOf,
+  type ServerConfig,
+} from "../mcp/config";
 import { forgetLogin, McpManager } from "../mcp/manager";
 import { homePath, style } from "../ui/ansi";
 
@@ -41,8 +49,15 @@ export async function mcpCommand(args: string[], cwd: string, manager: McpManage
         const status = state?.status ?? "disabled";
         const color = STATUS_STYLE[status] ?? style.muted;
         const where = entry.scope === "project" ? ".mcp.json" : homePath(paths.mcp);
-        const tools = state?.status === "ready" ? style.faint(`${state.tools.length} tools`) : state?.error ? style.faint(state.error) : "";
-        return line(`${style.bold(entry.name)}  ${color(status)}  ${style.faint(`${transportOf(entry.config)} · ${where}`)}  ${tools}`);
+        const tools =
+          state?.status === "ready"
+            ? style.faint(`${state.tools.length} tools`)
+            : state?.error
+              ? style.faint(state.error)
+              : "";
+        return line(
+          `${style.bold(entry.name)}  ${color(status)}  ${style.faint(`${transportOf(entry.config)} · ${where}`)}  ${tools}`,
+        );
       });
       print([...lines, ""]);
       return;
@@ -105,7 +120,12 @@ export async function mcpCommand(args: string[], cwd: string, manager: McpManage
       }
       for (const entry of targets) setApproval(cwd, entry.name, sub === "approve" ? "approved" : "rejected");
       await manager.reload();
-      print([line(`${sub === "approve" ? "Approved" : "Rejected"} ${targets.map((entry) => style.bold(entry.name)).join(", ")}.`), ""]);
+      print([
+        line(
+          `${sub === "approve" ? "Approved" : "Rejected"} ${targets.map((entry) => style.bold(entry.name)).join(", ")}.`,
+        ),
+        "",
+      ]);
       return;
     }
     case "show": {
@@ -122,7 +142,9 @@ export async function mcpCommand(args: string[], cwd: string, manager: McpManage
       }
       print([
         line(`${style.bold(name)}  ${style.green("ready")}  ${style.faint(`${state.tools.length} tools`)}`),
-        ...state.tools.map((tool) => line(`  ${style.accent(tool.name)}  ${style.faint(tool.description.split("\n")[0].slice(0, 100))}`)),
+        ...state.tools.map((tool) =>
+          line(`  ${style.accent(tool.name)}  ${style.faint(tool.description.split("\n")[0].slice(0, 100))}`),
+        ),
         "",
       ]);
       return;

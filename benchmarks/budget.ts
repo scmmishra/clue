@@ -8,6 +8,8 @@ export function overBudget(measured: Record<keyof typeof BUDGETS_MS, number | nu
   return (Object.keys(BUDGETS_MS) as (keyof typeof BUDGETS_MS)[]).flatMap((wait) => {
     const ms = measured[wait];
     if (ms === null) return [`${wait} was not measured`];
-    return ms < BUDGETS_MS[wait] ? [] : [`${wait} took ${ms.toFixed(1)} ms, and its budget is under ${BUDGETS_MS[wait]} ms`];
+    return ms < BUDGETS_MS[wait]
+      ? []
+      : [`${wait} took ${ms.toFixed(1)} ms, and its budget is under ${BUDGETS_MS[wait]} ms`];
   });
 }

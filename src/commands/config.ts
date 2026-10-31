@@ -10,7 +10,11 @@ const USAGE = `Usage:
   clue config unset <key>           go back to the default`;
 
 const SHOWN = ["model", "effort", "permission_mode", "bell", "review.provider", "review.model", "permission"];
-const ENV: Record<string, string> = { model: "CLUE_MODEL", effort: "CLUE_EFFORT", permission_mode: "CLUE_PERMISSION_MODE" };
+const ENV: Record<string, string> = {
+  model: "CLUE_MODEL",
+  effort: "CLUE_EFFORT",
+  permission_mode: "CLUE_PERMISSION_MODE",
+};
 // `set` handles single values. These hold nested rules, which order and shape matter for.
 const EDIT_ONLY = new Set(["permission", "review"]);
 
@@ -48,7 +52,8 @@ function show(json: boolean) {
   }
   const keyWidth = Math.max(...rows.map(({ key }) => key.length));
   const valueWidth = Math.max(...rows.map(({ key, value }) => displayed(key, value).length));
-  for (const { key, value, source } of rows) console.log(`${key.padEnd(keyWidth)}  ${displayed(key, value).padEnd(valueWidth)}  ${source}`);
+  for (const { key, value, source } of rows)
+    console.log(`${key.padEnd(keyWidth)}  ${displayed(key, value).padEnd(valueWidth)}  ${source}`);
   for (const problem of problems) process.stderr.write(`clue: ${problem}\n`);
 }
 
@@ -111,7 +116,9 @@ async function edit(chosen?: string) {
   }
   let code: number;
   try {
-    const proc = Bun.spawn([...editor.trim().split(/\s+/), paths.settings], { stdio: ["inherit", "inherit", "inherit"] });
+    const proc = Bun.spawn([...editor.trim().split(/\s+/), paths.settings], {
+      stdio: ["inherit", "inherit", "inherit"],
+    });
     code = await proc.exited;
   } catch {
     stop(`Could not open ${editor}.`, 1);

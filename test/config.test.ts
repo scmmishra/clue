@@ -9,13 +9,30 @@ const folder = () => realpathSync(mkdtempSync(join(tmpdir(), "clue-config-")));
 
 function setup(settings?: string | object) {
   const home = folder();
-  if (settings !== undefined) writeFileSync(join(home, "settings.json"), typeof settings === "string" ? settings : JSON.stringify(settings));
+  if (settings !== undefined)
+    writeFileSync(join(home, "settings.json"), typeof settings === "string" ? settings : JSON.stringify(settings));
   const file = join(home, "settings.json");
   const run = async (args: string[], env: Record<string, string> = {}) => {
-    const clean: Record<string, string | undefined> = { ...process.env, CLUE_HOME: home, ANTHROPIC_API_KEY: "sk-ant-test", ...env };
-    for (const name of ["CLUE_MODEL", "CLUE_EFFORT", "CLUE_PERMISSION_MODE", "VISUAL", "EDITOR"]) if (!(name in env)) delete clean[name];
-    const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), ...args], { cwd: folder(), env: clean, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
-    const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+    const clean: Record<string, string | undefined> = {
+      ...process.env,
+      CLUE_HOME: home,
+      ANTHROPIC_API_KEY: "sk-ant-test",
+      ...env,
+    };
+    for (const name of ["CLUE_MODEL", "CLUE_EFFORT", "CLUE_PERMISSION_MODE", "VISUAL", "EDITOR"])
+      if (!(name in env)) delete clean[name];
+    const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), ...args], {
+      cwd: folder(),
+      env: clean,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
     return { stdout, stderr, code };
   };
   return { home, file, run, saved: () => JSON.parse(readFileSync(file, "utf8")) };
@@ -30,7 +47,18 @@ function fakeEditor(text: string) {
 }
 
 test("good settings have no problems", () => {
-  expect(settingsProblems(JSON.stringify({ model: "sonnet", effort: "high", permission_mode: "ask", bell: false, permission: { shell: { "git *": "allow" } }, review: { provider: "anthropic", model: "haiku" } }))).toEqual([]);
+  expect(
+    settingsProblems(
+      JSON.stringify({
+        model: "sonnet",
+        effort: "high",
+        permission_mode: "ask",
+        bell: false,
+        permission: { shell: { "git *": "allow" } },
+        review: { provider: "anthropic", model: "haiku" },
+      }),
+    ),
+  ).toEqual([]);
   expect(settingsProblems("{}")).toEqual([]);
 });
 
@@ -62,7 +90,11 @@ test("config show says where each value comes from", async () => {
   const { run } = setup({ effort: "high" });
   const { stdout, code } = await run(["config", "show"], { CLUE_MODEL: "claude-sonnet-5-5" });
   expect(code).toBe(0);
-  const row = (key: string) => stdout.split("\n").find((line) => line.startsWith(`${key} `))?.split(/\s{2,}/);
+  const row = (key: string) =>
+    stdout
+      .split("\n")
+      .find((line) => line.startsWith(`${key} `))
+      ?.split(/\s{2,}/);
   expect(row("model")).toEqual(["model", "claude-sonnet-5-5", "CLUE_MODEL"]);
   expect(row("effort")).toEqual(["effort", "high", "settings.json"]);
   expect(row("permission_mode")).toEqual(["permission_mode", "auto", "default"]);
@@ -149,7 +181,10 @@ test("config edit opens the named editor, and accepts good settings", async () =
 
 test("config edit falls back to VISUAL, then EDITOR", async () => {
   const first = setup();
-  await first.run(["config", "edit"], { VISUAL: fakeEditor('{ "effort": "low" }'), EDITOR: fakeEditor('{ "effort": "high" }') });
+  await first.run(["config", "edit"], {
+    VISUAL: fakeEditor('{ "effort": "low" }'),
+    EDITOR: fakeEditor('{ "effort": "high" }'),
+  });
   expect(first.saved()).toEqual({ effort: "low" });
   const second = setup();
   await second.run(["config", "edit"], { EDITOR: fakeEditor('{ "effort": "high" }') });
@@ -159,7 +194,10 @@ test("config edit falls back to VISUAL, then EDITOR", async () => {
 test("config edit runs an editor with arguments", async () => {
   const { run, saved } = setup();
   const editor = fakeEditor('{ "effort": "low" }');
-  writeFileSync(editor, `#!/bin/sh\n[ "$1" = "--wait" ] || exit 9\ncat > "$2" <<'CONTENT'\n{ "effort": "low" }\nCONTENT\n`);
+  writeFileSync(
+    editor,
+    `#!/bin/sh\n[ "$1" = "--wait" ] || exit 9\ncat > "$2" <<'CONTENT'\n{ "effort": "low" }\nCONTENT\n`,
+  );
   await run(["config", "edit"], { EDITOR: `${editor} --wait` });
   expect(saved()).toEqual({ effort: "low" });
 });

@@ -12,14 +12,24 @@ test("the footer counts cached input as tokens in", () => {
 });
 
 test("the footer of an interrupted turn keeps its tokens", () => {
-  expect(footer({ ms: 2500, cost: 0.06, stop: "interrupted", usage })).toBe("  2.5s · $0.06 · 3.3k in · 52 out · interrupted");
+  expect(footer({ ms: 2500, cost: 0.06, stop: "interrupted", usage })).toBe(
+    "  2.5s · $0.06 · 3.3k in · 52 out · interrupted",
+  );
 });
 
 test("token counts shorten as they grow", () => {
   expect([0, 999, 1000, 3300, 12_345, 1_500_000].map(tokens)).toEqual(["0", "999", "1.0k", "3.3k", "12k", "1.5M"]);
 });
 
-const row = (over: object = {}) => ({ id: "1", label: "Read a.ts", kind: "read", done: true, note: "180 lines", startedAt: 0, ...over });
+const row = (over: object = {}) => ({
+  id: "1",
+  label: "Read a.ts",
+  kind: "read",
+  done: true,
+  note: "180 lines",
+  startedAt: 0,
+  ...over,
+});
 const dot = " · ";
 
 test("colors are on, so the theme tests below compare real colors", () => {
@@ -44,7 +54,12 @@ test("the pager wraps a long prompt itself, so nothing is cut off", () => {
   const long = "word ".repeat(200).trim();
   const lines = wrappedPromptLines(long);
   expect(lines.length).toBeGreaterThan(1);
-  expect(lines.map((line) => Bun.stripANSI(line).slice(BAR.length).trim()).join(" ").replace(/\s+/g, "")).toBe(long.replace(/\s+/g, ""));
+  expect(
+    lines
+      .map((line) => Bun.stripANSI(line).slice(BAR.length).trim())
+      .join(" ")
+      .replace(/\s+/g, ""),
+  ).toBe(long.replace(/\s+/g, ""));
 });
 
 test("the input has the same blue bar", () => {
@@ -74,7 +89,9 @@ test("a running tool run has a blue spinner", () => {
 });
 
 test("the footer is one grey", () => {
-  expect(footerLine({ ms: 2500, cost: 0.06, stop: "end_turn", usage })).toBe(`  ${style.muted(`2.5s${dot}$0.06${dot}3.3k in${dot}52 out`)}`);
+  expect(footerLine({ ms: 2500, cost: 0.06, stop: "end_turn", usage })).toBe(
+    `  ${style.muted(`2.5s${dot}$0.06${dot}3.3k in${dot}52 out`)}`,
+  );
 });
 
 test("the status line is one grey", () => {
@@ -84,7 +101,9 @@ test("the status line is one grey", () => {
 });
 
 test("full-access still stands out in the status line", () => {
-  expect(statusLine("full-access", "claude-opus-5-5", "medium", "/tmp/app", null).startsWith(style.orange("full-access"))).toBe(true);
+  expect(
+    statusLine("full-access", "claude-opus-5-5", "medium", "/tmp/app", null).startsWith(style.orange("full-access")),
+  ).toBe(true);
 });
 
 const script = "Ran cat > /tmp/a.py <<'EOF'\nprint(1)\nEOF\ngit add a.py";

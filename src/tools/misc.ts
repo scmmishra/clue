@@ -36,11 +36,19 @@ export const readToolResult: Tool<{ id: string; offset?: number; length?: number
     const length = Math.max(100, input.length ?? PAGE_CHARS);
     const page = text.slice(offset, offset + length);
     const rest = text.length - offset - page.length;
-    return { content: (page || "(nothing at this offset)") + (rest > 0 ? `\n\n[${rest} more characters. Continue at offset ${offset + page.length}.]` : "") };
+    return {
+      content:
+        (page || "(nothing at this offset)") +
+        (rest > 0 ? `\n\n[${rest} more characters. Continue at offset ${offset + page.length}.]` : ""),
+    };
   },
 };
 
-export const askUser: Tool<{ question: string; options?: { label: string; description?: string }[]; multiple?: boolean }> = {
+export const askUser: Tool<{
+  question: string;
+  options?: { label: string; description?: string }[];
+  multiple?: boolean;
+}> = {
   name: "ask_user_question",
   description:
     "Ask the user a question and wait for the answer. Offer 2 to 5 options when the choices are known; the user can always type their own answer. Use only for decisions you cannot settle from the workspace.",
@@ -65,8 +73,16 @@ export const askUser: Tool<{ question: string; options?: { label: string; descri
   label: (input, done) => `${done ? "Asked" : "Asking"}: ${input.question}`,
   validate: (input) => checkFields(input, { question: "string", options: "array?", multiple: "boolean?" }),
   async run(input, context) {
-    if (!context.interactive) return { content: "No one can answer: clue is running non-interactively. Decide yourself and say what you assumed.", isError: true };
-    const answer = await context.ask({ question: input.question, options: input.options ?? [], multiple: input.multiple });
+    if (!context.interactive)
+      return {
+        content: "No one can answer: clue is running non-interactively. Decide yourself and say what you assumed.",
+        isError: true,
+      };
+    const answer = await context.ask({
+      question: input.question,
+      options: input.options ?? [],
+      multiple: input.multiple,
+    });
     if (answer === null) return { content: "The user dismissed the question without answering.", isError: true };
     return { content: `The user answered: ${answer}`, note: answer.slice(0, 60) };
   },

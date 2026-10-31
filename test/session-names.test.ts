@@ -16,7 +16,20 @@ function saved(cwd: string, name?: string) {
   const session = Session.create(cwd);
   if (name) session.rename(name);
   session.appendMessage({ role: "user", content: "hello" });
-  session.append({ t: "turn", turn: { prompt: "hello", startedAt: 1, ms: 1, firstTokenMs: 1, tools: 0, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, webSearches: 0 }, cost: 0, model: "claude-opus-5-5", stop: "end_turn" } });
+  session.append({
+    t: "turn",
+    turn: {
+      prompt: "hello",
+      startedAt: 1,
+      ms: 1,
+      firstTokenMs: 1,
+      tools: 0,
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, webSearches: 0 },
+      cost: 0,
+      model: "claude-opus-5-5",
+      stop: "end_turn",
+    },
+  });
   return session;
 }
 
@@ -168,8 +181,18 @@ test("the picker's search finds a session by name", () => {
 });
 
 const run = async (args: string[], cwd: string, env: Record<string, string> = {}) => {
-  const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), ...args], { cwd, env: { ...process.env, ANTHROPIC_API_KEY: "sk-ant-test", ...env }, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), ...args], {
+    cwd,
+    env: { ...process.env, ANTHROPIC_API_KEY: "sk-ant-test", ...env },
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   return { stdout, stderr, code };
 };
 
@@ -177,8 +200,16 @@ const run = async (args: string[], cwd: string, env: Record<string, string> = {}
 const firstPaint = async (args: string[], cwd: string, env: Record<string, string> = {}) => {
   let output = "";
   const decoder = new TextDecoder();
-  const terminal = new Bun.Terminal({ cols: 120, rows: 30, data: (_terminal, data) => (output += decoder.decode(data, { stream: true })) });
-  const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), ...args], { cwd, env: { ...process.env, CLUE_BENCH_READY: "1", ...env }, terminal });
+  const terminal = new Bun.Terminal({
+    cols: 120,
+    rows: 30,
+    data: (_terminal, data) => (output += decoder.decode(data, { stream: true })),
+  });
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), ...args], {
+    cwd,
+    env: { ...process.env, CLUE_BENCH_READY: "1", ...env },
+    terminal,
+  });
   const code = await proc.exited;
   // On Linux the output can land just after the process exits.
   for (let waited = 0; !output && waited < 2000; waited += 10) await Bun.sleep(10);
@@ -283,9 +314,14 @@ test("an index from before names is upgraded, and its sessions still resolve", a
   const id = "old-session";
   const dir = join(home, "sessions", projectKey(cwd));
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, `${id}.jsonl`), `${JSON.stringify({ t: "session", id, cwd, created: 1, version: "0.1.0" })}\n${JSON.stringify({ t: "message", message: { role: "user", content: "hi" } })}\n`);
+  writeFileSync(
+    join(dir, `${id}.jsonl`),
+    `${JSON.stringify({ t: "session", id, cwd, created: 1, version: "0.1.0" })}\n${JSON.stringify({ t: "message", message: { role: "user", content: "hi" } })}\n`,
+  );
   const old = new Database(join(home, "sessions", "index.db"), { create: true });
-  old.run("CREATE TABLE sessions (id TEXT PRIMARY KEY, cwd TEXT NOT NULL, title TEXT NOT NULL, updated INTEGER NOT NULL, prompts INTEGER NOT NULL)");
+  old.run(
+    "CREATE TABLE sessions (id TEXT PRIMARY KEY, cwd TEXT NOT NULL, title TEXT NOT NULL, updated INTEGER NOT NULL, prompts INTEGER NOT NULL)",
+  );
   old.run("CREATE VIRTUAL TABLE prompts USING fts5(session_id UNINDEXED, text)");
   old.run("INSERT INTO sessions VALUES (?, ?, 'hi', 1, 0)", [id, cwd]);
   old.close();

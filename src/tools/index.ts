@@ -31,7 +31,10 @@ export const findTool = (name: string) => TOOLS.find((tool) => tool.name === nam
 // Server-side tools run on Anthropic's side and come back as result blocks.
 export const SERVER_TOOL_NAMES = new Set(["web_search", "web_fetch"]);
 
-export function toolDefinitions(model: string, options: { subagent?: boolean } = {}): Anthropic.Beta.Messages.BetaToolUnion[] {
+export function toolDefinitions(
+  model: string,
+  options: { subagent?: boolean } = {},
+): Anthropic.Beta.Messages.BetaToolUnion[] {
   const tools = options.subagent ? TOOLS.filter((tool) => !SUBAGENT_EXCLUDED.has(tool.name)) : TOOLS;
   const client: Anthropic.Beta.Messages.BetaToolUnion[] = tools.map((tool) => ({
     name: tool.name,

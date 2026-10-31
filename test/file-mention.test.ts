@@ -31,7 +31,18 @@ test("a quoted mention can hold spaces, until its closing quote", () => {
   expect(at('@"my file.ts" ')).toBeNull();
 });
 
-const FILES = ["README.md", "app/main.ts", "src/app.ts", "src/app.test.ts", "src/happy.ts", "src/ui/editor.ts", "src/ui/", "src/", "test/app_shell.ts", "docs/a-p-p.md"];
+const FILES = [
+  "README.md",
+  "app/main.ts",
+  "src/app.ts",
+  "src/app.test.ts",
+  "src/happy.ts",
+  "src/ui/editor.ts",
+  "src/ui/",
+  "src/",
+  "test/app_shell.ts",
+  "docs/a-p-p.md",
+];
 
 test("with no query, everything is listed in order, up to the row limit", () => {
   const many = Array.from({ length: MAX_MATCHES + 20 }, (_, index) => `f${String(index).padStart(3, "0")}`);
@@ -39,8 +50,23 @@ test("with no query, everything is listed in order, up to the row limit", () => 
 });
 
 test("an exact name ranks first, then name prefixes, then whole words, then scattered letters", () => {
-  const ranked = rankPaths("app", ["src/zap.ts", "a/x/p/p.ts", "test/my_app.ts", "src/happy.ts", "src/app.ts", "lib/app", "src/application.ts"]);
-  expect(ranked).toEqual(["lib/app", "src/app.ts", "src/application.ts", "test/my_app.ts", "src/happy.ts", "a/x/p/p.ts"]);
+  const ranked = rankPaths("app", [
+    "src/zap.ts",
+    "a/x/p/p.ts",
+    "test/my_app.ts",
+    "src/happy.ts",
+    "src/app.ts",
+    "lib/app",
+    "src/application.ts",
+  ]);
+  expect(ranked).toEqual([
+    "lib/app",
+    "src/app.ts",
+    "src/application.ts",
+    "test/my_app.ts",
+    "src/happy.ts",
+    "a/x/p/p.ts",
+  ]);
 });
 
 test("matching ignores case", () => {
@@ -67,7 +93,10 @@ test("the best matches survive a query that matches more than the limit", () => 
 });
 
 test("ranking 100,000 paths stays quick enough to run on a keypress", () => {
-  const paths = Array.from({ length: 100_000 }, (_, index) => `packages/app-${index % 50}/src/components/widget${index}.tsx`);
+  const paths = Array.from(
+    { length: 100_000 },
+    (_, index) => `packages/app-${index % 50}/src/components/widget${index}.tsx`,
+  );
   const start = Bun.nanoseconds();
   rankPaths("widget", paths);
   expect((Bun.nanoseconds() - start) / 1e6).toBeLessThan(40);
@@ -97,7 +126,15 @@ test("a git repository lists tracked and new files with their folders, and skips
   writeFileSync(join(dir, ".gitignore"), "dist\nnode_modules\n");
   Bun.spawnSync(["git", "init", "-q"], { cwd: dir });
   Bun.spawnSync(["git", "add", "src"], { cwd: dir });
-  expect(await listPaths(dir)).toEqual([".github/", ".github/ci.yml", ".gitignore", "new.ts", "src/", "src/ui/", "src/ui/a.ts"]);
+  expect(await listPaths(dir)).toEqual([
+    ".github/",
+    ".github/ci.yml",
+    ".gitignore",
+    "new.ts",
+    "src/",
+    "src/ui/",
+    "src/ui/a.ts",
+  ]);
 });
 
 test("a folder outside git is walked, without heavy folders", async () => {

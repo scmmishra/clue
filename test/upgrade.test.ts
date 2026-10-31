@@ -21,13 +21,17 @@ test("a symlink upgrades the real binary", () => {
 });
 
 test("running from source can't upgrade", () => {
-  expect(upgradeTarget(process.execPath, "source")).toEqual({ problem: "clue is running from source. Use git pull instead." });
+  expect(upgradeTarget(process.execPath, "source")).toEqual({
+    problem: "clue is running from source. Use git pull instead.",
+  });
 });
 
 test("a local build can't upgrade, so a release never replaces it", () => {
   const dir = folder();
   writeFileSync(join(dir, "clue"), "");
-  expect(upgradeTarget(join(dir, "clue"), "local")).toEqual({ problem: "This is a local build. Use git pull and bun run build instead." });
+  expect(upgradeTarget(join(dir, "clue"), "local")).toEqual({
+    problem: "This is a local build. Use git pull and bun run build instead.",
+  });
 });
 
 test.each([
@@ -41,7 +45,10 @@ test.each([
 });
 
 test("clue upgrade from source stops with that message", async () => {
-  const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), "upgrade"], { stderr: "pipe", stdout: "ignore" });
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), "upgrade"], {
+    stderr: "pipe",
+    stdout: "ignore",
+  });
   const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
   expect(stderr).toContain("clue is running from source");
   expect(code).toBe(2);
@@ -67,8 +74,16 @@ function release(binary: string, options: { gzip?: boolean; plain?: boolean; bad
 }
 
 async function install(from: string, into = folder(), env: Record<string, string> = {}) {
-  const proc = Bun.spawn(["bash", installer], { env: { ...process.env, CLUE_LOCAL_RELEASE: from, CLUE_INSTALL_DIR: into, ...env }, stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  const proc = Bun.spawn(["bash", installer], {
+    env: { ...process.env, CLUE_LOCAL_RELEASE: from, CLUE_INSTALL_DIR: into, ...env },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   return { stdout, stderr, code, target: join(into, "clue") };
 }
 
@@ -110,21 +125,27 @@ test("a binary that doesn't start installs nothing, and the old one stays", asyn
 });
 
 test("a binary that reports another version installs nothing", async () => {
-  const { code, stderr, target } = await install(release(script("1.0.0"), { gzip: true }), folder(), { CLUE_VERSION: "v2.0.0" });
+  const { code, stderr, target } = await install(release(script("1.0.0"), { gzip: true }), folder(), {
+    CLUE_VERSION: "v2.0.0",
+  });
   expect(code).toBe(1);
   expect(stderr).toContain("reports version 1.0.0, not 2.0.0");
   expect(existsSync(target)).toBe(false);
 });
 
 test("a binary that reports the wanted version installs", async () => {
-  const { code, stderr } = await install(release(script("2.0.0"), { gzip: true }), folder(), { CLUE_VERSION: "v2.0.0" });
+  const { code, stderr } = await install(release(script("2.0.0"), { gzip: true }), folder(), {
+    CLUE_VERSION: "v2.0.0",
+  });
   expect(code, stderr).toBe(0);
 });
 
 test("the installer says what it is doing, in order", async () => {
   const { stdout, code } = await install(release(script("1.0.0"), { gzip: true }));
   expect(code).toBe(0);
-  const steps = ["Downloading clue local", "Checking the download", "Installed clue local"].map((step) => stdout.indexOf(step));
+  const steps = ["Downloading clue local", "Checking the download", "Installed clue local"].map((step) =>
+    stdout.indexOf(step),
+  );
   expect(steps.every((position) => position >= 0)).toBe(true);
   expect(steps).toEqual([...steps].sort((a, b) => a - b));
 });

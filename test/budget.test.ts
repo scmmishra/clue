@@ -6,7 +6,9 @@ test("times under budget pass", () => {
 });
 
 test("a time at the budget fails, because the budget is a strict limit", () => {
-  expect(overBudget({ launch: BUDGETS_MS.launch, resume: 1 })).toEqual([`launch took ${BUDGETS_MS.launch.toFixed(1)} ms, and its budget is under ${BUDGETS_MS.launch} ms`]);
+  expect(overBudget({ launch: BUDGETS_MS.launch, resume: 1 })).toEqual([
+    `launch took ${BUDGETS_MS.launch.toFixed(1)} ms, and its budget is under ${BUDGETS_MS.launch} ms`,
+  ]);
 });
 
 test("every wait over budget is reported", () => {
