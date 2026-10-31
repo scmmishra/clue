@@ -24,7 +24,7 @@ type TrackedFile = {
   after: bigint | number;
 };
 
-type TurnChanges = { files: Map<string, TrackedFile>; ranShell: boolean };
+type TurnChanges = { id: number; files: Map<string, TrackedFile>; ranShell: boolean };
 
 export type UndoResult =
   | { kind: "empty" }
@@ -55,19 +55,35 @@ function restore(path: string, previous: FileSnapshot | null) {
   }
 }
 
-// The file changes of recent turns, in memory. Each /undo reverses one turn.
+// The file changes of recent turns, in memory. /undo reverses one turn, and a rewind reverses several.
 export class UndoStack {
   private turns: TurnChanges[] = [];
-  private current: TurnChanges = { files: new Map(), ranShell: false };
+  private current: TurnChanges = { id: 0, files: new Map(), ranShell: false };
+  // Turns before this one have no snapshots, such as turns from before a resume.
+  private floor = 0;
 
   constructor(private readStamps = new Map<string, number>()) {}
 
-  beginTurn() {
-    this.current = { files: new Map(), ranShell: false };
+  startAt(id: number) {
+    this.floor = id;
+  }
+
+  // `id` is the position of the turn's prompt in the transcript.
+  beginTurn(id = 0) {
+    this.current = { id, files: new Map(), ranShell: false };
+  }
+
+  private track() {
+    if (this.turns.at(-1) === this.current) return;
+    this.turns.push(this.current);
+    if (this.turns.length <= MAX_TURNS) return;
+    this.turns.shift();
+    this.floor = this.turns[0].id;
   }
 
   noteShell() {
     this.current.ranShell = true;
+    this.track();
   }
 
   // Call after a tool writes `file`, with the snapshot taken before the write.
@@ -80,26 +96,58 @@ export class UndoStack {
       return;
     }
     this.current.files.set(path, { file, previous, after });
-    if (this.turns.at(-1) === this.current) return;
-    this.turns.push(this.current);
-    if (this.turns.length > MAX_TURNS) this.turns.shift();
+    this.track();
+  }
+
+  // Whether clue can restore everything changed since the turn with this id.
+  covers(id: number) {
+    return id >= this.floor;
+  }
+
+  summary(id: number) {
+    const turn = this.turns.find((candidate) => candidate.id === id);
+    return { files: turn?.files.size ?? 0, ranShell: turn?.ranShell ?? false };
+  }
+
+  // Drops the snapshots of a turn and those after it, and leaves the files alone.
+  forgetFrom(id: number) {
+    this.turns = this.turns.filter((turn) => turn.id < id);
   }
 
   undo(force = false): UndoResult {
-    const turn = this.turns.at(-1);
-    if (!turn) return { kind: "empty" };
-    const files = [...turn.files];
-    const changed = files.filter(([path, { after }]) => contentHash(path) !== after).map(([path]) => path);
+    const turn = this.turns.findLast((candidate) => candidate.files.size > 0);
+    return turn ? this.reverse([turn], force) : { kind: "empty" };
+  }
+
+  // Reverses the turn with this id and every turn after it.
+  rewindTo(id: number, force = false) {
+    return this.reverse(
+      this.turns.filter((turn) => turn.id >= id),
+      force,
+    );
+  }
+
+  private reverse(turns: TurnChanges[], force: boolean): UndoResult {
+    // Oldest first: each file goes back to its first snapshot, and is compared with its last write.
+    const files = new Map<string, TrackedFile>();
+    for (const turn of turns) {
+      for (const [path, tracked] of turn.files) {
+        const first = files.get(path);
+        files.set(path, first ? { ...first, after: tracked.after } : tracked);
+      }
+    }
+    const entries = [...files];
+    const changed = entries.filter(([path, { after }]) => contentHash(path) !== after).map(([path]) => path);
     if (changed.length && !force) return { kind: "changed", paths: changed };
-    this.turns.pop();
+    this.turns = this.turns.filter((turn) => !turns.includes(turn));
     const result = {
       kind: "done" as const,
       restored: [] as string[],
       deleted: [] as string[],
       failed: [] as string[],
-      ranShell: turn.ranShell,
+      ranShell: turns.some((turn) => turn.ranShell),
     };
-    for (const [path, { file, previous }] of files) {
+    for (const [path, { file, previous }] of entries) {
       // A timestamp alone can't show the change, because a coarse clock may give the restore the same one.
       this.readStamps.delete(file);
       try {

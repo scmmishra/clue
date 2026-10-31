@@ -2,7 +2,15 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { Effort, Settings } from "../config";
 import type { McpManager } from "../mcp/manager";
 import { approvalQuestion, Permissions, reviewAction } from "../permissions";
-import { Session, type PromptImage, type ToolRecord, type TurnRecord, type Usage } from "../session";
+import {
+  CONTINUE_PROMPT,
+  Session,
+  type PromptImage,
+  type RewindPoint,
+  type ToolRecord,
+  type TurnRecord,
+  type Usage,
+} from "../session";
 import { findTool } from "../tools";
 import type { Skill } from "../tools/skills";
 import { clip, toolKind, type Question, type ToolContext, type ToolOutput } from "../tools/types";
@@ -10,7 +18,7 @@ import { buildContext } from "./context";
 import { msSince, now } from "../clock";
 import { COMPACTION_TRIGGER_TOKENS, cost } from "./models";
 import { dropRejectedFeature, stream, summarize } from "./provider";
-import { UndoStack } from "./undo";
+import { UndoStack, type UndoResult } from "./undo";
 
 type ContentBlock = Anthropic.Beta.Messages.BetaContentBlock;
 type ToolUse = Anthropic.Beta.Messages.BetaToolUseBlock;
@@ -55,7 +63,9 @@ export class Agent {
   undo = new UndoStack(this.readStamps);
   private lastContext = 0;
 
-  constructor(private options: AgentOptions) {}
+  constructor(private options: AgentOptions) {
+    this.undo.startAt(options.session.transcript.length);
+  }
 
   get session() {
     return this.options.session;
@@ -96,6 +106,23 @@ export class Agent {
     return { summaryTokens: usage.output };
   }
 
+  // Goes back to before a prompt. Returns the file result, or null when files stay as they are.
+  // If files changed since, it returns that result and leaves the conversation alone.
+  rewind(point: RewindPoint, { keepFiles = false, force = false } = {}) {
+    let files: UndoResult | null = null;
+    if (keepFiles || !this.undo.covers(point.transcript)) this.undo.forgetFrom(point.transcript);
+    else {
+      files = this.undo.rewindTo(point.transcript, force);
+      if (files.kind === "changed") return files;
+    }
+    this.options.session.append({ t: "rewind", transcript: point.transcript, turns: point.turns });
+    // Claude no longer has what it read in the dropped turns.
+    this.readStamps.clear();
+    this.seenInstructions.clear();
+    this.lastContext = 0;
+    return files;
+  }
+
   // Automatic compaction can't run on a session with a /compact summary, so clue triggers it here.
   private async compactIfFull(signal: AbortSignal, midTurn: boolean) {
     const { session, events } = this.options;
@@ -114,7 +141,7 @@ export class Agent {
     }
     events.notice("Compacted the conversation.", "info");
     // A request can't end on the summary, which is an assistant message.
-    if (midTurn) session.appendMessage({ role: "user", content: "Continue with the task." });
+    if (midTurn) session.appendMessage({ role: "user", content: CONTINUE_PROMPT });
   }
 
   // Runs one user prompt to completion: model turns and tool calls until Claude stops.
@@ -129,7 +156,7 @@ export class Agent {
     let stop = "end_turn";
     let model = settings.model;
 
-    if (!this.options.subagent) this.undo.beginTurn();
+    if (!this.options.subagent) this.undo.beginTurn(this.session.transcript.length);
     session.closeUnfinishedTools();
     this.lastContext ||= session.turns.at(-1)?.context ?? 0;
     await this.compactIfFull(signal, false);

@@ -1,4 +1,4 @@
-import type { Session, ToolRecord, TurnRecord } from "../session";
+import { promptText, type Session, type ToolRecord, type TurnRecord } from "../session";
 import { columns, duration, money, rows, style, truncate, wrapLine } from "./ansi";
 import { renderMarkdown } from "./markdown";
 import type { Key } from "./screen";
@@ -9,8 +9,6 @@ type Entry =
   | { type: "text"; text: string }
   | { type: "tools"; tools: ToolRecord[] }
   | { type: "footer"; turn: TurnRecord };
-
-const isContext = (text: string) => text.startsWith("<context>");
 
 // Walks a session in order: prompts, reply text, tool runs and turn footers.
 export function sessionEntries(session: Session): Entry[] {
@@ -23,13 +21,7 @@ export function sessionEntries(session: Session): Entry[] {
   };
   for (const message of session.transcript) {
     if (message.role === "user") {
-      let text: string | null = null;
-      if (typeof message.content === "string") text = message.content;
-      else if (!message.content.some((block) => block.type === "tool_result")) {
-        text = message.content
-          .flatMap((block) => (block.type === "text" && !isContext(block.text) ? [block.text] : []))
-          .join("\n");
-      }
+      const text = promptText(message);
       if (text === null) continue; // tool results
       flush();
       if (prompt > 0 && session.turns[prompt - 1]) entries.push({ type: "footer", turn: session.turns[prompt - 1] });

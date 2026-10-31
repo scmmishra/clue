@@ -25,13 +25,13 @@ function contextRows(turns: TurnRecord[], compactions: CompactionRecord[]) {
 }
 
 // Lines for /usage: how full the context is, what the session cost, and where the tokens went.
-export function usageReport(turns: TurnRecord[], compactions: CompactionRecord[] = []) {
+export function usageReport(turns: TurnRecord[], compactions: CompactionRecord[] = [], rewound: TurnRecord[] = []) {
   if (!turns.length) return [row("Context", style.muted("No prompts yet.")), ""];
   const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, webSearches: 0 };
   const models = new Map<string, number>();
   let cost = 0;
   let unpriced = 0;
-  for (const { usage, model, cost: turnCost } of [...turns, ...compactions]) {
+  for (const { usage, model, cost: turnCost } of [...turns, ...rewound, ...compactions]) {
     for (const key of Object.keys(total) as (keyof typeof total)[]) total[key] += usage[key];
     cost += turnCost ?? 0;
     if (turnCost === null) unpriced += 1;

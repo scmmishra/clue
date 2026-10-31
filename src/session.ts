@@ -65,6 +65,7 @@ export type SessionRecord =
   | { t: "tool"; tool: ToolRecord }
   | { t: "turn"; turn: TurnRecord }
   | ({ t: "compacted" } & CompactionRecord)
+  | { t: "rewind"; transcript: number; turns: number }
   | { t: "name"; name: string };
 
 // A /compact summary sits first in the messages. An automatic compaction block never does.
@@ -72,6 +73,22 @@ export function startsWithSummary(messages: MessageParam[]) {
   const content = messages[0]?.content;
   return Array.isArray(content) && content[0]?.type === "compaction";
 }
+
+// What clue adds after a compaction during a turn. The user didn't type it.
+export const CONTINUE_PROMPT = "Continue with the task.";
+
+// The text a person typed, or null for tool results and clue's own messages.
+export function promptText(message: MessageParam) {
+  if (message.role !== "user") return null;
+  if (typeof message.content === "string") return message.content === CONTINUE_PROMPT ? null : message.content;
+  if (message.content.some((block) => block.type === "tool_result")) return null;
+  return message.content
+    .flatMap((block) => (block.type === "text" && !block.text.startsWith("<context>") ? [block.text] : []))
+    .join("\n");
+}
+
+// A prompt the session can go back to. Rewinding drops it and everything after it.
+export type RewindPoint = { text: string; transcript: number; turns: number; at?: number };
 
 export type SessionMeta = {
   id: string;
@@ -129,6 +146,8 @@ export class Session {
   // Every message of the session, for showing it again on resume.
   transcript: MessageParam[] = [];
   compactions: CompactionRecord[] = [];
+  // Turns a rewind dropped. Their cost still counts.
+  rewound: TurnRecord[] = [];
   tools = new Map<string, ToolRecord>();
   turns: TurnRecord[] = [];
   records: SessionRecord[] = [];
@@ -168,6 +187,11 @@ export class Session {
 
   private apply(record: SessionRecord) {
     this.records.push(record);
+    if (record.t === "rewind") {
+      this.messages.length -= this.transcript.length - record.transcript;
+      this.transcript.length = record.transcript;
+      this.rewound.push(...this.turns.splice(record.turns));
+    }
     if (record.t === "compacted") {
       this.compactions.push(record);
       this.messages = [record.message];
@@ -253,6 +277,22 @@ export class Session {
 
   get isEmpty() {
     return this.messages.length === 0;
+  }
+
+  // Prompts since the last compaction, oldest first. Earlier ones are no longer in what is sent.
+  get rewindPoints() {
+    const sent = this.messages.length - (this.carriesSummary ? 1 : 0);
+    const points: RewindPoint[] = [];
+    let prompt = 0;
+    this.transcript.forEach((message, index) => {
+      const text = promptText(message);
+      if (text === null) return;
+      if (index >= this.transcript.length - sent) {
+        points.push({ text, transcript: index, turns: prompt, at: this.turns[prompt]?.startedAt });
+      }
+      prompt += 1;
+    });
+    return points;
   }
 
   get carriesSummary() {

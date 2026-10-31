@@ -91,7 +91,7 @@ export class Editor {
   }
 
   // A draft that comes back already holds its mentions, so it doesn't open the picker.
-  private closePicker() {
+  closePicker() {
     this.picker.update(this.text, this.cursor);
     this.picker.close();
   }

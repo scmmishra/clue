@@ -798,3 +798,75 @@ test("a compaction during a turn lets the turn continue", async () => {
   expect(last[0].content[0].type).toBe("compaction");
   expect(last.at(-1)).toEqual({ role: "user", content: "Continue with the task." });
 }, 25_000);
+
+const ESC = "\x1b";
+const pressTwice = async (clue: Awaited<ReturnType<typeof startClue>>) => {
+  await clue.type(ESC);
+  await clue.type(ESC);
+};
+
+test("esc esc rewinds: the file goes, the prompt returns, and the next request has no trace of the turn", async () => {
+  const cwd = scratch("clue-rewind-");
+  const clue = await startClue({ cwd, args: ["--permission-mode", "full-access"] });
+  const note = join(cwd, "note.txt");
+  await clue.type("hello there");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  await clue.type("create the note");
+  await clue.type(ENTER);
+  await clue.turns(2);
+  expect(existsSync(note)).toBe(true);
+  await pressTwice(clue);
+  await clue.seen("Rewind to before:");
+  await clue.type(ENTER);
+  await clue.seen("rewound 1 turn · restored 1 file");
+  expect(existsSync(note)).toBe(false);
+  await clue.seen("create the note");
+  await clue.type("\x15");
+  await clue.type("something else");
+  await clue.type(ENTER);
+  await clue.turns(3);
+  const last = JSON.stringify((requests.at(-1) as { messages: unknown }).messages);
+  expect(last).toContain("something else");
+  expect(last).toContain("hello there");
+  expect(last).not.toContain("note.txt");
+}, 25_000);
+
+test("tab in rewind keeps the files", async () => {
+  const cwd = scratch("clue-rewind-keep-");
+  const clue = await startClue({ cwd, args: ["--permission-mode", "full-access"] });
+  await clue.type("create the note");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  await pressTwice(clue);
+  await clue.seen("Rewind to before:");
+  await clue.type(TAB);
+  await clue.seen("rewound 1 turn ·");
+  expect(existsSync(join(cwd, "note.txt"))).toBe(true);
+}, 25_000);
+
+test("esc closes rewind, and an empty session has nothing to rewind", async () => {
+  const clue = await startClue();
+  await pressTwice(clue);
+  await clue.seen("Nothing to rewind.");
+  await clue.type("hello");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  await pressTwice(clue);
+  await clue.seen("Rewind to before:");
+  await clue.type(ESC);
+  await clue.type("next");
+  await clue.type(ENTER);
+  await clue.turns(2);
+  expect(clue.wasSent("next")).toBe(true);
+}, 25_000);
+
+test("esc esc during a run interrupts instead of rewinding", async () => {
+  const clue = await startClue({ delay: 30 });
+  await clue.type("hello");
+  await clue.type(ENTER);
+  await clue.working();
+  await pressTwice(clue);
+  await clue.seen("Interrupting");
+  expect(clue.screen()).not.toContain("Rewind to before:");
+}, 25_000);

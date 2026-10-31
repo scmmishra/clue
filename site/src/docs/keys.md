@@ -12,5 +12,5 @@ title: Keys
 | `shift+tab` | Switches between the `ask`, `auto` and `full-access` permission modes. |
 | `ctrl+v` | Attaches the clipboard image. |
 | `ctrl+o` | Opens the full detail of the session. |
-| `esc esc`, `ctrl+c` | Interrupt a run. |
+| `esc esc`, `ctrl+c` | Interrupt a run. When idle, `esc esc` opens [rewind](/docs/sessions#rewind). |
 | `ctrl+d` | Exits. |

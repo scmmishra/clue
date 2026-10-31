@@ -202,3 +202,68 @@ test("only the most recent turns are kept", async () => {
   expect(undone).toBe(20);
   expect(read("a.ts")).toBe("5");
 });
+
+test("a rewind reverses several turns, and each file returns to its first snapshot", async () => {
+  const { undo, file, read, edit, write } = setup();
+  writeFileSync(file("a.ts"), "one");
+  undo.beginTurn(0);
+  await edit("a.ts", "one", "keep");
+  undo.beginTurn(2);
+  await edit("a.ts", "keep", "two");
+  undo.beginTurn(4);
+  await edit("a.ts", "two", "three");
+  await write("new.ts", "x");
+  expect(undo.rewindTo(2)).toMatchObject({ kind: "done", restored: [file("a.ts")], deleted: [file("new.ts")] });
+  expect(read("a.ts")).toBe("keep");
+  expect(undo.undo()).toMatchObject({ kind: "done" });
+  expect(read("a.ts")).toBe("one");
+});
+
+test("a rewind stops if a file changed after its last write, and nothing is restored", async () => {
+  const { undo, file, read, edit } = setup();
+  writeFileSync(file("a.ts"), "one");
+  undo.beginTurn(0);
+  await edit("a.ts", "one", "two");
+  writeFileSync(file("a.ts"), "mine");
+  expect(undo.rewindTo(0)).toEqual({ kind: "changed", paths: [file("a.ts")] });
+  expect(read("a.ts")).toBe("mine");
+  undo.rewindTo(0, true);
+  expect(read("a.ts")).toBe("one");
+});
+
+test("turns from before this process, or pushed off the stack, aren't covered", async () => {
+  const { undo, file, edit } = setup();
+  undo.startAt(10);
+  expect(undo.covers(9)).toBe(false);
+  expect(undo.covers(10)).toBe(true);
+  writeFileSync(file("a.ts"), "0");
+  for (let index = 0; index < 22; index++) {
+    undo.beginTurn(10 + index * 2);
+    await edit("a.ts", String(index), String(index + 1));
+  }
+  expect(undo.covers(10)).toBe(false);
+  expect(undo.covers(14)).toBe(true);
+});
+
+test("a shell-only turn is reported in its summary and skipped by /undo", async () => {
+  const { undo, file, read, edit } = setup();
+  writeFileSync(file("a.ts"), "one");
+  undo.beginTurn(0);
+  await edit("a.ts", "one", "two");
+  undo.beginTurn(2);
+  undo.noteShell();
+  expect(undo.summary(2)).toEqual({ files: 0, ranShell: true });
+  expect(undo.summary(0)).toEqual({ files: 1, ranShell: false });
+  undo.undo();
+  expect(read("a.ts")).toBe("one");
+});
+
+test("forgetting turns leaves the files as they are", async () => {
+  const { undo, file, read, edit } = setup();
+  writeFileSync(file("a.ts"), "one");
+  undo.beginTurn(0);
+  await edit("a.ts", "one", "two");
+  undo.forgetFrom(0);
+  expect(read("a.ts")).toBe("two");
+  expect(undo.undo()).toEqual({ kind: "empty" });
+});

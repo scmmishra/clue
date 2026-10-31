@@ -13,12 +13,14 @@ import { McpManager } from "./mcp/manager";
 import { Permissions } from "./permissions";
 import { nameProblem, Session, sessionFile, type PromptImage, type TurnRecord } from "./session";
 import { encodeImage } from "./tools/files";
+import { display } from "./tools/files";
 import { stopAllProcesses, warmShellEnv } from "./tools/shell";
 import { discoverSkills, type Skill } from "./tools/skills";
 import type { Question } from "./tools/types";
 import { duration, homePath, style, tokens } from "./ui/ansi";
 import { Editor, type Command } from "./ui/editor";
 import { listPaths } from "./ui/file-mention";
+import { RewindPicker, rewindReport } from "./ui/rewind";
 import { undoReport } from "./ui/undo";
 import { usageReport } from "./ui/usage";
 import { clipboardImage, clipboardSupported } from "./ui/clipboard";
@@ -80,6 +82,7 @@ export class App {
   private turn: AbortController | null = null;
   private pager: Pager | null = null;
   private lastEscape = 0;
+  private rewindPicker: RewindPicker | null = null;
   private lastInterrupt = 0;
   private hint = "";
   private warming: AbortController | null = null;
@@ -221,6 +224,10 @@ export class App {
 
   // The input, with the queued message above it.
   private composer = (): LiveFrame => {
+    if (this.rewindPicker) {
+      const { lines, cursor } = this.editor.frame("");
+      return { lines: [...lines.slice(0, -1), ...this.rewindPicker.frame()], cursor };
+    }
     const frame = this.editor.frame(
       this.hint
         ? style.muted(this.hint)
@@ -338,8 +345,38 @@ export class App {
     this.screen.refresh();
   }
 
+  private openRewind() {
+    const points = this.session.rewindPoints;
+    if (!points.length) return this.print([`  ${style.muted("Nothing to rewind.")}`, ""]);
+    const { undo } = this.agent;
+    const rows = points
+      .map((point) => ({ point, ...undo.summary(point.transcript), restorable: undo.covers(point.transcript) }))
+      .reverse();
+    this.editor.closePicker();
+    this.rewindPicker = new RewindPicker(rows);
+    this.screen.refresh();
+  }
+
+  private rewindKey(key: Key) {
+    const picker = this.rewindPicker!;
+    const choice = picker.handle(key);
+    if (choice === "cancel") this.rewindPicker = null;
+    else if (choice) {
+      const dropped = picker.turnsDropped;
+      const result = this.agent.rewind(choice.point, choice);
+      if (result?.kind === "changed") picker.conflict(result.paths.map((path) => display(this.cwd, path)));
+      else {
+        this.rewindPicker = null;
+        this.print(rewindReport(dropped, result, this.cwd));
+        this.editor.restore(choice.point.text, []);
+      }
+    }
+    this.screen.refresh();
+  }
+
   private onIdleKey(key: Key) {
     if (this.pager) return this.pager.handle(key);
+    if (this.rewindPicker) return this.rewindKey(key);
     if (key.ctrl && key.name === "o") return this.openDetail();
     if (key.ctrl && key.name === "c") {
       if (this.editor.text) {
@@ -357,6 +394,13 @@ export class App {
       return this.screen.refresh();
     }
     if (key.ctrl && key.name === "d" && !this.editor.text) return this.exit(0);
+    if (key.name === "escape" && !this.editor.pickerOpen) {
+      const opens = Date.now() - this.lastEscape < DOUBLE_PRESS_MS;
+      // A pair is used up, so the next single esc doesn't open it again.
+      this.lastEscape = opens ? 0 : Date.now();
+      if (opens) this.openRewind();
+      return;
+    }
     if (key.ctrl && key.name === "l") {
       process.stdout.write("\x1b[2J\x1b[H");
       return this.screen.flush();
@@ -481,7 +525,7 @@ export class App {
           "",
           `  ${style.muted("enter send · shift+enter, alt+enter or \\ newline · ↑↓ history · @ file · tab complete · shift+tab permission mode · ctrl+v paste image")}`,
           `  ${style.muted("while clue works: tab queue a message · ↑ edit it")}`,
-          `  ${style.muted("esc esc or ctrl+c interrupt · ctrl+o detail · ctrl+d exit")}`,
+          `  ${style.muted("esc esc interrupt, or rewind when idle · ctrl+c interrupt · ctrl+o detail · ctrl+d exit")}`,
           "",
         ]);
         return;
@@ -568,7 +612,7 @@ export class App {
         return this.print(undoReport(this.agent.undo.undo(args[0] === "force"), this.cwd));
       case "cost":
       case "usage":
-        return this.print(usageReport(this.session.turns, this.session.compactions));
+        return this.print(usageReport(this.session.turns, this.session.compactions, this.session.rewound));
       case "exit":
       case "quit":
         return this.exit(0);

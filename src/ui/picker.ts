@@ -4,7 +4,7 @@ import type { Key, Keyboard, Screen } from "./screen";
 
 const MAX_ROWS = 12;
 
-function ago(at: number) {
+export function ago(at: number) {
   const minutes = Math.round((Date.now() - at) / 60_000);
   if (minutes < 1) return "now";
   if (minutes < 60) return `${minutes}m ago`;

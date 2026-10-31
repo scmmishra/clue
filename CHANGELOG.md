@@ -6,6 +6,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 - Shell commands can use your aliases and functions in zsh and bash. An alias or function named after a real program, such as `grep`, stays out, so standard tools behave the same.
 - clue reruns your shell startup files after more kinds of change, such as a new `ZDOTDIR` or an edit to a file in `/etc`.
+- `esc esc` at an idle prompt opens rewind. Pick an earlier prompt to restore the files and cut the conversation back to it, or press `tab` to keep the files.
 
 ## 0.7.1
 
