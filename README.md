@@ -329,12 +329,21 @@ Warming the cache on resume costs a cache write even if you then quit without se
 
 | File | Purpose |
 | --- | --- |
-| `~/.clue/settings.json` | Model, effort, permission mode, permission rules and `bell`. Set `"bell": false` to turn the bell off. |
+| `~/.clue/settings.json` | Model, effort, permission mode, permission rules, `review` and `bell`. Set `"bell": false` to turn the bell off. |
 | `~/.clue/mcp.json` | MCP servers for all projects. |
 | `.mcp.json` | MCP servers for one project. |
 | `~/.clue/AGENTS.md` | Your instructions for every project. |
 
 `CLUE_MODEL`, `CLUE_EFFORT` and `CLUE_PERMISSION_MODE` override `settings.json` for one process.
+
+| Command | What it does |
+| --- | --- |
+| `clue config show` | Shows the settings in use and where each comes from. `--json` is for scripts. |
+| `clue config path` | Prints the path of `settings.json`. |
+| `clue config edit [editor]` | Opens the file, then checks it. |
+| `clue config set <key> <value>` | Changes one setting, such as `clue config set review.provider anthropic`. |
+
+clue warns at startup if `settings.json` has a problem. If its JSON is broken, clue uses its defaults, so your permission rules don't apply until you fix it.
 
 ## Develop
 

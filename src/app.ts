@@ -52,6 +52,8 @@ export type AppOptions = {
   prompt?: string;
   // A prompt was given, but the session already existed.
   droppedPrompt?: boolean;
+  // Problems with settings.json.
+  warnings?: string[];
   benchReady?: boolean;
 };
 
@@ -155,6 +157,7 @@ export class App {
     process.on("SIGTERM", () => this.exit(0));
     process.stdout.on("resize", () => this.screen.refresh());
 
+    for (const warning of this.options.warnings ?? []) this.print([`  ${style.orange(warning)}`, ""]);
     if (this.options.droppedPrompt) this.notice(`Resumed ${this.session.name}. Your prompt was not sent.`);
     if (this.options.prompt) {
       this.editor.remember(this.options.prompt);

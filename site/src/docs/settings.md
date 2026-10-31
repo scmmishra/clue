@@ -4,6 +4,15 @@ title: Settings
 
 Settings live in `~/.clue/settings.json`. Every key is optional.
 
+| Command | What it does |
+| --- | --- |
+| `clue config show` | Shows the settings in use and where each comes from. `--json` is for scripts. |
+| `clue config path` | Prints the path of the file. |
+| `clue config edit [editor]` | Opens the file, then checks it. Without a name, it uses `$VISUAL`, then `$EDITOR`, then `vi`. |
+| `clue config set <key> <value>` | Changes one setting, such as `clue config set review.provider anthropic`. |
+
+clue warns at startup if the file has a problem. If the JSON is broken, clue uses its defaults, so your permission rules don't apply until you fix it.
+
 | Key | Default | What it does |
 | --- | --- | --- |
 | `model` | `claude-opus-5-5` | The model for new sessions. |

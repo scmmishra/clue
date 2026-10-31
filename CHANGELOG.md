@@ -4,6 +4,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- `clue config` shows, opens and changes settings, with `show`, `path`, `edit` and `set`.
+- clue warns at startup if `settings.json` has a problem, such as broken JSON that turns your permission rules off.
 - A multi-line command takes one row in the tool tree, and no longer repeats the row in the scrollback while it runs.
 - In a short terminal, a long prompt or reply no longer leaves duplicate rows in the scrollback.
 ## 0.4.1

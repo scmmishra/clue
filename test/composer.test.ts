@@ -418,3 +418,19 @@ test("/rename still refuses a name taken in this folder", async () => {
   await second.type(`/rename thread-1${ENTER}`);
   await second.seen("A session named thread-1 already exists here.");
 }, 25_000);
+
+test("broken settings warn in the session", async () => {
+  const home = scratch("clue-broken-home-");
+  writeFileSync(join(home, "settings.json"), "{ nope");
+  const clue = await startClue({ home });
+  await clue.seen("isn't valid JSON");
+  await clue.seen("clue config edit");
+}, 25_000);
+
+test("good settings start without a warning", async () => {
+  const home = scratch("clue-good-home-");
+  writeFileSync(join(home, "settings.json"), '{ "effort": "low" }');
+  const clue = await startClue({ home });
+  await Bun.sleep(200);
+  expect(clue.screen()).not.toContain("clue config edit");
+}, 25_000);

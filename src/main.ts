@@ -3,7 +3,7 @@
 // parse flags, read settings, and hand off. Everything slow loads afterwards.
 
 import { existsSync } from "node:fs";
-import { loadSettings, PERMISSION_MODES, VERSION, EFFORTS, type Effort, type PermissionMode, type Settings } from "./config";
+import { loadSettings, PERMISSION_MODES, settingsWarnings, VERSION, EFFORTS, type Effort, type PermissionMode, type Settings } from "./config";
 import { Session, findSession, latestSessionFile, nameFormatProblem, realFolder, resolveSession, sessionFile, sessionNamedIn, type SessionMeta } from "./session";
 
 const HELP = `clue ${VERSION}: a coding agent for the terminal
@@ -15,6 +15,7 @@ Usage
   clue ask [prompt]          one request; prompt from arguments or stdin
   clue login | logout        save or remove Claude credentials
   clue mcp <command>         manage MCP servers (list, add, remove, login, ...)
+  clue config <command>      show or change settings (show, path, edit, set)
   clue upgrade               install the latest release
 
 Options
@@ -36,8 +37,8 @@ function parse(argv: string[]): Parsed {
   const takesValue = new Set(["model", "effort", "permission-mode", "resume", "name"]);
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
-    // `clue mcp` has its own arguments, such as `--project` and `--`. They reach it untouched.
-    if (arg === "mcp" && positional.length === 0) {
+    // `clue mcp` and `clue config` have their own arguments, such as `--project` and `--`. They reach them untouched.
+    if ((arg === "mcp" || arg === "config") && positional.length === 0) {
       positional.push(...argv.slice(index));
       break;
     }
@@ -58,7 +59,7 @@ function parse(argv: string[]): Parsed {
     else if (arg === "-h") flags.help = true;
     else positional.push(arg);
   }
-  const commands = new Set(["ask", "login", "logout", "mcp", "upgrade", "help", "version"]);
+  const commands = new Set(["ask", "login", "logout", "mcp", "config", "upgrade", "help", "version"]);
   const command = positional[0] && commands.has(positional[0]) ? positional.shift()! : "";
   return { command, positional, flags };
 }
@@ -116,6 +117,11 @@ async function main() {
   if (flags.version || command === "version") return console.log(VERSION);
   if (flags.help || command === "help") return process.stdout.write(HELP);
 
+  if (command === "config") {
+    const { runConfig } = await import("./commands/config");
+    return runConfig(positional);
+  }
+
   if (command === "upgrade") {
     const { upgrade } = await import("./commands/upgrade");
     return upgrade();
@@ -147,7 +153,10 @@ async function main() {
   const { resolveModel } = await import("./agent/models");
   settings.model = resolveModel(settings.model);
 
+  const warnings = settingsWarnings();
+
   if (command === "ask") {
+    for (const warning of warnings) process.stderr.write(`clue: ${warning}\n`);
     const prompt = [positional.join(" "), await readStdin()].filter(Boolean).join("\n\n");
     if (!prompt) fail("clue ask needs a prompt, as arguments or on stdin.");
     const session = typeof flags.resume === "string" ? sessionById(flags.resume) : Session.create(process.cwd());
@@ -200,6 +209,7 @@ async function main() {
     // An existing named session already had its first prompt, so a repeat of the command must not run it again.
     prompt: existing ? undefined : prompt,
     droppedPrompt: Boolean(existing && prompt),
+    warnings,
     benchReady: process.env.CLUE_BENCH_READY === "1",
   });
   await app.start();

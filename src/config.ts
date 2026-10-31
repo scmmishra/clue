@@ -84,3 +84,52 @@ export async function saveSetting<K extends keyof Settings>(key: K, value: Setti
   file[key] = value;
   await Bun.write(paths.settings, `${JSON.stringify(file, null, 2)}\n`);
 }
+
+const REVIEW_PROVIDERS = ["anthropic", "openrouter"];
+const isObject = (value: unknown) => typeof value === "object" && value !== null && !Array.isArray(value);
+const oneOf = (options: readonly string[]) => (value: unknown) => (options.includes(value as string) ? null : `must be one of ${options.join(", ")}`);
+const aString = (value: unknown) => (typeof value === "string" ? null : "must be a string");
+const anObject = (value: unknown) => (isObject(value) ? null : "must be an object");
+
+const SETTING_CHECKS = new Map<string, (value: unknown) => string | null>([
+  ["model", aString],
+  ["effort", oneOf(EFFORTS)],
+  ["permission_mode", oneOf(PERMISSION_MODES)],
+  ["permission", anObject],
+  ["bell", (value) => (typeof value === "boolean" ? null : "must be true or false")],
+  ["review", anObject],
+  ["review.provider", oneOf(REVIEW_PROVIDERS)],
+  ["review.model", aString],
+]);
+
+// What's wrong with one setting, or null.
+export function checkSetting(key: string, value: unknown) {
+  if (key === "review_model") return "review_model was replaced by review";
+  const check = SETTING_CHECKS.get(key);
+  if (!check) return `${key} isn't a setting`;
+  const problem = check(value);
+  return problem && `${key} ${problem}`;
+}
+
+// What's wrong with the text of settings.json. loadSettings ignores a file it can't read,
+// and that silently drops the user's deny rules, so startup warns about it.
+export function settingsProblems(text: string): string[] {
+  let settings: Record<string, unknown>;
+  try {
+    settings = JSON.parse(text);
+  } catch {
+    return ["settings.json isn't valid JSON, so clue is using its defaults and your permission rules are off"];
+  }
+  if (!isObject(settings)) return ["settings.json must be a JSON object"];
+  const problems = Object.entries(settings).flatMap(([key, value]) => checkSetting(key, value) ?? []);
+  if (isObject(settings.review)) {
+    problems.push(...Object.entries(settings.review as object).flatMap(([key, value]) => checkSetting(`review.${key}`, value) ?? []));
+  }
+  return problems;
+}
+
+// The problems with the file on disk, as warnings for startup.
+export function settingsWarnings() {
+  if (!existsSync(paths.settings)) return [];
+  return settingsProblems(readFileSync(paths.settings, "utf8")).map((problem) => `${problem}. Fix it with clue config edit.`);
+}
