@@ -238,6 +238,8 @@ export class App {
       );
       if (usage) {
         const used = responseUsage(usage);
+        // Known gap: these settings are read after the request. Changing the model or fast mode
+        // during a warm-up misprices this one record. The window is short, so it stays for now.
         const model = this.settings.model;
         const price = cost(model, used, fastEnabled(this.settings));
         session.append({ t: "spend", usage: used, cost: price, model, at: Date.now() });

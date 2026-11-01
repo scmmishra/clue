@@ -113,6 +113,9 @@ export function steerText(message: MessageParam) {
 }
 
 // Tokens in the last request, or undefined when a compaction has replaced that context.
+// Known gap: a turn that compacts mid-run and then ends early saves the size from before the
+// compaction. A resume can then compact again, at the cost of one extra summary. It's rare, so
+// it stays for now.
 export function lastContextSize(turns: TurnRecord[], compactions: CompactionRecord[]) {
   const last = turns.at(-1);
   const compactedSince = last && (compactions.at(-1)?.at ?? 0) > last.startedAt + last.ms;

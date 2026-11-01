@@ -96,6 +96,8 @@ export class Agent {
     const iterations = message.usage.iterations ?? [];
     const usage = emptyUsage();
     for (const iteration of iterations) addUsage(usage, iteration);
+    // Known gap: this early return records no cost. It matters only if the API bills a summary
+    // that didn't finish, which isn't confirmed, so it stays for now.
     if (message.stop_reason !== "compaction" || !message.content.some((block) => block.type === "compaction")) {
       return { problem: `The summary didn't finish (${message.stop_reason ?? "no reason given"}).` };
     }
