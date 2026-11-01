@@ -61,9 +61,16 @@ export type CompactionRecord = {
   at: number;
 };
 
-// Everything a session paid for: its turns, turns dropped by a rewind, and compactions.
-export const totalCost = (turns: TurnRecord[], rewound: TurnRecord[], compactions: CompactionRecord[]) =>
-  [...turns, ...rewound, ...compactions].reduce((sum, { cost }) => sum + (cost ?? 0), 0);
+// A request outside any turn, such as warming the cache on resume.
+export type SpendRecord = { usage: Usage; cost: number | null; model: string; at: number };
+
+// Everything a session paid for: its turns, turns dropped by a rewind, compactions, and other requests.
+export const totalCost = (
+  turns: TurnRecord[],
+  rewound: TurnRecord[],
+  compactions: CompactionRecord[],
+  spends: SpendRecord[] = [],
+) => [...turns, ...rewound, ...compactions, ...spends].reduce((sum, { cost }) => sum + (cost ?? 0), 0);
 
 export type SessionRecord =
   | { t: "session"; id: string; cwd: string; created: number; version: string }
@@ -71,6 +78,7 @@ export type SessionRecord =
   | { t: "tool"; tool: ToolRecord }
   | { t: "turn"; turn: TurnRecord }
   | ({ t: "compacted" } & CompactionRecord)
+  | ({ t: "spend" } & SpendRecord)
   | { t: "rewind"; transcript: number; turns: number }
   | { t: "name"; name: string };
 
@@ -161,6 +169,7 @@ export class Session {
   // Every message of the session, for showing it again on resume.
   transcript: MessageParam[] = [];
   compactions: CompactionRecord[] = [];
+  spends: SpendRecord[] = [];
   // Turns a rewind dropped. Their cost still counts.
   rewound: TurnRecord[] = [];
   tools = new Map<string, ToolRecord>();
@@ -207,6 +216,7 @@ export class Session {
       this.transcript.length = record.transcript;
       this.rewound.push(...this.turns.splice(record.turns));
     }
+    if (record.t === "spend") this.spends.push(record);
     if (record.t === "compacted") {
       this.compactions.push(record);
       this.messages = [record.message];
@@ -292,7 +302,7 @@ export class Session {
 
   // What the session has cost so far. /usage reports the same total.
   get spent() {
-    return totalCost(this.turns, this.rewound, this.compactions);
+    return totalCost(this.turns, this.rewound, this.compactions, this.spends);
   }
 
   get isEmpty() {

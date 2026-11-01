@@ -24,6 +24,10 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - A background process started by a shell startup file no longer holds up commands.
 - Closing the terminal now stops running commands, and so does `SIGTERM` or `SIGHUP` to `clue ask`. A command that ignores `SIGTERM` gets `SIGKILL` when clue exits.
 - `/undo` and rewind now say when a turn ran shell commands. The `shell` tag in rewind never appeared before.
+- The session cost is more complete. It now counts automatic compactions, turns that failed partway, and the request that warms the cache on resume. `/cost` still shows the total after a rewind to the first prompt.
+- Resuming a session warms the cache on the first key you type, so opening a session only to read it costs nothing. `/` commands don't trigger it.
+- A turn that loses fast mode partway pays the fast price only for its fast requests.
+- A session whose first request failed can be resumed with the id clue printed.
 
 ## 0.8.1
 

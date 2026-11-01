@@ -1183,3 +1183,21 @@ test("closing the terminal stops running commands", async () => {
   Bun.spawnSync(["pkill", "-f", "sleep 26.5"]);
   expect(stopped).toBe(true);
 }, 25_000);
+
+test("a resumed session warms the cache on the first key, and the cost counts", async () => {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), "clue-composer-")));
+  const home = mkdtempSync(join(tmpdir(), "clue-composer-home-"));
+  const first = await startClue({ cwd, home });
+  await first.type("read it");
+  await first.type(ENTER);
+  await first.turns(1);
+  await stop();
+
+  const second = await startClue({ cwd, home, args: ["-c"] });
+  const warmups = () => requests.filter((request) => request.max_tokens === 0).length;
+  await Bun.sleep(200);
+  expect(warmups()).toBe(0);
+  await second.type("x");
+  await second.seen("history cached");
+  expect(warmups()).toBe(1);
+}, 25_000);

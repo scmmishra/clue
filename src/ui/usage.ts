@@ -1,5 +1,5 @@
 import { COMPACTION_TRIGGER_TOKENS, modelLabel } from "../agent/models";
-import { totalCost, type CompactionRecord, type TurnRecord } from "../session";
+import { totalCost, type CompactionRecord, type SpendRecord, type TurnRecord } from "../session";
 import { money, style, tokens } from "./ansi";
 
 const LABEL_WIDTH = 10;
@@ -25,12 +25,18 @@ function contextRows(turns: TurnRecord[], compactions: CompactionRecord[]) {
 }
 
 // Lines for /usage: how full the context is, what the session cost, and where the tokens went.
-export function usageReport(turns: TurnRecord[], compactions: CompactionRecord[] = [], rewound: TurnRecord[] = []) {
-  if (!turns.length) return [row("Context", style.muted("No prompts yet.")), ""];
+export function usageReport(
+  turns: TurnRecord[],
+  compactions: CompactionRecord[] = [],
+  rewound: TurnRecord[] = [],
+  spends: SpendRecord[] = [],
+) {
+  const paidFor = [...turns, ...rewound, ...compactions, ...spends];
+  if (!paidFor.length) return [row("Context", style.muted("No prompts yet.")), ""];
   const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, webSearches: 0 };
   const models = new Map<string, number>();
   let unpriced = 0;
-  for (const { usage, model, cost: turnCost } of [...turns, ...rewound, ...compactions]) {
+  for (const { usage, model, cost: turnCost } of paidFor) {
     for (const key of Object.keys(total) as (keyof typeof total)[]) total[key] += usage[key];
     if (turnCost === null) unpriced += 1;
     models.set(model, (models.get(model) ?? 0) + (turnCost ?? 0));
@@ -41,7 +47,7 @@ export function usageReport(turns: TurnRecord[], compactions: CompactionRecord[]
     ...contextRows(turns, compactions),
     row(
       "Cost",
-      `${style.accent(money(totalCost(turns, rewound, compactions)))} ${style.muted(`across ${prompts}`)}${unpriced ? style.orange(`, ${unpriced} with no known price`) : ""}`,
+      `${style.accent(money(totalCost(turns, rewound, compactions, spends)))} ${style.muted(`across ${prompts}`)}${unpriced ? style.orange(`, ${unpriced} with no known price`) : ""}`,
     ),
     row(
       "Tokens",

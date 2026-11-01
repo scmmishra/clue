@@ -17,7 +17,7 @@ import type { Skill } from "../tools/skills";
 import { clip, fieldOf, type Question, type ToolContext, type ToolOutput } from "../tools/types";
 import { buildContext } from "./context";
 import { msSince, now } from "../clock";
-import { COMPACTION_TRIGGER_TOKENS, cost, fastEnabled } from "./models";
+import { addUsage, COMPACTION_TRIGGER_TOKENS, cost, emptyUsage, fastEnabled, responseUsage } from "./models";
 import { dropRejectedFeature, fastRejected, stream, summarize } from "./provider";
 import { reviewAction } from "./review";
 import { UndoStack, type UndoResult } from "./undo";
@@ -64,7 +64,14 @@ export type AgentOptions = {
   onFastOff?: () => void;
 };
 
-const emptyUsage = (): Usage => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, webSearches: 0 });
+// A turn's spend so far. Requests are priced as they arrive, because speed can differ between them.
+type Tally = { usage: Usage; cost: number | null };
+
+function tallyUp(tally: Tally, usage: Usage, price: number | null) {
+  for (const key of Object.keys(usage) as (keyof Usage)[]) tally.usage[key] += usage[key];
+  tally.cost = tally.cost === null || price === null ? null : tally.cost + price;
+}
+
 const MAX_JSON_RETRIES = 2;
 const MAX_FEATURE_RETRIES = 3;
 const ERROR_NOTE_CHARS = 60;
@@ -92,7 +99,7 @@ export class Agent {
     const message = await summarize({ model, effort: settings.effort, fast, messages: session.messages }, signal);
     const iterations = message.usage.iterations ?? [];
     const usage = emptyUsage();
-    for (const iteration of iterations) addUsage(usage, iteration as unknown as Anthropic.Beta.Messages.BetaUsage);
+    for (const iteration of iterations) addUsage(usage, iteration);
     if (message.stop_reason !== "compaction" || !message.content.some((block) => block.type === "compaction")) {
       return { problem: `The summary didn't finish (${message.stop_reason ?? "no reason given"}).` };
     }
@@ -162,7 +169,7 @@ export class Agent {
     const startedAt = Date.now();
     const clock = now();
     let firstTokenMs: number | null = null;
-    const usage = emptyUsage();
+    const tally: Tally = { usage: emptyUsage(), cost: 0 };
     let context: number | undefined;
     let toolCount = 0;
     let stop = "end_turn";
@@ -190,6 +197,24 @@ export class Agent {
         content: images.length ? [{ type: "text", text: prompt }, ...images] : prompt,
       });
     }
+
+    const finish = (ending: string) => {
+      const turn: TurnRecord = {
+        prompt,
+        startedAt,
+        ms: msSince(clock),
+        firstTokenMs,
+        tools: toolCount,
+        usage: tally.usage,
+        cost: tally.cost,
+        model,
+        stop: ending,
+        context,
+        fast: fast || undefined,
+      };
+      session.append({ t: "turn", turn });
+      return turn;
+    };
 
     let jsonRetries = 0;
     let featureRetries = 0;
@@ -236,11 +261,15 @@ export class Agent {
           events.notice("A tool input arrived as broken JSON. Asking again.", "warn");
           continue;
         }
+        // Earlier requests of this turn were paid for, and resuming needs the session in the index.
+        finish("error");
         throw error;
       }
 
-      addUsage(usage, message.usage);
-      fast ||= (message.usage.speed ?? (askedFast ? "fast" : "standard")) === "fast";
+      const servedFast = (message.usage.speed ?? (askedFast ? "fast" : "standard")) === "fast";
+      const used = responseUsage(message.usage);
+      tallyUp(tally, used, cost(model, used, servedFast));
+      fast ||= servedFast;
       context = this.lastContext = contextTokens(message.usage);
       session.appendMessage({
         role: "assistant",
@@ -271,7 +300,7 @@ export class Agent {
       }
 
       toolCount += toolUses.length;
-      const results = await this.runTools(toolUses, prompt, signal, usage);
+      const results = await this.runTools(toolUses, prompt, signal, tally);
       // Text after the results is allowed, unless a server tool still waits for its result.
       const steer = signal.aborted || awaitsServerTool(message.content) ? null : (events.steer?.() ?? null);
       session.appendMessage({
@@ -284,21 +313,7 @@ export class Agent {
       }
     }
 
-    const turn: TurnRecord = {
-      prompt,
-      startedAt,
-      ms: msSince(clock),
-      firstTokenMs,
-      tools: toolCount,
-      usage,
-      cost: cost(model, usage, fast),
-      model,
-      stop,
-      context,
-      fast: fast || undefined,
-    };
-    session.append({ t: "turn", turn });
-    return turn;
+    return finish(stop);
   }
 
   // One streamed model request. Forwards text, progress notes and tool activity as they arrive.
@@ -370,7 +385,7 @@ export class Agent {
   }
 
   // Runs tool calls: consecutive read-only calls in parallel, everything else in order.
-  private async runTools(uses: ToolUse[], prompt: string, signal: AbortSignal, usage: Usage): Promise<ToolResult[]> {
+  private async runTools(uses: ToolUse[], prompt: string, signal: AbortSignal, tally: Tally): Promise<ToolResult[]> {
     const results: ToolResult[] = new Array(uses.length);
     let index = 0;
     while (index < uses.length) {
@@ -379,13 +394,13 @@ export class Agent {
         batch.push(index++);
       if (batch.length === 0) batch.push(index++);
       await Promise.all(
-        batch.map(async (position) => (results[position] = await this.runTool(uses[position], prompt, signal, usage))),
+        batch.map(async (position) => (results[position] = await this.runTool(uses[position], prompt, signal, tally))),
       );
     }
     return results;
   }
 
-  private async runTool(use: ToolUse, prompt: string, signal: AbortSignal, usage: Usage): Promise<ToolResult> {
+  private async runTool(use: ToolUse, prompt: string, signal: AbortSignal, tally: Tally): Promise<ToolResult> {
     const { events, permissions, session } = this.options;
     const startedAt = Date.now();
     const clock = now();
@@ -526,7 +541,7 @@ export class Agent {
       ask: (question) => events.question(question),
       progress: (note) => events.toolUpdate(use.id, label, note),
       subagent: (task, description, childSignal) =>
-        this.runSubagent(task, description, childSignal, use.id, usage, prompt),
+        this.runSubagent(task, description, childSignal, use.id, tally, prompt),
       interactive: this.options.interactive,
     };
     let output: ToolOutput;
@@ -543,7 +558,7 @@ export class Agent {
     description: string,
     signal: AbortSignal,
     parentId: string,
-    usage: Usage,
+    tally: Tally,
     userRequest: string,
   ): Promise<ToolOutput> {
     const child = new Session(`${this.session.id}-sub`, this.options.cwd);
@@ -572,8 +587,13 @@ export class Agent {
       },
     });
     agent.undo = this.undo;
-    const turn = await agent.runTurn(task, signal);
-    for (const key of Object.keys(usage) as (keyof Usage)[]) usage[key] += turn.usage[key];
+    let turn: TurnRecord;
+    try {
+      turn = await agent.runTurn(task, signal);
+    } finally {
+      const spent = child.turns.at(-1);
+      if (spent) tallyUp(tally, spent.usage, spent.cost);
+    }
     const last = child.messages.at(-1);
     const finalText =
       last?.role === "assistant" && Array.isArray(last.content)
@@ -591,14 +611,6 @@ export class Agent {
 export function contextTokens(usage: Anthropic.Beta.Messages.BetaUsage) {
   const last = usage.iterations?.findLast((entry) => entry.type === "message") ?? usage;
   return (last.input_tokens ?? 0) + (last.cache_read_input_tokens ?? 0) + (last.cache_creation_input_tokens ?? 0);
-}
-
-function addUsage(total: Usage, usage: Anthropic.Beta.Messages.BetaUsage) {
-  total.input += usage.input_tokens ?? 0;
-  total.output += usage.output_tokens ?? 0;
-  total.cacheRead += usage.cache_read_input_tokens ?? 0;
-  total.cacheWrite += usage.cache_creation_input_tokens ?? 0;
-  total.webSearches += usage.server_tool_use?.web_search_requests ?? 0;
 }
 
 // A server tool call with no result block yet. The next user message must then hold only tool results.

@@ -5,7 +5,7 @@ import { Agent, type AgentEvents, type Steer } from "./agent/loop";
 import { msSince, now, uptimeMs } from "./clock";
 import { describeError } from "./errors";
 import { gitBranch, prefetchGitStatus } from "./agent/context";
-import { FAST_MODELS, fastEnabled, KNOWN_MODELS, modelLabel, resolveModel } from "./agent/models";
+import { cost, FAST_MODELS, fastEnabled, KNOWN_MODELS, modelLabel, resolveModel, responseUsage } from "./agent/models";
 import { getClient, MissingCredentials, preconnect, warmCache } from "./agent/provider";
 import { mcpCommand } from "./commands/mcp";
 import { EFFORTS, PERMISSION_MODES, type Effort, type PermissionMode, type Settings } from "./config";
@@ -90,6 +90,8 @@ export class App {
   private lastInterrupt = 0;
   private hint = "";
   private warming: AbortController | null = null;
+  // A resumed session warms the cache on the first key, so reading a session costs nothing.
+  private warmOnKey = false;
   private settings: Settings;
   private branch: string | null = null;
   // The message waiting for the turn to end. Only one can wait.
@@ -185,7 +187,7 @@ export class App {
           "",
         ]);
     });
-    if (this.options.resumed) void this.warmResumedCache();
+    this.warmOnKey = this.options.resumed;
 
     process.on("SIGTERM", () => this.exit(0));
     // The terminal is gone, so exit can't draw. Commands ignore SIGHUP, so clue must stop them.
@@ -226,7 +228,13 @@ export class App {
         },
         this.warming.signal,
       );
-      if (usage) this.print([`  ${style.faint(`history cached in ${duration(msSince(started))}`)}`, ""]);
+      if (usage) {
+        const used = responseUsage(usage);
+        const model = this.settings.model;
+        const price = cost(model, used, fastEnabled(this.settings));
+        this.session.append({ t: "spend", usage: used, cost: price, model, at: Date.now() });
+        this.print([`  ${style.faint(`history cached in ${duration(msSince(started))}`)}`, ""]);
+      }
     } catch {
       // Warming is an optimization. The first real request caches the history anyway.
     } finally {
@@ -540,6 +548,10 @@ export class App {
       return this.screen.flush();
     }
     if (this.cycleKey(key) || this.pasteKey(key)) return;
+    if (this.warmOnKey && key.text && key.text !== "/" && !this.editor.text.startsWith("/")) {
+      this.warmOnKey = false;
+      void this.warmResumedCache();
+    }
     const result = this.editor.handle(key);
     if (result === "submit") {
       const text = this.editor.text;
@@ -565,6 +577,7 @@ export class App {
   }
 
   private async runTurn(prompt: string, images: PromptImage[]) {
+    this.warmOnKey = false;
     this.warming?.abort();
     this.screen.setRenderer(() => ({ lines: [] }));
     this.print([...promptLines(prompt), ""]);
@@ -709,7 +722,7 @@ export class App {
         this.load(session);
         this.mcp.startAll();
         this.printResumed();
-        void this.warmResumedCache();
+        this.warmOnKey = true;
         return;
       }
       case "rename": {
@@ -748,7 +761,9 @@ export class App {
         return this.print(undoReport(this.agent.undo.undo(args[0] === "force"), this.cwd));
       case "cost":
       case "usage":
-        return this.print(usageReport(this.session.turns, this.session.compactions, this.session.rewound));
+        return this.print(
+          usageReport(this.session.turns, this.session.compactions, this.session.rewound, this.session.spends),
+        );
       case "exit":
       case "quit":
         return this.exit(0);
