@@ -52,18 +52,27 @@ export function removeServer(file: string, name: string) {
   return true;
 }
 
-// Project servers start only after the user approves them, per project folder.
-type Approvals = Record<string, Record<string, "approved" | "rejected">>;
+// Project servers start only after the user approves them, per project folder. An approval
+// covers one config: "approved:<hash>". When .mcp.json changes the server, such as after a
+// git pull, it needs approval again. A plain "approved" from an older clue counts as none.
+type Approval = "rejected" | `approved:${string}`;
+type Approvals = Record<string, Record<string, Approval | "approved">>;
+type Approvable = Pick<ServerEntry, "name" | "config">;
 
-export function approvalOf(cwd: string, name: string) {
-  return readJson<Approvals>(paths.approvals, {})[cwd]?.[name] ?? null;
+const configHash = (config: ServerConfig) =>
+  new Bun.CryptoHasher("sha256").update(JSON.stringify(config)).digest("hex").slice(0, 16);
+
+export function approvalOf(cwd: string, entry: Approvable): "approved" | "rejected" | null {
+  const saved = readJson<Approvals>(paths.approvals, {})[cwd]?.[entry.name];
+  if (saved === "rejected") return "rejected";
+  return saved === `approved:${configHash(entry.config)}` ? "approved" : null;
 }
 
-export function setApproval(cwd: string, name: string, value: "approved" | "rejected") {
+export function setApproval(cwd: string, entry: Approvable, value: "approved" | "rejected") {
   ensureDir(CLUE_HOME);
   const approvals = readJson<Approvals>(paths.approvals, {});
   approvals[cwd] ??= {};
-  approvals[cwd][name] = value;
+  approvals[cwd][entry.name] = value === "approved" ? `approved:${configHash(entry.config)}` : "rejected";
   writeFileSync(paths.approvals, `${JSON.stringify(approvals, null, 2)}\n`);
 }
 

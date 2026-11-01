@@ -127,5 +127,5 @@ test("clue mcp passes --, --project and --all through to the command", async () 
   );
   const { stdout } = await run(["mcp", "approve", "--all"], { cwd, home: mcpHome });
   expect(stdout).toContain("Approved");
-  expect(JSON.parse(readFileSync(join(mcpHome, "mcp-approvals.json"), "utf8"))[cwd].other).toBe("approved");
+  expect(JSON.parse(readFileSync(join(mcpHome, "mcp-approvals.json"), "utf8"))[cwd].other).toMatch(/^approved:/);
 });
