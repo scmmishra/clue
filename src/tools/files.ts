@@ -11,12 +11,12 @@ const MAX_GLOB_RESULTS = 400;
 const MAX_IMAGE_EDGE = 1568;
 export const MAX_IMAGE_BYTES = 3_500_000;
 const MAX_GREP_LINES = 400;
-const IMAGE_TYPES: Record<string, "image/png" | "image/jpeg" | "image/gif" | "image/webp"> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
+const MEDIA_TYPES: Partial<Record<Bun.Image.Format, "image/png" | "image/jpeg" | "image/gif" | "image/webp">> = {
+  png: "image/png",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
 };
 const IGNORED_DIRS = new Set([
   "node_modules",
@@ -51,14 +51,16 @@ export const shrinkImage = (image: Bun.Image) =>
 // An image as Claude receives it.
 export async function encodeImage(file: string, size: number) {
   const image = Bun.file(file).image();
-  const { width, height } = await image.metadata();
-  const large = isLargeImage(width, height) || size > MAX_IMAGE_BYTES;
+  const { width, height, format } = await image.metadata();
+  // The bytes decide the type: the API refuses a wrong one, and the block stays in the session.
+  const type = MEDIA_TYPES[format];
+  const large = !type || isLargeImage(width, height) || size > MAX_IMAGE_BYTES;
   const data = large ? await shrinkImage(image) : Buffer.from(await Bun.file(file).bytes()).toString("base64");
   const block = {
     type: "image" as const,
     source: {
       type: "base64" as const,
-      media_type: large ? ("image/webp" as const) : IMAGE_TYPES[extname(file).toLowerCase()],
+      media_type: large ? ("image/webp" as const) : type!,
       data,
     },
   };
@@ -120,8 +122,8 @@ export const readFile: Tool<{ path: string; offset?: number; limit?: number }> =
     const stat = statSync(file, { throwIfNoEntry: false });
     if (!stat) return { content: `No file at ${input.path}.`, isError: true };
     if (stat.isDirectory()) return { content: `${input.path} is a folder. Use glob_files to list it.`, isError: true };
-    const imageType = IMAGE_TYPES[extname(file).toLowerCase()];
-    if (imageType) {
+    const isImage = IMAGE_EXTENSIONS.has(extname(file).toLowerCase());
+    if (isImage) {
       context.readStamps.set(file, stat.mtimeMs);
       const { block, width, height, large } = await encodeImage(file, stat.size);
       return {
