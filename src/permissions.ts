@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { PermissionMode, PermissionRules, ReviewSetting, RuleValue } from "./config";
 import { KNOWN_MODELS, modelLabel, resolveModel, REVIEW_FALLBACK_MODEL } from "./agent/models";
 import { getClient } from "./agent/provider";
@@ -166,6 +166,19 @@ function insideProject(cwd: string, path: string) {
   return rel !== "" && !rel.startsWith("..") && !resolve(rel).startsWith("..");
 }
 
+// A path in the project as the project-relative path, so `./a` and `/project/a` match a rule for `a`.
+function projectPath(cwd: string, path: string) {
+  const rel = relative(cwd, resolve(cwd, path));
+  return rel === "" || rel.split(sep)[0] === ".." || isAbsolute(rel) ? null : rel;
+}
+
+// The rule for a file tool: the stricter of the path as written and as project-relative.
+function pathRule(rules: PermissionRules, toolName: string, cwd: string, path: string) {
+  const rel = projectPath(cwd, path);
+  const values = [ruleFor(rules, toolName, path), ...(rel && rel !== path ? [ruleFor(rules, toolName, rel)] : [])];
+  return strictest(values) ?? (values.includes("allow") ? "allow" : null);
+}
+
 // The text rules match against: the command, the file path, or "server.tool".
 export function subjectOf(tool: Tool, input: unknown): string {
   const field = (key: string) => fieldOf(input, key);
@@ -298,7 +311,11 @@ export class Permissions {
     const subject = subjectOf(tool, input);
     const action = fieldOf(input, "action");
     const runsCommand = tool.name === "shell" && (action ?? "run") === "run";
-    const rule = runsCommand ? shellRule(this.rules, subject) : ruleFor(this.rules, tool.name, subject);
+    const rule = runsCommand
+      ? shellRule(this.rules, subject)
+      : fieldOf(input, "path")
+        ? pathRule(this.rules, tool.name, this.cwd, subject)
+        : ruleFor(this.rules, tool.name, subject);
     if (rule === "deny") return { action: "deny", subject, reason: "a deny rule in ~/.clue/settings.json" };
     if (tool.readOnly) return { action: "run", subject };
     if (rule === "allow") return { action: "run", subject };

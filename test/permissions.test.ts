@@ -411,6 +411,14 @@ test("a deny rule applies to read-only tools, and other rules leave them alone",
   expect(asking.decide(readFile, { path: "a.ts" }).action).toBe("run");
 });
 
+test("a file rule matches the path however the model writes it", () => {
+  const rules = { "*": { "src/generated/*": "deny" } } as never;
+  const permissions = new Permissions("full-access", rules, "/tmp/project");
+  for (const path of ["src/generated/a.ts", "./src/generated/a.ts", "/tmp/project/src/generated/a.ts"])
+    expect(permissions.decide(readFile, { path }).action).toBe("deny");
+  expect(permissions.decide(readFile, { path: "/tmp/other/src/generated/a.ts" }).action).toBe("run");
+});
+
 test("rules for commands don't touch interact and stop", () => {
   const permissions = new Permissions("auto", gitRules, "/tmp/project");
   expect(permissions.decide(shell, { action: "interact", id: "1" }).action).toBe("run");
