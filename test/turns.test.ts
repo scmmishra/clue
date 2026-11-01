@@ -143,3 +143,43 @@ test("rewind finds a turn's file edits after a crash left a tool call open", asy
   expect(files).toBe(1);
   expect(transcript).toBe(point);
 }, 15_000);
+
+// A saved session from before turn positions, with clue's old continue message in its first turn.
+function olderSession() {
+  const session = Session.create(folder());
+  session.appendMessage({ role: "user", content: "one" });
+  session.appendMessage({ role: "assistant", content: [{ type: "text", text: "working" }] });
+  session.appendMessage({ role: "user", content: "Continue with the task." });
+  session.appendMessage({ role: "assistant", content: [{ type: "text", text: "done" }] });
+  session.append({ t: "turn", turn: turnAt("one", undefined, 100) });
+  session.appendMessage({ role: "user", content: "two" });
+  session.appendMessage({ role: "assistant", content: [{ type: "text", text: "reply" }] });
+  session.append({ t: "turn", turn: turnAt("two", undefined, 200) });
+  return session;
+}
+
+test("an older session's continue message isn't a prompt, so its pairing holds", () => {
+  const session = olderSession();
+  expect(session.rewindPoints.map(({ text, turns, at }) => [text, turns, at])).toEqual([
+    ["one", 0, 100],
+    ["two", 1, 200],
+  ]);
+  const shape = sessionEntries(session).flatMap((entry) =>
+    entry.type === "prompt" ? [entry.text] : entry.type === "footer" ? [`footer ${entry.turn.prompt}`] : [],
+  );
+  expect(shape).toEqual(["one", "footer one", "two", "footer two"]);
+});
+
+test("rewinding an older session drops the right turn", () => {
+  const session = olderSession();
+  const two = session.rewindPoints.at(-1)!;
+  session.append({ t: "rewind", transcript: two.transcript, turns: two.turns });
+  expect(session.turns.map((turn) => turn.prompt)).toEqual(["one"]);
+});
+
+test("in a session with turn positions, the old continue text is what the person typed", () => {
+  const session = Session.create(folder());
+  session.appendMessage({ role: "user", content: "Continue with the task." });
+  session.append({ t: "turn", turn: turnAt("Continue with the task.", 0, 100) });
+  expect(session.rewindPoints.map((point) => point.text)).toEqual(["Continue with the task."]);
+});

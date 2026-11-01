@@ -23,7 +23,7 @@ export function sessionEntries(session: Session): Entry[] {
   };
   for (const [index, message] of session.transcript.entries()) {
     if (message.role === "user") {
-      const text = promptText(message);
+      const text = promptText(message, session.older);
       if (text === null) {
         // Tool results, maybe with a message that steered the turn.
         const steer = steerText(message);

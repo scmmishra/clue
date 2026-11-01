@@ -106,13 +106,20 @@ export function startsWithSummary(messages: MessageParam[]) {
 // What clue adds after a compaction during a turn. The tag keeps it apart from anything typed.
 export const CONTINUE_PROMPT = "<clue>Continue with the task.</clue>";
 
+// The same message in sessions saved before turns had positions.
+const OLD_CONTINUE_PROMPT = "Continue with the task.";
+
 // How the opening context starts. It sits before the prompt, in the same message.
 export const CONTEXT_OPEN = "<context>";
 
-// The text a person typed, or null for tool results and clue's own messages.
-export function promptText(message: MessageParam) {
+// The text a person typed, or null for tool results and clue's own messages. In an older
+// session, the old continue text is clue's own, and counting it would shift prompts off their turns.
+export function promptText(message: MessageParam, older = false) {
   if (message.role !== "user") return null;
-  if (typeof message.content === "string") return message.content === CONTINUE_PROMPT ? null : message.content;
+  if (typeof message.content === "string") {
+    const ours = message.content === CONTINUE_PROMPT || (older && message.content === OLD_CONTINUE_PROMPT);
+    return ours ? null : message.content;
+  }
   if (message.content.some((block) => block.type === "tool_result")) return null;
   const texts = message.content.flatMap((block) => (block.type === "text" ? [block.text] : []));
   const typed = (texts.length > 1 && texts[0].startsWith(CONTEXT_OPEN) ? texts.slice(1) : texts).join("\n");
@@ -349,6 +356,11 @@ export class Session {
     return totalCost(this.turns, this.rewound, this.compactions, this.spends);
   }
 
+  // A session whose turns have no positions, written before they existed.
+  get older() {
+    return this.turns.some((turn) => turn.transcript === undefined);
+  }
+
   get lastContextSize() {
     return lastContextSize(this.turns, this.compactions);
   }
@@ -379,7 +391,7 @@ export class Session {
     const points: RewindPoint[] = [];
     let prompt = 0;
     this.transcript.forEach((message, index) => {
-      const text = promptText(message);
+      const text = promptText(message, this.older);
       if (text === null) return;
       if (index >= this.transcript.length - sent) {
         points.push({
