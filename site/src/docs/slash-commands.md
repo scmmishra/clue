@@ -14,5 +14,5 @@ title: Slash commands
 | `/mcp` | Manages MCP servers. |
 | `/compact` | Replaces the conversation with a summary. See [Compaction](/docs/compaction). |
 | `/undo` | Restores the files changed in the last turn that changed files. `/undo force` overwrites later changes to them. Shell commands aren't undone, and the conversation stays as it is. |
-| `/usage`, `/cost` | Show how full the context is, and this session's cost and tokens. The line under the input always shows the cost. |
+| `/usage`, `/cost` | Show how full the context is, and this session's cost and tokens. The cost covers every request: turns, turns that failed, compactions and warming the cache on resume. The line under the input always shows it. |
 | `/exit` | Quits clue. |

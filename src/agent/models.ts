@@ -130,6 +130,33 @@ export function resolveModel(name: string) {
 
 export type UsageCounts = { input: number; output: number; cacheRead: number; cacheWrite: number; webSearches: number };
 
+type ApiUsage = {
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cache_read_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+  server_tool_use?: { web_search_requests?: number | null } | null;
+  iterations?: ({ type: string } & ApiUsage)[] | null;
+};
+
+export const emptyUsage = (): UsageCounts => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, webSearches: 0 });
+
+export function addUsage(total: UsageCounts, usage: ApiUsage) {
+  total.input += usage.input_tokens ?? 0;
+  total.output += usage.output_tokens ?? 0;
+  total.cacheRead += usage.cache_read_input_tokens ?? 0;
+  total.cacheWrite += usage.cache_creation_input_tokens ?? 0;
+  total.webSearches += usage.server_tool_use?.web_search_requests ?? 0;
+}
+
+// What one response cost in tokens. A compaction the API ran is outside the top-level fields.
+export function responseUsage(usage: ApiUsage) {
+  const total = emptyUsage();
+  addUsage(total, usage);
+  for (const entry of usage.iterations ?? []) if (entry.type === "compaction") addUsage(total, entry);
+  return total;
+}
+
 export function cost(model: string, usage: UsageCounts, fast = false): number | null {
   const info = MODELS[model];
   if (!info) return null;

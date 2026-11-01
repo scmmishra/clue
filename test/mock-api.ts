@@ -14,7 +14,7 @@ type Body = {
 export const requests: Body[] = [];
 
 // Fast requests whose first message holds this text get a 400. An empty string matches every fast request.
-export const fastMode = { rejectedFor: null as string | null };
+export const fastMode = { rejectedFor: null as string | null, rejectedFromRequest: Infinity };
 
 // How the reviewers answer. Tests change this to force each failure.
 export const reviewers = {
@@ -148,8 +148,8 @@ export function startMockApi(port = 0, delay = DELAY) {
       requests.push(body);
       if (
         body.speed === "fast" &&
-        fastMode.rejectedFor !== null &&
-        JSON.stringify(body.messages[0]).includes(fastMode.rejectedFor)
+        (requests.length >= fastMode.rejectedFromRequest ||
+          (fastMode.rejectedFor !== null && JSON.stringify(body.messages[0]).includes(fastMode.rejectedFor)))
       )
         return Response.json(
           { type: "error", error: { type: "invalid_request_error", message: "speed: fast mode isn't enabled" } },
@@ -215,6 +215,12 @@ export function startMockApi(port = 0, delay = DELAY) {
           delay,
         );
       }
+      const firstPrompt = JSON.stringify(body.messages[0]);
+      if (firstPrompt.includes("fail midway"))
+        return Response.json(
+          { type: "error", error: { type: "invalid_request_error", message: "bad request" } },
+          { status: 400 },
+        );
       const answer =
         "## Done\n\nThe package is called **clue**. It uses:\n\n- `@anthropic-ai/sdk`\n- `@modelcontextprotocol/sdk`\n\n| Field | Value |\n|---|---|\n| name | clue |\n| version | 0.1.0 |\n";
       return sse(
@@ -224,7 +230,12 @@ export function startMockApi(port = 0, delay = DELAY) {
           {
             type: "message_delta",
             delta: { stop_reason: "end_turn", stop_sequence: null },
-            usage: { output_tokens: 60 },
+            usage: {
+              output_tokens: 60,
+              ...(firstPrompt.includes("compact on the server")
+                ? { iterations: [{ type: "compaction", input_tokens: 5000, output_tokens: 700 }] }
+                : {}),
+            },
           },
           { type: "message_stop" },
         ],

@@ -27,10 +27,11 @@ const agent = new Agent({
   },
   interactive: false,
 });
-await agent.runTurn(prompt!, new AbortController().signal);
+const turn = await agent.runTurn(prompt!, new AbortController().signal);
 const point = session.rewindPoints.find((candidate) => candidate.text === prompt)!;
 console.log(
   JSON.stringify({
+    transcript: turn.transcript,
     point: point.transcript,
     files: agent.undo.summary(point.transcript).files,
   }),
