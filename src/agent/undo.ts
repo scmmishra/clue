@@ -73,12 +73,14 @@ export class UndoStack {
     this.current = { id, files: new Map(), ranShell: false };
   }
 
+  // Only turns that changed files count toward the limit. A session that runs tests on most
+  // turns would otherwise push its edits out of reach.
   private track() {
-    if (this.turns.at(-1) === this.current) return;
-    this.turns.push(this.current);
-    if (this.turns.length <= MAX_TURNS) return;
-    this.turns.shift();
-    this.floor = this.turns[0].id;
+    if (this.turns.at(-1) !== this.current) this.turns.push(this.current);
+    while (this.turns.filter((turn) => turn.files.size > 0).length > MAX_TURNS) {
+      this.turns.shift();
+      this.floor = this.turns[0].id;
+    }
   }
 
   noteShell() {
