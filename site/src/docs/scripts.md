@@ -35,7 +35,7 @@ If the request fails, the object has `error` and `session_id` instead.
 clue ask --resume <id> "now fix them"
 ```
 
-`--resume` takes an ID, not a name.
+`--resume` takes a full ID, not a name or part of an ID.
 
 ## Approvals
 

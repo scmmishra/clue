@@ -31,6 +31,10 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - A missing turn record, such as after a crash, no longer shifts footers and rewind points onto the wrong prompts. Typing `Continue with the task.` or starting a first prompt with `<context>` no longer hides that prompt.
 - After a compaction during a long run, Claude gets your project instructions and git state again. The prompt after a `/compact` no longer runs a second compaction.
 - Rewind now restores the files of a turn that followed a crash.
+- Finding a session no longer depends on the session index. If the index is broken or has lost a session, clue reads the session files, so ids, names and `clue -r` keep working. `clue doctor` reports a broken index.
+- A session opens in one clue at a time. A second clue stops with a message, because two processes writing one file could leave it unable to resume.
+- `clue -c` no longer picks up a session from another folder whose path maps to the same key.
+- `clue -r <prefix>` lists every session that matches an id prefix instead of picking the newest.
 
 ## 0.8.1
 

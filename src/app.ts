@@ -112,6 +112,7 @@ export class App {
   // Everything that depends on the session's folder.
   private load(session: Session) {
     void this.mcp?.closeAll();
+    if (this.session !== session) this.session.release();
     this.session = session;
     if (process.cwd() !== session.cwd) process.chdir(session.cwd);
     this.branch = gitBranch(session.cwd);
@@ -719,6 +720,11 @@ export class App {
           return say(style.red(`That session's folder no longer exists: ${homePath(choice.cwd)}.`));
         const session = Session.load(sessionFile(choice));
         if (!session) return say(style.red("That session file could not be read."));
+        try {
+          session.acquire();
+        } catch (error) {
+          return say(style.red((error as Error).message));
+        }
         this.load(session);
         this.mcp.startAll();
         this.printResumed();

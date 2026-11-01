@@ -2,8 +2,6 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Agent } from "../src/agent/loop";
-import { Permissions } from "../src/permissions";
 import { CONTINUE_PROMPT, promptText, Session, type MessageParam, type TurnRecord } from "../src/session";
 import { sessionEntries } from "../src/ui/replay";
 import { usageReport } from "../src/ui/usage";
@@ -12,8 +10,6 @@ import { startMockApi } from "./mock-api";
 let server: ReturnType<typeof startMockApi>;
 beforeAll(() => {
   server = startMockApi();
-  process.env.ANTHROPIC_BASE_URL = server.url.origin;
-  process.env.ANTHROPIC_API_KEY = "sk-ant-test";
 });
 afterAll(() => server.stop(true));
 
@@ -137,30 +133,13 @@ test("rewind finds a turn's file edits after a crash left a tool call open", asy
     role: "assistant",
     content: [{ type: "tool_use", id: "toolu_x", name: "shell", input: { command: "true" } }],
   });
-  const events = {
-    thinking() {},
-    text() {},
-    textDone() {},
-    toolStart() {},
-    toolUpdate() {},
-    toolEnd() {},
-    review() {},
-    confirm: async () => "no" as const,
-    question: async () => null,
-    notice() {},
-  };
-  const agent = new Agent({
-    cwd,
-    session,
-    settings: { model: "claude-opus-5-5", effort: "medium", fast: false },
-    permissions: new Permissions("full-access", {}, cwd),
-    mcp: { configuredNames: () => [] } as never,
-    skills: () => [],
-    events,
-    interactive: false,
+  session.release();
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "agent-turn.ts"), session.file, "create the note"], {
+    env: { ...process.env, ANTHROPIC_BASE_URL: server.url.origin, ANTHROPIC_API_KEY: "sk-ant-test" },
+    stdout: "pipe",
+    stderr: "inherit",
   });
-  const turn = await agent.runTurn("create the note", new AbortController().signal);
-  const point = session.rewindPoints.find((candidate) => candidate.text === "create the note")!;
-  expect(agent.undo.summary(point.transcript).files).toBe(1);
-  expect(turn.transcript).toBe(point.transcript);
-});
+  const { transcript, point, files } = JSON.parse(await new Response(proc.stdout).text());
+  expect(files).toBe(1);
+  expect(transcript).toBe(point);
+}, 15_000);

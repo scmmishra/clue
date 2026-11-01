@@ -133,6 +133,15 @@ function openSession(meta: SessionMeta): Session {
   if (!existsSync(meta.cwd)) fail(`session ${meta.id} belongs to ${meta.cwd}, which no longer exists.`);
   const session = Session.load(sessionFile(meta));
   if (!session) fail(`session ${meta.id} could not be read.`);
+  return claim(session);
+}
+
+function claim(session: Session) {
+  try {
+    session.acquire();
+  } catch (error) {
+    fail((error as Error).message);
+  }
   return session;
 }
 
@@ -213,7 +222,8 @@ async function main() {
     resumed = true;
   } else if (flags.continue) {
     const file = latestSessionFile(process.cwd());
-    session = file ? Session.load(file) : null;
+    const latest = file ? Session.load(file) : null;
+    session = latest && claim(latest);
     resumed = session !== null && !session.isEmpty;
     if (!session) process.stderr.write("clue: no earlier session in this folder. Starting a new one.\n");
   }

@@ -5,6 +5,7 @@ import { resolveAuth, type AuthSource } from "../auth";
 import { CLUE_HOME, loadSettings, paths, permissionModeEnvProblem, settingsWarnings, VERSION } from "../config";
 import { resolveModel } from "../agent/models";
 import { McpManager } from "../mcp/manager";
+import { indexReadable } from "../session";
 import { style, width } from "../ui/ansi";
 import { isNewer, latestTag } from "./upgrade";
 
@@ -61,6 +62,13 @@ function settingsCheck() {
     ...warnings.map((text) => warn("settings", text)),
   ];
   return checks.length ? checks : [ok("settings", paths.settings)];
+}
+
+function sessionIndexCheck() {
+  if (indexReadable()) return [];
+  return [
+    warn("session index", `Can't read ${paths.sessionIndex}. clue reads the session files instead, which is slower.`),
+  ];
 }
 
 function homeCheck() {
@@ -145,7 +153,16 @@ export function formatChecks(checks: Check[]) {
 export async function doctor() {
   const terminal = await terminalChecks();
   const groups = await Promise.all([versionCheck(), credentialChecks(), mcpChecks(process.cwd())]);
-  const checks = [groups[0], ...groups[1], settingsCheck(), homeCheck(), toolChecks(), terminal, groups[2]].flat();
+  const checks = [
+    groups[0],
+    ...groups[1],
+    settingsCheck(),
+    homeCheck(),
+    sessionIndexCheck(),
+    toolChecks(),
+    terminal,
+    groups[2],
+  ].flat();
   console.log(formatChecks(checks).join("\n"));
   process.exit(checks.some((check) => check.status === "fail") ? 1 : 0);
 }

@@ -16,7 +16,7 @@ A name is unique within a folder and ignores case. `clue --name <name> "prompt"`
 
 `clue -r` and `/resume` list only the sessions of the current folder, and you can type to search their titles and prompts. To resume a session from another folder, use `clue -r <id or name>`, and clue continues it in its own folder. If that folder no longer exists, clue tells you and doesn't resume.
 
-Session files are append-only, and nothing is written into your repository.
+Session files are append-only, and nothing is written into your repository. A session opens in one clue at a time. A second clue stops with a message, so two processes can't write to one file.
 
 When a conversation gets long, clue replaces older turns with a summary. See [Compaction](/docs/compaction).
 

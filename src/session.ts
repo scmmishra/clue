@@ -1,7 +1,18 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { Database } from "bun:sqlite";
-import { existsSync, openSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { join } from "node:path";
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import { ensureDir, paths, VERSION } from "./config";
 
 // A session is an append-only JSONL file. Message records hold the exact API
@@ -174,6 +185,19 @@ function parseRecords(text: string) {
   return records;
 }
 
+const heldLocks = new Set<string>();
+
+// The process that holds a session's lock, or null when none does or it has died.
+function lockHolder(lock: string) {
+  try {
+    const pid = Number(readFileSync(lock, "utf8"));
+    process.kill(pid, 0);
+    return pid;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM" ? Number(readFileSync(lock, "utf8")) : null;
+  }
+}
+
 export class Session {
   readonly file: string;
   // What the next request sends. A compaction replaces these with its summary.
@@ -245,6 +269,25 @@ export class Session {
     } else if (record.t === "name") this.name = record.name;
   }
 
+  // One process writes a session at a time. Records from two would interleave, and the API
+  // rejects a tool call whose result isn't next, so the session could never resume.
+  acquire() {
+    const lock = `${this.file}.lock`;
+    if (this.ephemeral || heldLocks.has(lock)) return;
+    const holder = lockHolder(lock);
+    if (holder !== null && holder !== process.pid)
+      throw new Error(`This session is open in another clue (process ${holder}).`);
+    ensureDir(dirname(lock));
+    writeFileSync(lock, String(process.pid));
+    if (heldLocks.size === 0) process.once("exit", () => heldLocks.forEach((held) => rmSync(held, { force: true })));
+    heldLocks.add(lock);
+  }
+
+  release() {
+    const lock = `${this.file}.lock`;
+    if (heldLocks.delete(lock)) rmSync(lock, { force: true });
+  }
+
   private sink: Bun.FileSink | null = null;
   // The file ends mid-line, so the next record must start on a new one.
   private tornLastLine = false;
@@ -254,6 +297,7 @@ export class Session {
   private write(record: SessionRecord) {
     if (this.ephemeral) return;
     if (!this.sink) {
+      this.acquire();
       ensureDir(join(paths.sessions, projectKey(this.cwd)));
       const isNew = !existsSync(this.file);
       this.sink = Bun.file(openSync(this.file, "a", 0o600)).writer();
@@ -384,6 +428,17 @@ export class Session {
     if (results.length) this.appendMessage({ role: "user", content: results });
   }
 
+  meta(): SessionMeta {
+    return {
+      id: this.id,
+      cwd: this.cwd,
+      name: this.name,
+      title: this.title.replace(/\s+/g, " ").slice(0, 160),
+      updated: statSync(this.file).mtimeMs,
+      prompts: this.turns.length,
+    };
+  }
+
   private touchIndex(prompt = "") {
     indexSession({
       id: this.id,
@@ -417,6 +472,33 @@ function db() {
   } catch {}
   database.run("CREATE VIRTUAL TABLE IF NOT EXISTS prompts USING fts5(session_id UNINDEXED, text)");
   return database;
+}
+
+export function indexReadable() {
+  try {
+    db().query("SELECT count(*) FROM sessions").get();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Sessions read from their files, newest first. It reads every file, so it runs only when the
+// index can't answer. With an id, it reads that session alone.
+function scanSessions(id?: string) {
+  const found: SessionMeta[] = [];
+  try {
+    for (const folder of readdirSync(paths.sessions, { withFileTypes: true })) {
+      if (!folder.isDirectory()) continue;
+      const dir = join(paths.sessions, folder.name);
+      for (const name of readdirSync(dir)) {
+        if (id ? name !== `${id}.jsonl` : !name.endsWith(".jsonl")) continue;
+        const session = Session.load(join(dir, name));
+        if (session) found.push(session.meta());
+      }
+    }
+  } catch {}
+  return found.sort((a, b) => b.updated - a.updated);
 }
 
 function indexSession(meta: SessionMeta & { prompt: string }) {
@@ -455,7 +537,10 @@ export function listSessions(query = ""): SessionMeta[] {
         .all(like, match) as SessionMeta[];
     }
   } catch {
-    return [];
+    const wanted = query.trim().toLowerCase();
+    return scanSessions().filter((meta) =>
+      `${meta.cwd} ${meta.title} ${meta.name ?? ""}`.toLowerCase().includes(wanted),
+    );
   }
   return rows.filter((meta) => existsSync(sessionFile(meta)));
 }
@@ -468,7 +553,7 @@ function sessionsNamed(name: string) {
     const rows = db().query(`SELECT ${META} FROM sessions WHERE name = ?1 COLLATE NOCASE`).all(name) as SessionMeta[];
     return rows.filter((meta) => existsSync(sessionFile(meta)));
   } catch {
-    return [];
+    return scanSessions().filter((meta) => meta.name?.toLowerCase() === name.toLowerCase());
   }
 }
 
@@ -490,31 +575,48 @@ export function nameProblem(cwd: string, name: string, self?: string) {
 // The sessions an id or name points at: an exact id, then a name, here before elsewhere,
 // then an id prefix. More than one result means the name is used in several other folders.
 export function resolveSession(reference: string, cwd: string) {
+  if (!reference) return [];
   const all = listSessions();
-  const exact = all.find((meta) => meta.id === reference);
+  const exact = all.find((meta) => meta.id === reference) ?? scanSessions(reference)[0];
   if (exact) return [exact];
   const named = sessionsNamed(reference);
   const here = named.filter((meta) => meta.cwd === cwd);
   if (here.length) return here;
   if (named.length) return named;
-  return all.filter((meta) => meta.id.startsWith(reference)).slice(0, 1);
+  return all.filter((meta) => meta.id.startsWith(reference));
 }
 
 export const sessionFile = (meta: { id: string; cwd: string }) =>
   join(paths.sessions, projectKey(meta.cwd), `${meta.id}.jsonl`);
 
+// Scripts pass an id they saved, so a near match would continue the wrong session.
 export function findSession(id: string): SessionMeta | null {
-  const all = listSessions();
-  return all.find((meta) => meta.id === id) ?? all.find((meta) => meta.id.startsWith(id)) ?? null;
+  if (!id) return null;
+  return listSessions().find((meta) => meta.id === id) ?? scanSessions(id)[0] ?? null;
+}
+
+// The folder a session file belongs to, from its first line.
+function headerCwd(file: string) {
+  try {
+    const descriptor = openSync(file, "r");
+    const buffer = Buffer.alloc(4096);
+    const size = readSync(descriptor, buffer);
+    closeSync(descriptor);
+    return (JSON.parse(buffer.toString("utf8", 0, size).split("\n")[0]) as { cwd?: string }).cwd;
+  } catch {
+    return undefined;
+  }
 }
 
 // The newest session for a folder, read from the folder's directory so it works without the index.
+// Two folders can share a directory, because the key is lossy, so each file's own folder must match.
 export function latestSessionFile(cwd: string): string | null {
   const dir = join(paths.sessions, projectKey(cwd));
   if (!existsSync(dir)) return null;
+  const folder = realFolder(cwd);
   const files = readdirSync(dir)
     .filter((name) => name.endsWith(".jsonl"))
-    .map((name) => join(dir, name))
-    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
-  return files[0] ?? null;
+    .map((name) => ({ file: join(dir, name), at: statSync(join(dir, name)).mtimeMs }))
+    .sort((a, b) => b.at - a.at);
+  return files.find(({ file }) => headerCwd(file) === folder)?.file ?? null;
 }

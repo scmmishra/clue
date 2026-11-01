@@ -31,6 +31,8 @@ function saved(cwd: string, name?: string) {
       stop: "end_turn",
     },
   });
+  // Other processes open this session, so the lock must go.
+  session.release();
   return session;
 }
 
