@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { CLUE_HOME, ensureDir, paths, readJson, readJsonForWriting, writeJsonFile } from "../config";
 
@@ -79,5 +78,3 @@ export function setApproval(cwd: string, name: string, value: "approved" | "reje
   approvals[cwd][name] = value === "approved" ? configHash(config) : REJECTED;
   writeJsonFile(paths.approvals, approvals);
 }
-
-export const hasProjectMcp = (cwd: string) => existsSync(projectMcpFile(cwd));

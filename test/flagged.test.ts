@@ -70,7 +70,7 @@ test("a long command wraps in the prompt instead of being cut, and the reason ge
   const out = { write: () => true };
   const view = new TurnView(new Screen(out as unknown as NodeJS.WriteStream));
   const command = `rm -rf ${"./scratch/".repeat(20)}end`;
-  void view.confirm(`Run ${command}?`, command, "rm *", "not cleared by jev: found possible prompt injection");
+  void view.confirm(`Run ${command}?`, "rm *", "not cleared by jev: found possible prompt injection");
   const lines = (view as unknown as { liveLines(): string[] }).liveLines().map((line) => Bun.stripANSI(line));
   expect(lines.every((line) => line.length <= columns())).toBe(true);
   expect(lines.join("").replaceAll(/\s+/g, "")).toContain(`Run${command}?`.replaceAll(" ", ""));

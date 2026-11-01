@@ -5,7 +5,7 @@ import type {
   OAuthClientMetadata,
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ensureDir, paths, VERSION, withoutProviderKeys } from "../config";
 import { approvalOf, loadServers, transportOf, type ServerEntry } from "./config";
@@ -97,7 +97,6 @@ export const plainStreams = (fetcher: typeof fetch = fetch) =>
     return fetcher(url, { ...init, headers });
   }) as typeof fetch;
 
-export const hasLogin = (name: string) => existsSync(authFile(name));
 export const forgetLogin = (name: string) => rmSync(authFile(name), { force: true });
 
 async function openBrowser(url: string) {
@@ -109,18 +108,7 @@ async function openBrowser(url: string) {
 
 export class McpManager {
   servers = new Map<string, ServerState>();
-  private listeners = new Set<() => void>();
-
   constructor(private cwd: string) {}
-
-  onChange(listener: () => void) {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
-
-  private changed() {
-    for (const listener of this.listeners) listener();
-  }
 
   configuredNames() {
     return loadServers(this.cwd)
@@ -144,7 +132,6 @@ export class McpManager {
         else state.status = approval === "rejected" ? "rejected" : "needs-approval";
       }
     }
-    this.changed();
   }
 
   async reload() {
@@ -156,7 +143,6 @@ export class McpManager {
   private async connect(state: ServerState, interactiveLogin = false): Promise<void> {
     state.status = "starting";
     state.error = undefined;
-    this.changed();
     try {
       const [{ Client }, transport] = await Promise.all([
         import("@modelcontextprotocol/sdk/client/index.js"),
@@ -191,7 +177,6 @@ export class McpManager {
         if (state.failures < MAX_FAILURES) void this.retry(state);
       }
     }
-    this.changed();
   }
 
   private async retry(state: ServerState) {
@@ -288,11 +273,6 @@ export class McpManager {
     await transport.finishAuth?.(authorization);
     await this.connect(state);
     return true;
-  }
-
-  approved(name: string) {
-    const state = this.servers.get(name);
-    if (state) void this.connect(state);
   }
 
   tools(): McpTool[] {

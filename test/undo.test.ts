@@ -34,7 +34,6 @@ function setup() {
     undo,
     seenInstructions: new Set(),
     ask: async () => null,
-    progress: () => {},
     subagent: async () => ({ content: "" }),
     interactive: false,
   };
@@ -271,7 +270,7 @@ test("forgetting turns leaves the files as they are", async () => {
 
 test("a turn that runs a command is marked, and reading its output is not a new run", async () => {
   const { undo, file } = setup();
-  const context = { cwd: file(""), signal: new AbortController().signal, undo, progress() {} } as never;
+  const context = { cwd: file(""), signal: new AbortController().signal, undo } as never;
   undo.beginTurn(7);
   await shell.run({ command: "true" }, context);
   expect(undo.summary(7).ranShell).toBe(true);

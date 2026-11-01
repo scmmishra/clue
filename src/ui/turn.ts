@@ -86,14 +86,14 @@ type Row = {
   reviewing?: boolean;
   added?: number;
   removed?: number;
-  startedAt: number;
+  blocked?: boolean;
 };
 
-const isHeld = (row: Pick<Row, "review">) =>
-  row.review?.startsWith("held") || row.review === "declined" || row.review === "denied";
+const isHeld = (row: Pick<Row, "review" | "blocked">) =>
+  row.blocked || row.review?.startsWith("held") || row.review === "declined" || row.review === "denied";
 
 // "5 tool calls · 2 reads · 1 edit · 2 commands · 1 failed". Line counts show on each edit's row.
-function summary(rows: Pick<Row, "kind" | "isError" | "review">[]) {
+function summary(rows: Pick<Row, "kind" | "isError" | "review" | "blocked">[]) {
   const counts = new Map<string, number>();
   let failed = 0;
   let held = 0;
@@ -130,14 +130,13 @@ function rowText(row: Row, clock: string) {
     clock,
   ].filter(Boolean);
   const label = firstLine(row.label) || "…";
-  const text =
-    row.done === false
-      ? label
-      : isHeld(row)
-        ? style.orange(label)
-        : row.isError
-          ? style.red(label)
-          : style.muted(label);
+  const text = !row.done
+    ? label
+    : isHeld(row)
+      ? style.orange(label)
+      : row.isError
+        ? style.red(label)
+        : style.muted(label);
   return `${text}${extra.length ? `  ${extra.join("  ")}` : ""}`;
 }
 
@@ -145,14 +144,13 @@ function rowText(row: Row, clock: string) {
 //   ● 2 tool calls · 1 read · 1 command
 //   ├ Read src/clock.ts
 //   └ Ran git log -3 --oneline
-export function toolTree(rows: Row[] | ToolRecord[], clock?: string) {
-  const items = rows as Row[];
-  const running = items.some((row) => row.done === false);
+export function toolTree(items: Row[], clock?: string) {
+  const running = items.some((row) => !row.done);
   const lines = [`${running ? style.brand(spinnerFrame()) : style.brand("●")} ${summary(items)}`];
   const hidden = Math.max(0, items.length - MAX_TREE_ROWS);
   const shown = hidden ? items.slice(-(MAX_TREE_ROWS - 1)) : items;
   if (hidden) lines.push(style.muted(`├ … ${hidden + 1} earlier, ctrl+o shows all`));
-  const lastRunning = items.findLast((row) => row.done === false);
+  const lastRunning = items.findLast((row) => !row.done);
   shown.forEach((row, index) => {
     const branch = style.muted(index === shown.length - 1 ? "└ " : "├ ");
     lines.push(`${branch}${rowText(row, row === lastRunning && clock ? clock : "")}`);
@@ -178,7 +176,6 @@ type Prompt =
       type: "confirm";
       openedAt: number;
       label: string;
-      subject: string;
       pattern: string;
       note?: string;
       resolve: (answer: ConfirmAnswer) => void;
@@ -416,7 +413,7 @@ export class TurnView implements AgentEvents {
   toolStart(id: string, label: string, kind: string) {
     this.markdown.end();
     this.note = null;
-    this.rows.push({ id, label, kind, done: false, startedAt: Date.now() });
+    this.rows.push({ id, label, kind, done: false });
     this.screen.refresh();
   }
 
@@ -431,7 +428,7 @@ export class TurnView implements AgentEvents {
   toolEnd(record: ToolRecord) {
     let row = this.rows.find((item) => item.id === record.id);
     if (!row) {
-      row = { id: record.id, label: record.label, kind: record.kind, done: false, startedAt: record.startedAt };
+      row = { id: record.id, label: record.label, kind: record.kind, done: false };
       this.rows.push(row);
     }
     Object.assign(row, {
@@ -441,6 +438,7 @@ export class TurnView implements AgentEvents {
       isError: record.isError,
       note: record.note,
       review: record.review,
+      blocked: record.blocked,
       reviewing: false,
       added: record.added,
       removed: record.removed,
@@ -456,9 +454,9 @@ export class TurnView implements AgentEvents {
     this.screen.refresh();
   }
 
-  confirm(label: string, subject: string, pattern: string, note?: string): Promise<ConfirmAnswer> {
+  confirm(label: string, pattern: string, note?: string): Promise<ConfirmAnswer> {
     return new Promise((resolve) => {
-      this.prompt = { type: "confirm", openedAt: now(), label, subject, pattern, note, resolve };
+      this.prompt = { type: "confirm", openedAt: now(), label, pattern, note, resolve };
       this.screen.status("blocked-permission");
       this.screen.refresh();
     });

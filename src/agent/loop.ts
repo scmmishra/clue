@@ -39,7 +39,7 @@ export type AgentEvents = {
   toolEnd(record: ToolRecord): void;
   review(id: string, state: "reviewing" | "approved" | "held", detail?: string): void;
   // `note` says why clue asks when it isn't the usual approval, such as a reviewer's flag.
-  confirm(label: string, subject: string, pattern: string, note?: string): Promise<ConfirmAnswer>;
+  confirm(label: string, pattern: string, note?: string): Promise<ConfirmAnswer>;
   question(question: Question): Promise<string | null>;
   notice(text: string, tone?: "info" | "warn" | "error"): void;
   // A message the user typed to steer the running turn, taken once. The loop sends it with
@@ -417,7 +417,13 @@ export class Agent {
     const clock = now();
     const tool = findTool(use.name);
     const input = use.input as Record<string, unknown>;
-    const finish = (output: ToolOutput, label: string, kind: string, review?: string): ToolResult => {
+    const finish = (
+      output: ToolOutput,
+      label: string,
+      kind: string,
+      review?: string,
+      blocked?: boolean,
+    ): ToolResult => {
       const full = output.full ?? (typeof output.content === "string" ? output.content : "");
       const record: ToolRecord = {
         id: use.id,
@@ -433,6 +439,7 @@ export class Agent {
         startedAt,
         ms: msSince(clock),
         review,
+        blocked,
         // A failed call without its own note shows the error's first line.
         note:
           output.note ??
@@ -474,6 +481,7 @@ export class Agent {
         label,
         kind,
         "denied",
+        true,
       );
     }
     // A flagged review asks the user, like an action that needs approval. Only an
@@ -501,6 +509,7 @@ export class Agent {
             label,
             kind,
             `held by ${verdict.reviewer}`,
+            true,
           );
         }
         ask = true;
@@ -521,11 +530,11 @@ export class Agent {
           label,
           kind,
           "needs approval",
+          true,
         );
       }
       const answer = await events.confirm(
         approvalQuestion(tool, input),
-        decision.subject,
         Permissions.grantPattern(tool, decision.subject),
         note,
       );
@@ -535,6 +544,7 @@ export class Agent {
           label,
           kind,
           "declined",
+          true,
         );
       if (answer === "always") permissions.grant(tool.name, Permissions.grantPattern(tool, decision.subject));
       review = answer === "always" ? "allowed always" : "allowed once";
@@ -550,7 +560,6 @@ export class Agent {
       undo: this.undo,
       seenInstructions: this.seenInstructions,
       ask: (question) => events.question(question),
-      progress: (note) => events.toolUpdate(use.id, label, note),
       subagent: (task, description, childSignal) =>
         this.runSubagent(task, description, childSignal, use.id, tally, prompt),
       interactive: this.options.interactive,
@@ -592,7 +601,7 @@ export class Agent {
         toolUpdate: () => {},
         toolEnd: () => parent.toolUpdate(parentId, `Subagent: ${description}`, `${++calls} tool calls`),
         review: () => {},
-        confirm: (label, subject, pattern, note) => parent.confirm(`subagent: ${label}`, subject, pattern, note),
+        confirm: (label, pattern, note) => parent.confirm(`subagent: ${label}`, pattern, note),
         question: async () => null,
         notice: () => {},
       },

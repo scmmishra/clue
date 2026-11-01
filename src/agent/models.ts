@@ -112,7 +112,7 @@ export const modelInfo = (id: string): ModelInfo | null => MODELS[id] ?? null;
 
 export const modelLabel = (id: string) => MODELS[id]?.label ?? id.replace(/^claude-/, "");
 
-export const FAST_MODELS = KNOWN_MODELS.filter((id) => MODELS[id].fastMode).map(modelLabel);
+export const FAST_MODEL_LABELS = KNOWN_MODELS.filter((id) => MODELS[id].fastMode).map(modelLabel);
 
 // Fast mode is on and this model has it. The setting alone says nothing about a model without it.
 export const fastEnabled = ({ model, fast }: { model: string; fast: boolean }) =>

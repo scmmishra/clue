@@ -140,3 +140,12 @@ test("a held multi-line command keeps its review after the first line", () => {
   const [, line] = plain(toolTree([row({ label: script, note: undefined, review: "held by jev" })] as never));
   expect(line).toBe("└ Ran cat > /tmp/a.py <<'EOF' …  held by jev");
 });
+
+test("a refused tool call counts as held whatever its label says", () => {
+  const row = { id: "1", kind: "command", label: "Ran it", done: true, isError: true };
+  const tree = (extra: object) => Bun.stripANSI(toolTree([{ ...row, ...extra } as never]).join("\n"));
+  expect(tree({ review: "needs approval", blocked: true })).toContain("1 held");
+  expect(tree({ review: "any new wording", blocked: true })).toContain("1 held");
+  expect(tree({ review: "approved by haiku" })).not.toContain("held");
+  expect(tree({ review: "held by haiku" })).toContain("1 held");
+});

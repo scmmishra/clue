@@ -75,7 +75,7 @@ export function sessionEntries(session: Session): Entry[] {
 function entryLines(entry: Entry, width: number) {
   if (entry.type === "prompt" || entry.type === "steer") return [...promptLines(entry.text), ""];
   if (entry.type === "text") return [...renderMarkdown(entry.text, width), ""];
-  if (entry.type === "tools") return [...toolTree(entry.tools), ""];
+  if (entry.type === "tools") return [...toolTree(entry.tools.map((tool) => ({ ...tool, done: true }))), ""];
   return [footerLine(entry.turn), ""];
 }
 

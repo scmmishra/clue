@@ -137,13 +137,6 @@ export function withoutProviderKeys(env: Record<string, string | undefined>) {
 const stripUndefined = <T extends object>(value: T) =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as Partial<T>;
 
-export async function saveSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
-  ensureDir(CLUE_HOME);
-  const file = readJson<Partial<Settings>>(paths.settings, {});
-  file[key] = value;
-  await Bun.write(paths.settings, `${JSON.stringify(file, null, 2)}\n`);
-}
-
 const REVIEW_PROVIDERS = ["anthropic", "openrouter"];
 // A JSON object, such as settings.json or a group of settings in it.
 export type JsonObject = { [key: string]: unknown };

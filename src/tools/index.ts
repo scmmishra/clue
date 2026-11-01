@@ -28,9 +28,6 @@ const SUBAGENT_EXCLUDED = new Set(["subagent", "ask_user_question"]);
 
 export const findTool = (name: string) => TOOLS.find((tool) => tool.name === name);
 
-// Server-side tools run on Anthropic's side and come back as result blocks.
-export const SERVER_TOOL_NAMES = new Set(["web_search", "web_fetch"]);
-
 export function toolDefinitions(
   model: string,
   options: { subagent?: boolean } = {},

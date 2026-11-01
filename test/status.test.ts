@@ -2,7 +2,7 @@ import { expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadSettings, paths, saveSetting } from "../src/config";
+import { loadSettings, paths } from "../src/config";
 import { Screen, type Key } from "../src/ui/screen";
 import { shouldRing, statusReport, turnStatus, type ProgramStatus } from "../src/ui/status";
 import { CONFIRM_GUARD_MS, TurnView } from "../src/ui/turn";
@@ -45,7 +45,7 @@ test("the screen writes a report, even while a full-screen view owns the termina
 test("a permission prompt reports blocked until it is answered", async () => {
   const { out, screen } = capture();
   const view = new TurnView(screen);
-  const answer = view.confirm("Run deploy?", "deploy", "deploy *");
+  const answer = view.confirm("Run deploy?", "deploy *");
   expect(out.text).toContain(statusReport("blocked-permission"));
   expect(out.text).not.toContain(statusReport("working"));
   await Bun.sleep(CONFIRM_GUARD_MS + 20);
@@ -68,7 +68,7 @@ async function withClock(run: (advance: (ms: number) => void) => Promise<void>) 
 const openConfirm = () => {
   const view = new TurnView(capture().screen);
   const result: { answer?: string } = {};
-  void view.confirm("Run deploy?", "deploy", "deploy *").then((answer) => (result.answer = answer));
+  void view.confirm("Run deploy?", "deploy *").then((answer) => (result.answer = answer));
   return { view, result };
 };
 const char = (text: string): Key => ({ name: "char", text });
@@ -167,7 +167,7 @@ test("the screen rings after the report, and only when the bell is on", () => {
 test("answering a prompt restarts the unattended time", async () => {
   const { screen } = capture();
   const view = new TurnView(screen);
-  const answer = view.confirm("Run deploy?", "deploy", "deploy *");
+  const answer = view.confirm("Run deploy?", "deploy *");
   await Bun.sleep(CONFIRM_GUARD_MS + 20);
   expect(view.unattendedMs).toBeGreaterThan(30);
   view.handleKey({ name: "char", text: "y" });
@@ -177,7 +177,7 @@ test("answering a prompt restarts the unattended time", async () => {
 
 test("the bell defaults to on and settings.json can turn it off", async () => {
   expect(loadSettings().bell).toBe(true);
-  await saveSetting("bell", false);
+  writeFileSync(paths.settings, JSON.stringify({ bell: false }));
   expect(loadSettings().bell).toBe(false);
   rmSync(paths.settings);
 });
@@ -313,14 +313,14 @@ const frameOf = (view: TurnView) =>
 
 test("every live row is one line, so a redraw erases exactly what it drew", () => {
   const view = new TurnView(capture().screen);
-  void view.confirm(multiLine, "x", "x *");
+  void view.confirm(multiLine, "x *");
   const { lines } = frameOf(view);
   expect(lines.every((line) => !line.includes("\n"))).toBe(true);
 });
 
 test("a permission prompt still shows the whole command", () => {
   const view = new TurnView(capture().screen);
-  void view.confirm(multiLine, "x", "x *");
+  void view.confirm(multiLine, "x *");
   const text = frameOf(view)
     .lines.map((line) => Bun.stripANSI(line))
     .join("\n");

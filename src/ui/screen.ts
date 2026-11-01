@@ -81,12 +81,6 @@ export class Screen {
     this.out.write(statusReport(status) + (this.bell && shouldRing(status, unattendedMs) ? "\x07" : ""));
   }
 
-  // Clears the live area and leaves the cursor at its first column.
-  clearLive() {
-    this.out.write(this.erase());
-    this.drawnRows = 0;
-  }
-
   private erase() {
     if (this.drawnRows === 0) return "\r";
     return `${term.up(this.cursorRowFromTop)}\r${term.clearDown}`;
@@ -192,8 +186,6 @@ const KEYPAD_ENTER = 57414;
 const PRIVATE_KEYS = [57344, 63743];
 const KEY_RELEASE = 3;
 
-// A key reported with its modifiers. Ctrl and alt become the sequences terminals send
-// without these reports, so every key keeps one meaning.
 // Maps an arrow, home, end or tilde key with reported modifiers to the key without lock flags.
 function functionalKey(number: string, mods: number, event: number, final: string): Key | null {
   if (event === KEY_RELEASE) return null;
@@ -202,6 +194,8 @@ function functionalKey(number: string, mods: number, event: number, final: strin
   return SEQUENCES[final === "~" ? `\x1b[${number}~` : `\x1b[${final}`] ?? null;
 }
 
+// A key reported with its modifiers. Ctrl and alt become the sequences terminals send
+// without these reports, so every key keeps one meaning.
 function reportedKey(code: number, mods: number, event: number): Key[] {
   const flags = (mods - 1) & ~LOCK_FLAGS;
   const [shift, alt, ctrl, command] = [flags & 1, flags & 2, flags & 4, flags & 8];

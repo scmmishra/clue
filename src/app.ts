@@ -5,7 +5,15 @@ import { Agent, type AgentEvents, type Steer } from "./agent/loop";
 import { msSince, now, uptimeMs } from "./clock";
 import { describeError } from "./errors";
 import { gitBranch, prefetchGitStatus } from "./agent/context";
-import { cost, FAST_MODELS, fastEnabled, KNOWN_MODELS, modelLabel, resolveModel, responseUsage } from "./agent/models";
+import {
+  cost,
+  FAST_MODEL_LABELS,
+  fastEnabled,
+  KNOWN_MODELS,
+  modelLabel,
+  resolveModel,
+  responseUsage,
+} from "./agent/models";
 import { getClient, MissingCredentials, preconnect, warmCache } from "./agent/provider";
 import { mcpCommand } from "./commands/mcp";
 import { EFFORTS, PERMISSION_MODES, type Effort, type PermissionMode, type Settings } from "./config";
@@ -140,8 +148,7 @@ export class App {
       toolUpdate: (id, label, note) => view()?.toolUpdate(id, label, note),
       toolEnd: (record) => view()?.toolEnd(record),
       review: (id, state, detail) => view()?.review(id, state, detail),
-      confirm: (label, subject, pattern, note) =>
-        view()?.confirm(label, subject, pattern, note) ?? Promise.resolve("no"),
+      confirm: (label, pattern, note) => view()?.confirm(label, pattern, note) ?? Promise.resolve("no"),
       question: (question: Question) => view()?.question(question) ?? Promise.resolve(null),
       notice: (text, tone) => view()?.notice(text, tone),
       steer: () => {
@@ -338,7 +345,6 @@ export class App {
     this.notice("The clipboard is empty.");
   }
 
-  // Handles a key that adds to the input from outside it. True when the key was one.
   private async compact() {
     const before = this.session.turns.at(-1)?.context;
     this.print([`  ${style.muted("Compacting…")}`]);
@@ -373,6 +379,7 @@ export class App {
     return true;
   }
 
+  // Handles a key that adds to the input from outside it. True when the key was one.
   private pasteKey(key: Key) {
     if (key.name === "paste") this.keyboard.hold(this.paste(key.text ?? ""));
     else if (key.ctrl && key.name === "v") this.keyboard.hold(this.pasteClipboard());
@@ -468,7 +475,7 @@ export class App {
     // Coming back to a fast model later must not start charging double without a word.
     if (wasFast && !fastEnabled(this.settings)) {
       this.settings.fast = false;
-      this.print([`  ${style.muted(`Fast mode is off. It only works with ${FAST_MODELS.join(" and ")}.`)}`, ""]);
+      this.print([`  ${style.muted(`Fast mode is off. It only works with ${FAST_MODEL_LABELS.join(" and ")}.`)}`, ""]);
     }
   }
 
@@ -479,7 +486,7 @@ export class App {
 
   private setFast(fast: boolean) {
     if (fast && !fastEnabled({ ...this.settings, fast })) {
-      this.print([`  ${style.muted(`Fast mode only works with ${FAST_MODELS.join(" and ")}.`)}`, ""]);
+      this.print([`  ${style.muted(`Fast mode only works with ${FAST_MODEL_LABELS.join(" and ")}.`)}`, ""]);
       return;
     }
     this.settings.fast = fast;

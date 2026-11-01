@@ -44,6 +44,8 @@ export type ToolRecord = {
   startedAt: number;
   ms: number;
   review?: string;
+  // clue refused to run the call. Older records show this only through their review text.
+  blocked?: boolean;
   note?: string;
 };
 
@@ -210,8 +212,6 @@ export class Session {
   rewound: TurnRecord[] = [];
   tools = new Map<string, ToolRecord>();
   turns: TurnRecord[] = [];
-  records: SessionRecord[] = [];
-  private prompts = 0;
   private title = "";
   // Subagent sessions live in memory only.
   ephemeral = false;
@@ -236,7 +236,6 @@ export class Session {
     for (const record of parseRecords(text)) {
       if (record.t === "session") {
         session = new Session(record.id, record.cwd, record.created);
-        session.records.push(record);
         continue;
       }
       session?.apply(record);
@@ -246,7 +245,6 @@ export class Session {
   }
 
   private apply(record: SessionRecord) {
-    this.records.push(record);
     if (record.t === "rewind") {
       this.messages.length -= this.transcript.length - record.transcript;
       this.transcript.length = record.transcript;
@@ -260,7 +258,6 @@ export class Session {
     if (record.t === "message") {
       this.messages.push(record.message);
       this.transcript.push(record.message);
-      if (record.message.role === "user" && typeof record.message.content === "string") this.prompts += 1;
       this.title ||= promptText(record.message) ?? "";
     } else if (record.t === "tool") this.tools.set(record.tool.id, record.tool);
     else if (record.t === "turn") {
@@ -310,7 +307,6 @@ export class Session {
           version: VERSION,
         };
         this.sink.write(`${JSON.stringify(header)}\n`);
-        this.records.unshift(header);
       }
     }
     if (this.tornLastLine) {
@@ -515,10 +511,10 @@ function indexSession(meta: SessionMeta & { prompt: string }) {
   }
 }
 
-// Every session ever saved, newest first. With a query, only sessions whose
-// folder, title or prompts match it.
 const META = "id, cwd, name, title, updated, prompts";
 
+// Every session ever saved, newest first. With a query, only sessions whose
+// folder, name, title or prompts match it.
 export function listSessions(query = ""): SessionMeta[] {
   let rows: SessionMeta[] = [];
   try {

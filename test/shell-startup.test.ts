@@ -7,7 +7,7 @@ import { withoutProviderKeys } from "../src/config";
 const shellModule = join(import.meta.dir, "../src/tools/shell.ts");
 const SCRIPT = `
 const { shell, stopAllProcesses } = await import(${JSON.stringify(shellModule)});
-const context = { cwd: process.cwd(), signal: new AbortController().signal, undo: { noteShell() {} }, progress() {} };
+const context = { cwd: process.cwd(), signal: new AbortController().signal, undo: { noteShell() {} } };
 const result = await shell.run({ command: process.env.TEST_COMMAND }, context);
 console.log(result.content);
 stopAllProcesses();
@@ -203,7 +203,7 @@ test("a background process from a startup file doesn't hold up commands", async 
 test("stopping all processes also kills a command that ignores SIGTERM", async () => {
   const script = `
 const { shell, stopAllProcesses } = await import(${JSON.stringify(shellModule)});
-const context = { cwd: process.cwd(), signal: new AbortController().signal, undo: { noteShell() {} }, progress() {} };
+const context = { cwd: process.cwd(), signal: new AbortController().signal, undo: { noteShell() {} } };
 const { content } = await shell.run({ command: "trap '' TERM; echo pid=$$; sleep 25.5", wait_ms: 500 }, context);
 const pid = Number(content.match(/pid=(\\d+)/)[1]);
 await stopAllProcesses();

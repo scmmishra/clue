@@ -101,7 +101,6 @@ const context = (): Ctx => {
     undo: new UndoStack(),
     seenInstructions: new Set(),
     ask: async () => null,
-    progress: () => {},
     subagent: async () => ({ content: "" }),
     interactive: false,
   };

@@ -25,17 +25,13 @@ export const style = {
   green: color("#8BD49C"),
   red: color("#F07178"),
   blue: color("#82AAFF"),
-  violet: color("#C3A6FF"),
   orange: color("#FFB86C"),
   bold: wrap("\x1b[1m", "\x1b[22m"),
   italic: wrap("\x1b[3m", "\x1b[23m"),
-  underline: wrap("\x1b[4m", "\x1b[24m"),
   inverse: wrap("\x1b[7m", "\x1b[27m"),
 };
 
 export const colorsEnabled = enabled;
-
-export const stripAnsi = (text: string) => Bun.stripANSI(text);
 
 // Display width, ignoring escape codes and counting wide characters as two columns.
 export const width = (text: string) => Bun.stringWidth(text);

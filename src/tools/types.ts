@@ -32,7 +32,6 @@ export type ToolContext = {
   undo: UndoStack;
   seenInstructions: Set<string>;
   ask: (question: Question) => Promise<string | null>;
-  progress: (text: string) => void;
   subagent: (task: string, description: string, signal: AbortSignal) => Promise<ToolOutput>;
   interactive: boolean;
 };
