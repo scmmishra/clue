@@ -114,6 +114,25 @@ function unwrap(words: string[]) {
   }
 }
 
+// Any variable assignment, and shell words that start a command inside a loop, an if or a group.
+const ASSIGNMENT = /^[A-Za-z_]\w*=/;
+const COMMAND_STARTS = new Set(["time", "do", "then", "else", "elif", "{", "!"]);
+
+// The command a deny or an ask rule checks. Wider than unwrap: a rule that names a program
+// holds however the command sets up its environment, since a missed deny can't fail safe.
+function ruleWords(words: string[]) {
+  let start = 0;
+  for (;;) {
+    const word = words[start] ?? "";
+    if (COMMAND_STARTS.has(word) || ASSIGNMENT.test(word)) start += 1;
+    else if (word === "timeout" && DURATION.test(words[start + 1] ?? "")) start += 2;
+    else if (word === "env") {
+      start += 1;
+      while ((words[start] ?? "").startsWith("-")) start += /^-[uCS]$/.test(words[start] ?? "") ? 2 : 1;
+    } else return words.slice(start);
+  }
+}
+
 // `cd` to the project or a folder in it. A relative path can't climb, so this holds
 // after an earlier `cd` in the same line too.
 function cdStaysInProject(args: string[], cwd?: string) {
@@ -159,13 +178,20 @@ export function subjectOf(tool: Tool, input: unknown): string {
   return "";
 }
 
-const globToRegex = (pattern: string) =>
-  new RegExp(
-    `^${pattern
-      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-      .replace(/\*/g, ".*")
-      .replace(/\?/g, ".")}$`,
-  );
+// A trailing " *" also matches the bare command, so "git push *" covers `git push`.
+// `*` matches newlines too, such as in a quoted commit message.
+const globToRegex = (pattern: string) => {
+  const bare = pattern.endsWith(" *");
+  const body = (bare ? pattern.slice(0, -2) : pattern)
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  return new RegExp(`^${body}${bare ? "( .*)?" : ""}$`, "s");
+};
+
+// The stricter of several rules: a deny, then an ask, else null.
+const strictest = (values: (RuleValue | null)[]) =>
+  values.includes("deny") ? "deny" : values.includes("ask") ? "ask" : null;
 
 // The last matching rule wins: a tool-wide value, then patterns in order.
 export function ruleFor(rules: PermissionRules, toolName: string, subject: string): RuleValue | null {
@@ -185,16 +211,30 @@ export function ruleFor(rules: PermissionRules, toolName: string, subject: strin
   return result;
 }
 
+// A line that can't be parsed, cut at anything that could start a command. Quoted text is
+// cut too, which can only add matches.
+const roughCommands = (line: string) =>
+  line
+    .replace(/\\\r?\n/g, " ")
+    .split(/&&|\|\||\$\(|[;|&\n\r()`]/)
+    .map((part) =>
+      part
+        .trim()
+        .split(/\s+/)
+        .map((word) => word.replace(/^["']+|["']+$/g, "")),
+    )
+    .filter((words) => words[0]);
+
 // The rule for a shell command line. Each command in a chain gets its own rule, so a deny
-// can't hide behind `cd x &&`, and an allow can't carry a second command along. A line that
-// can't be parsed can match a deny or an ask, but never an allow.
+// can't hide behind `cd x &&`, and an allow can't carry a second command along. Deny and ask
+// rules also see the command past `time`, `env` and variables. A line that can't be parsed
+// can match a deny or an ask, but never an allow.
 function shellRule(rules: PermissionRules, line: string): RuleValue | null {
+  const strict = (words: string[]) =>
+    strictest([ruleFor(rules, "shell", words.join(" ")), ruleFor(rules, "shell", ruleWords(words).join(" "))]);
   const commands = parseCommand(line);
-  if (!commands?.length) {
-    const rule = ruleFor(rules, "shell", line);
-    return rule === "allow" ? null : rule;
-  }
-  const values = commands.map((words) => ruleFor(rules, "shell", words.join(" ")));
+  if (!commands?.length) return strictest([ruleFor(rules, "shell", line), ...roughCommands(line).map(strict)]);
+  const values = commands.map((words) => strict(words) ?? ruleFor(rules, "shell", words.join(" ")));
   if (values.includes("deny")) return "deny";
   if (values.includes("ask")) return "ask";
   return values.every((value) => value === "allow") ? "allow" : null;
