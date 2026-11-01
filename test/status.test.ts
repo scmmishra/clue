@@ -1,11 +1,11 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadSettings, paths, saveSetting } from "../src/config";
 import { Screen, type Key } from "../src/ui/screen";
 import { shouldRing, statusReport, turnStatus, type ProgramStatus } from "../src/ui/status";
-import { TurnView } from "../src/ui/turn";
+import { CONFIRM_GUARD_MS, TurnView } from "../src/ui/turn";
 import { startMockApi } from "./mock-api";
 
 const capture = () => {
@@ -48,10 +48,79 @@ test("a permission prompt reports blocked until it is answered", async () => {
   const answer = view.confirm("Run deploy?", "deploy", "deploy *");
   expect(out.text).toContain(statusReport("blocked-permission"));
   expect(out.text).not.toContain(statusReport("working"));
+  await Bun.sleep(CONFIRM_GUARD_MS + 20);
   view.handleKey({ name: "char", text: "y" });
   expect(await answer).toBe("once");
   expect(out.text.endsWith(statusReport("working"))).toBe(true);
 });
+
+// Runs a test with Bun's clock under its control, so the guard window needs no real wait.
+async function withClock(run: (advance: (ms: number) => void) => Promise<void>) {
+  let ns = 1e12;
+  const spy = spyOn(Bun, "nanoseconds").mockImplementation(() => ns);
+  try {
+    await run((ms) => (ns += ms * 1e6));
+  } finally {
+    spy.mockRestore();
+  }
+}
+
+const openConfirm = () => {
+  const view = new TurnView(capture().screen);
+  const result: { answer?: string } = {};
+  void view.confirm("Run deploy?", "deploy", "deploy *").then((answer) => (result.answer = answer));
+  return { view, result };
+};
+const char = (text: string): Key => ({ name: "char", text });
+
+test("a permission prompt ignores y, enter and a while it has just opened", () =>
+  withClock(async (advance) => {
+    const { view, result } = openConfirm();
+    advance(CONFIRM_GUARD_MS - 1);
+    for (const key of [char("y"), { name: "enter" } as Key, char("a")]) expect(view.handleKey(key)).toBe(true);
+    await Bun.sleep(0);
+    expect(result.answer).toBeUndefined();
+    advance(1);
+    view.handleKey(char("y"));
+    await Bun.sleep(0);
+    expect(result.answer).toBe("once");
+  }));
+
+test("a key pressed in the guard window is dropped, not kept for later", () =>
+  withClock(async (advance) => {
+    const { view, result } = openConfirm();
+    view.handleKey(char("a"));
+    view.handleKey(char("s"));
+    advance(400);
+    await Bun.sleep(0);
+    expect(result.answer).toBeUndefined();
+    view.handleKey({ name: "enter" });
+    await Bun.sleep(0);
+    expect(result.answer).toBe("once");
+  }));
+
+test("n and escape refuse a permission prompt at once", () =>
+  withClock(async () => {
+    for (const key of [char("n"), { name: "escape" } as Key]) {
+      const { view, result } = openConfirm();
+      view.handleKey(key);
+      await Bun.sleep(0);
+      expect(result.answer).toBe("no");
+    }
+  }));
+
+test("after the guard window a permission prompt answers on y, enter and a", () =>
+  withClock(async (advance) => {
+    const answers: string[] = [];
+    for (const key of [char("y"), { name: "enter" } as Key, char("a")]) {
+      const { view, result } = openConfirm();
+      advance(CONFIRM_GUARD_MS);
+      view.handleKey(key);
+      await Bun.sleep(0);
+      answers.push(result.answer ?? "");
+    }
+    expect(answers).toEqual(["once", "once", "always"]);
+  }));
 
 test("a question reports blocked until it is answered or dismissed", async () => {
   const { out, screen } = capture();
@@ -99,7 +168,7 @@ test("answering a prompt restarts the unattended time", async () => {
   const { screen } = capture();
   const view = new TurnView(screen);
   const answer = view.confirm("Run deploy?", "deploy", "deploy *");
-  await Bun.sleep(40);
+  await Bun.sleep(CONFIRM_GUARD_MS + 20);
   expect(view.unattendedMs).toBeGreaterThan(30);
   view.handleKey({ name: "char", text: "y" });
   await answer;
@@ -147,6 +216,7 @@ const runSession = async (settings?: object) => {
   await Bun.sleep(50);
   terminal.write("\r");
   await until("blocked-permission");
+  await Bun.sleep(CONFIRM_GUARD_MS + 20);
   terminal.write("y");
   await until("done");
   terminal.write("\x04");

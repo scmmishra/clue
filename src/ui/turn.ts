@@ -169,9 +169,14 @@ export function footerLine(turn: Pick<TurnRecord, "ms" | "cost" | "stop" | "usag
 
 // ---------------------------------------------------------------------------
 
+// For this long after a permission prompt opens, y, enter and a do nothing. The prompt can
+// open while the user is typing, and one of those keys would approve an action by accident.
+export const CONFIRM_GUARD_MS = 300;
+
 type Prompt =
   | {
       type: "confirm";
+      openedAt: number;
       label: string;
       subject: string;
       pattern: string;
@@ -236,14 +241,16 @@ export class TurnView implements AgentEvents {
     const prompt = this.prompt;
     if (!prompt) return false;
     if (prompt.type === "confirm") {
-      const answer: ConfirmAnswer | null =
-        key.text === "y" || key.name === "enter"
+      const refusing = key.text === "n" || key.name === "escape";
+      // A key in the guard window is dropped. Refusing is always safe, so it works at once.
+      if (!refusing && msSince(prompt.openedAt) < CONFIRM_GUARD_MS) return true;
+      const answer: ConfirmAnswer | null = refusing
+        ? "no"
+        : key.text === "y" || key.name === "enter"
           ? "once"
           : key.text === "a"
             ? "always"
-            : key.text === "n" || key.name === "escape"
-              ? "no"
-              : null;
+            : null;
       if (!answer) return true;
       this.prompt = null;
       this.answered();
@@ -451,7 +458,7 @@ export class TurnView implements AgentEvents {
 
   confirm(label: string, subject: string, pattern: string, note?: string): Promise<ConfirmAnswer> {
     return new Promise((resolve) => {
-      this.prompt = { type: "confirm", label, subject, pattern, note, resolve };
+      this.prompt = { type: "confirm", openedAt: now(), label, subject, pattern, note, resolve };
       this.screen.status("blocked-permission");
       this.screen.refresh();
     });
