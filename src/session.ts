@@ -464,11 +464,6 @@ export function resolveSession(reference: string, cwd: string) {
 export const sessionFile = (meta: { id: string; cwd: string }) =>
   join(paths.sessions, projectKey(meta.cwd), `${meta.id}.jsonl`);
 
-export function findSession(id: string): SessionMeta | null {
-  const all = listSessions();
-  return all.find((meta) => meta.id === id) ?? all.find((meta) => meta.id.startsWith(id)) ?? null;
-}
-
 // The newest session for a folder, read from the folder's directory so it works without the index.
 export function latestSessionFile(cwd: string): string | null {
   const dir = join(paths.sessions, projectKey(cwd));
