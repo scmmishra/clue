@@ -79,14 +79,6 @@ export class Agent {
     return this.options.session;
   }
 
-  setModel(model: string) {
-    this.options.settings.model = model;
-  }
-
-  setEffort(effort: Effort) {
-    this.options.settings.effort = effort;
-  }
-
   // Replaces the conversation with a summary. Returns its size in tokens, or why there is none.
   async compact(signal: AbortSignal): Promise<{ summaryTokens: number } | { problem: string }> {
     const { session, settings } = this.options;

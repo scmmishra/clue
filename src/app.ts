@@ -119,7 +119,7 @@ export class App {
     this.agent = new Agent({
       cwd: session.cwd,
       session,
-      // The same object: the agent turns fast mode off if the API won't serve it.
+      // The same object: the agent reads changes from here, and turns fast mode off if the API won't serve it.
       settings: this.settings,
       permissions: this.permissions,
       mcp: this.mcp,
@@ -453,7 +453,6 @@ export class App {
   private setModel(model: string) {
     const wasFast = fastEnabled(this.settings);
     this.settings.model = model;
-    this.agent.setModel(model);
     this.print([
       `  Model is now ${style.bold(modelLabel(model))} ${style.faint(`(${model}). The next request starts a fresh cache.`)}`,
       "",
@@ -467,7 +466,6 @@ export class App {
 
   private setEffort(effort: Effort) {
     this.settings.effort = effort;
-    this.agent.setEffort(effort);
     this.print([`  Effort is now ${style.bold(effort)}.`, ""]);
   }
 
