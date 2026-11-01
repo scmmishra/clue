@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatChecks } from "../src/commands/doctor";
@@ -103,3 +103,49 @@ test("the summary counts problems and warnings", () => {
 test("a clean run says so", () => {
   expect(formatChecks([{ status: "ok", name: "a", detail: "fine" }]).at(-1)).toBe("Everything looks fine.");
 });
+
+test("doctor explains rejected credentials, with what to do", async () => {
+  const api = Bun.serve({
+    port: 0,
+    fetch: () =>
+      Response.json(
+        { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } },
+        { status: 401 },
+      ),
+  });
+  const home = mkdtempSync(join(tmpdir(), "clue-doctor-401-"));
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), "doctor"], {
+    env: { ...process.env, CLUE_HOME: home, ANTHROPIC_BASE_URL: api.url.origin, ANTHROPIC_API_KEY: "sk-ant-bad" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stdout = await new Response(proc.stdout).text();
+  await proc.exited;
+  api.stop(true);
+  expect(Bun.stripANSI(stdout)).toContain("clue login");
+}, 20_000);
+
+test.each([
+  ["doctor", ["doctor"]],
+  ["config set", ["config", "set", "effort", "high"]],
+  ["config edit", ["config", "edit", "true"]],
+])(
+  "clue %s creates a private home folder",
+  async (_name, args) => {
+    const home = join(mkdtempSync(join(tmpdir(), "clue-home-mode-")), "home");
+    const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), ...args], {
+      env: {
+        ...process.env,
+        CLUE_HOME: home,
+        ANTHROPIC_API_KEY: "sk-ant-test",
+        ANTHROPIC_BASE_URL: "http://127.0.0.1:9",
+      },
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    await proc.exited;
+    expect(statSync(home).mode & 0o777).toBe(0o700);
+  },
+  20_000,
+);

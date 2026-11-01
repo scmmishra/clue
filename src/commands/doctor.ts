@@ -1,8 +1,17 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getClient } from "../agent/provider";
 import { resolveAuth, type AuthSource } from "../auth";
-import { CLUE_HOME, loadSettings, paths, permissionModeEnvProblem, settingsWarnings, VERSION } from "../config";
+import { describeError } from "../errors";
+import {
+  CLUE_HOME,
+  ensureDir,
+  loadSettings,
+  paths,
+  permissionModeEnvProblem,
+  settingsWarnings,
+  VERSION,
+} from "../config";
 import { resolveModel } from "../agent/models";
 import { McpManager } from "../mcp/manager";
 import { indexReadable } from "../session";
@@ -49,7 +58,7 @@ async function credentialChecks() {
     await client.models.retrieve(model, {}, { timeout: API_TIMEOUT_MS, maxRetries: 0 });
     return [credentials, ok("api", `reached, and ${model} is available`)];
   } catch (error) {
-    return [credentials, fail("api", message(error))];
+    return [credentials, fail("api", describeError(error))];
   }
 }
 
@@ -74,7 +83,7 @@ function sessionIndexCheck() {
 function homeCheck() {
   const probe = join(CLUE_HOME, `.doctor-${process.pid}`);
   try {
-    mkdirSync(CLUE_HOME, { recursive: true });
+    ensureDir(CLUE_HOME);
     writeFileSync(probe, "");
     rmSync(probe);
     return ok("home", CLUE_HOME);

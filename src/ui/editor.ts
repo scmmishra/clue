@@ -30,6 +30,14 @@ export function splitRows(text: string, room: number) {
 export type Command = { name: string; description: string };
 
 // A small line editor: multi-line input, history, paste, word movement.
+// A slash command's name has no second slash, so a pasted path like /tmp/a.png is a prompt.
+const SLASH_COMMAND = /^\/[\w-]*(\s|$)/;
+
+export function isSlashCommand(text: string) {
+  const trimmed = text.trim();
+  return SLASH_COMMAND.test(trimmed) && !trimmed.includes("\n");
+}
+
 export class Editor {
   text = "";
   cursor = 0;

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { CLUE_HOME, paths } from "../src/config";
 import { Session } from "../src/session";
-import { Editor, splitRows } from "../src/ui/editor";
+import { Editor, isSlashCommand, splitRows } from "../src/ui/editor";
 import { sessionEntries } from "../src/ui/replay";
 
 const image = (data: string) => ({
@@ -410,4 +410,13 @@ test("the selection marker moves with the arrow keys", async () => {
   await settle();
   editor.handle({ name: "down" });
   expect(rowsOf(editor).slice(0, 2)).toEqual(["  README.md", "› src/"]);
+});
+
+test("only a single line that starts with a command name is a command", () => {
+  expect(isSlashCommand("/help")).toBe(true);
+  expect(isSlashCommand("  /model opus ")).toBe(true);
+  expect(isSlashCommand("/tmp/a.png")).toBe(false);
+  expect(isSlashCommand("/tmp/a.png look at this")).toBe(false);
+  expect(isSlashCommand("/help\nand more")).toBe(false);
+  expect(isSlashCommand("use /help")).toBe(false);
 });

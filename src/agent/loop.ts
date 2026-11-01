@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { isObject, type Effort, type Settings } from "../config";
+import { describeError } from "../errors";
 import type { McpManager } from "../mcp/manager";
 import { approvalQuestion, Permissions } from "../permissions";
 import {
@@ -144,7 +145,7 @@ export class Agent {
       const result = await this.compact(signal);
       if ("problem" in result) problem = result.problem;
     } catch (error) {
-      problem = (error as Error).message;
+      problem = describeError(error);
     }
     if (problem) {
       // Trying again before the next request would only repeat the failure.

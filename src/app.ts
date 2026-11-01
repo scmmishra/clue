@@ -18,7 +18,7 @@ import { stopAllProcesses, warmShellEnv } from "./tools/shell";
 import { discoverSkills, type Skill } from "./tools/skills";
 import type { Question } from "./tools/types";
 import { duration, homePath, style, tokens } from "./ui/ansi";
-import { Editor, type Command } from "./ui/editor";
+import { Editor, type Command, isSlashCommand } from "./ui/editor";
 import { listPaths } from "./ui/file-mention";
 import { OptionPicker, type Option } from "./ui/option-picker";
 import { RewindPicker, rewindReport } from "./ui/rewind";
@@ -51,9 +51,6 @@ const COMMANDS: Command[] = [
 ];
 
 const DOUBLE_PRESS_MS = 1500;
-// A slash command's name has no second slash, so a pasted path like /tmp/a.png is a prompt.
-const SLASH_COMMAND = /^\/[\w-]*(\s|$)/;
-
 export type AppOptions = {
   settings: Settings;
   session: Session;
@@ -403,7 +400,7 @@ export class App {
   private steerDraft() {
     const text = this.editor.text;
     if (!text.trim()) return;
-    if (text.trim().startsWith("/")) return this.queueDraft();
+    if (isSlashCommand(text)) return this.queueDraft();
     const images = this.editor.images();
     this.steering = this.steering
       ? { text: `${this.steering.text}\n\n${text}`, images: [...this.steering.images, ...images] }
@@ -567,7 +564,7 @@ export class App {
 
   private async submit(text: string, images: PromptImage[] = []) {
     const trimmed = text.trim();
-    if (SLASH_COMMAND.test(trimmed) && !trimmed.includes("\n")) {
+    if (isSlashCommand(trimmed)) {
       this.screen.setRenderer(() => ({ lines: [] }));
       this.print([`${style.brand(BAR)}${style.muted(trimmed)}`, ""]);
       await this.command(trimmed);

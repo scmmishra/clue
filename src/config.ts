@@ -84,13 +84,20 @@ export function readJson<T>(path: string, fallback: T): T {
   }
 }
 
+// The settings an environment variable can set.
+export const ENV_SETTINGS: Record<string, string> = {
+  model: "CLUE_MODEL",
+  effort: "CLUE_EFFORT",
+  permission_mode: "CLUE_PERMISSION_MODE",
+};
+
 // settings.json, then CLUE_* environment variables, then command-line flags.
 export function loadSettings(flags: Partial<Settings> = {}): Settings {
   const file = readJson<Partial<Settings>>(paths.settings, {});
   const env: Partial<Settings> = {};
-  if (process.env.CLUE_MODEL) env.model = process.env.CLUE_MODEL;
-  if (process.env.CLUE_EFFORT) env.effort = process.env.CLUE_EFFORT as Effort;
-  if (process.env.CLUE_PERMISSION_MODE) env.permission_mode = process.env.CLUE_PERMISSION_MODE as PermissionMode;
+  for (const [key, name] of Object.entries(ENV_SETTINGS)) {
+    if (process.env[name]) Object.assign(env, { [key]: process.env[name] });
+  }
   const merged = { ...DEFAULTS, ...file, ...env, ...stripUndefined(flags) };
   if (!EFFORTS.includes(merged.effort)) merged.effort = DEFAULTS.effort;
   if (!PERMISSION_MODES.includes(merged.permission_mode)) merged.permission_mode = DEFAULTS.permission_mode;
@@ -154,12 +161,17 @@ const SETTING_CHECKS = new Map<string, (value: unknown) => string | null>([
   ["effort", oneOf(EFFORTS)],
   ["fast", aBoolean],
   ["permission_mode", oneOf(PERMISSION_MODES)],
-  ["permission", anObject],
   ["bell", aBoolean],
   ["review", anObject],
   ["review.provider", oneOf(REVIEW_PROVIDERS)],
   ["review.model", aString],
+  ["permission", anObject],
 ]);
+
+// What `clue config show` lists. `review` shows through its two keys.
+export const SHOWN_SETTINGS = [...SETTING_CHECKS.keys()].filter((key) => key !== "review");
+
+export const isBooleanSetting = (key: string) => SETTING_CHECKS.get(key) === aBoolean;
 
 export const isSetting = (key: string) => SETTING_CHECKS.has(key);
 

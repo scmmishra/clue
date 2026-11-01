@@ -36,6 +36,9 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - `clue -c` no longer picks up a session from another folder whose path maps to the same key.
 - `clue -r <prefix>` lists every session that matches an id prefix instead of picking the newest.
 - `clue ask --resume` is gone. `clue ask` always starts a new session, and it stops with a message if you pass `--resume`. `clue -r <id>` still continues a session in the interactive shell, and `--json` still reports `session_id`.
+- An image is labelled by its contents, not its extension, so a PNG named `.jpg` no longer blocks the session. Image formats the API doesn't take are converted.
+- `clue doctor` and `clue config` create `~/.clue` as a private folder. `clue doctor` shows the plain message and `clue login` advice for rejected credentials.
+- During a run, a message that starts with a path, or a multi-line message that starts with `/`, now steers the turn instead of waiting in the queue.
 
 ## 0.8.1
 

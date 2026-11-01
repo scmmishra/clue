@@ -1,7 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import {
   checkSetting,
+  CLUE_HOME,
+  ensureDir,
+  ENV_SETTINGS,
+  isBooleanSetting,
   isObject,
   isSetting,
   loadSettings,
@@ -9,6 +12,8 @@ import {
   permissionModeEnvProblem,
   readJson,
   settingsProblems,
+  SHOWN_SETTINGS,
+  writeJsonFile,
   type JsonObject,
 } from "../config";
 
@@ -19,12 +24,6 @@ const USAGE = `Usage:
   clue config set <key> <value>     change one setting
   clue config unset <key>           go back to the default`;
 
-const SHOWN = ["model", "effort", "fast", "permission_mode", "bell", "review.provider", "review.model", "permission"];
-const ENV: Record<string, string> = {
-  model: "CLUE_MODEL",
-  effort: "CLUE_EFFORT",
-  permission_mode: "CLUE_PERMISSION_MODE",
-};
 // `set` handles single values. These hold nested rules, which order and shape matter for.
 const EDIT_ONLY = new Set(["permission", "review"]);
 
@@ -37,7 +36,7 @@ const valueAt = (settings: object, key: string) =>
   key.split(".").reduce<unknown>((value, part) => (isObject(value) ? value[part] : undefined), settings);
 
 function sourceOf(key: string, value: unknown, file: object) {
-  const env = ENV[key];
+  const env = ENV_SETTINGS[key];
   if (env && process.env[env] === value) return env;
   const saved = valueAt(file, key);
   return saved !== undefined && JSON.stringify(saved) === JSON.stringify(value) ? "settings.json" : "default";
@@ -52,7 +51,7 @@ function displayed(key: string, value: unknown) {
 function show(json: boolean) {
   const file = readJson<object>(paths.settings, {});
   const settings = loadSettings();
-  const rows = SHOWN.map((key) => {
+  const rows = SHOWN_SETTINGS.map((key) => {
     const value = valueAt(settings, key) ?? null;
     return { key, value, source: sourceOf(key, value, file) };
   });
@@ -89,17 +88,15 @@ function readForWriting(): JsonObject {
 }
 
 function write(settings: object) {
-  mkdirSync(dirname(paths.settings), { recursive: true });
-  // A rename, so a crash can't leave half a settings file.
-  writeFileSync(`${paths.settings}.new`, `${JSON.stringify(settings, null, 2)}\n`);
-  renameSync(`${paths.settings}.new`, paths.settings);
+  ensureDir(CLUE_HOME);
+  writeJsonFile(paths.settings, settings);
 }
 
 function set(args: string[]) {
   if (args.length !== 2) stop(`Usage: clue config set <key> <value>`);
   const [key, text] = args;
   if (EDIT_ONLY.has(key)) stop(`${key} holds nested settings. Use clue config edit.`);
-  const value = (key === "bell" || key === "fast") && (text === "true" || text === "false") ? text === "true" : text;
+  const value = isBooleanSetting(key) && (text === "true" || text === "false") ? text === "true" : text;
   const problem = checkSetting(key, value);
   if (problem) stop(problem);
   const settings = readForWriting();
@@ -135,7 +132,7 @@ function unset(args: string[]) {
 async function edit(chosen?: string) {
   const editor = chosen ?? process.env.VISUAL ?? process.env.EDITOR ?? "vi";
   if (!existsSync(paths.settings)) {
-    mkdirSync(dirname(paths.settings), { recursive: true });
+    ensureDir(CLUE_HOME);
     writeFileSync(paths.settings, "{}\n");
   }
   let code: number;
