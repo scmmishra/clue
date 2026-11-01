@@ -6,6 +6,13 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 - `/fast` and `--fast` turn on fast mode for Opus 5.5 and Opus 5: faster replies at twice the token price. The line under the input and the footer of each reply show `fast`. Set `"fast": true` in `settings.json` to start with it on.
 - The line under the input shows what the session has cost so far, the same total as `/cost`.
+- Deny and ask rules hold in more of the ways a command can be written. They match the command after `time`, `timeout <duration>`, `env` and variable assignments, so `git push *` blocks `CI=1 git push`. They also match inside a loop or an `if`, across lines, and in a line clue can't parse, such as one with `$(...)`. A pattern that ends in ` *` also matches the bare command, so `git push *` blocks `git push`.
+- A file rule for a path in the project also matches it with a leading `./` or as an absolute path.
+- Text typed into a running process meets the rules for shell commands, so a deny on `git push *` also blocks typing `git push` into a shell that clue started.
+- "Always allow" on `time cargo publish` allows `cargo *`, not every command that starts with `time`.
+- `auto` mode reviews writes to `.mcp.json`, and to sensitive files whatever their case, such as `.ENV`.
+- Startup warns about a rule for a tool that doesn't exist, or a value other than `allow`, `ask` or `deny`. A mistyped value no longer cancels an earlier deny. A bad `CLUE_PERMISSION_MODE` stops clue with an error instead of falling back to `auto`.
+- Approving a project MCP server covers its current config. When the server's entry in `.mcp.json` changes, such as a new command after a `git pull`, clue asks again. Servers approved by an earlier version need approval once more.
 
 ## 0.8.1
 

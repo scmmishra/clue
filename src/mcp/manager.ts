@@ -126,8 +126,7 @@ export class McpManager {
     return loadServers(this.cwd)
       .filter(
         (entry) =>
-          entry.config.enabled !== false &&
-          (entry.scope === "profile" || approvalOf(this.cwd, entry.name) === "approved"),
+          entry.config.enabled !== false && (entry.scope === "profile" || approvalOf(this.cwd, entry) === "approved"),
       )
       .map((entry) => entry.name);
   }
@@ -138,9 +137,8 @@ export class McpManager {
       const state: ServerState = { entry, status: "starting", tools: [], failures: 0 };
       this.servers.set(entry.name, state);
       if (entry.config.enabled === false) state.status = "disabled";
-      else if (entry.scope === "project" && approvalOf(this.cwd, entry.name) === "rejected") state.status = "rejected";
-      else if (entry.scope === "project" && approvalOf(this.cwd, entry.name) !== "approved")
-        state.status = "needs-approval";
+      else if (entry.scope === "project" && approvalOf(this.cwd, entry) === "rejected") state.status = "rejected";
+      else if (entry.scope === "project" && approvalOf(this.cwd, entry) !== "approved") state.status = "needs-approval";
       else void this.connect(state);
     }
     this.changed();

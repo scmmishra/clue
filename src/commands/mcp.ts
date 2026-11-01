@@ -88,7 +88,7 @@ export async function mcpCommand(args: string[], cwd: string, manager: McpManage
       const file = project ? projectMcpFile(cwd) : paths.mcp;
       try {
         saveServer(file, name, config);
-        if (project) setApproval(cwd, name, "approved");
+        if (project) setApproval(cwd, { name, config }, "approved");
       } catch (error) {
         print([line(style.red((error as Error).message)), ""]);
         return;
@@ -118,7 +118,7 @@ export async function mcpCommand(args: string[], cwd: string, manager: McpManage
         print([line(style.red(all ? "No project servers." : `No project server named ${rest[0]}.`)), ""]);
         return;
       }
-      for (const entry of targets) setApproval(cwd, entry.name, sub === "approve" ? "approved" : "rejected");
+      for (const entry of targets) setApproval(cwd, entry, sub === "approve" ? "approved" : "rejected");
       await manager.reload();
       print([
         line(

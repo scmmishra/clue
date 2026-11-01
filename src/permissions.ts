@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
-import { isAbsolute, relative, resolve } from "node:path";
-import type { PermissionMode, PermissionRules, ReviewSetting, RuleValue } from "./config";
+import { isAbsolute, relative, resolve, sep } from "node:path";
+import { isRuleValue, type PermissionMode, type PermissionRules, type ReviewSetting, type RuleValue } from "./config";
 import { KNOWN_MODELS, modelLabel, resolveModel, REVIEW_FALLBACK_MODEL } from "./agent/models";
 import { getClient } from "./agent/provider";
 import { parseCommand } from "./shell-command";
@@ -90,8 +90,10 @@ const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
   ...routine("docker ps,docker images,docker logs,docker compose ps,docker compose logs"),
 ]);
 
+// Case doesn't matter: the default macOS disk reads .GIT/config as .git/config.
+// .mcp.json holds commands clue starts for project MCP servers.
 const SENSITIVE_PATH =
-  /(^|\/)(\.env(\..*)?|\.git\/|\.ssh\/|\.aws\/|\.npmrc|\.netrc|\.gnupg\/|id_rsa|\.clue\/settings\.json|credentials)/;
+  /(^|\/)(\.env(\..*)?|\.git\/|\.ssh\/|\.aws\/|\.npmrc|\.netrc|\.gnupg\/|id_rsa|\.clue\/settings\.json|\.mcp\.json|credentials)/i;
 
 // Variables that change how a command prints or which mode it runs in, never what it runs.
 // The value can't hold a path, so LANG or TZ can't point at a file.
@@ -110,6 +112,25 @@ function unwrap(words: string[]) {
     else if (word === "env") {
       start += 1;
       while (words[start] === "-u" && start + 1 < words.length) start += 2;
+    } else return words.slice(start);
+  }
+}
+
+// Any variable assignment, and shell words that start a command inside a loop, an if or a group.
+const ASSIGNMENT = /^[A-Za-z_]\w*=/;
+const COMMAND_STARTS = new Set(["time", "do", "then", "else", "elif", "{", "!"]);
+
+// The command a deny or an ask rule checks. Wider than unwrap: a rule that names a program
+// holds however the command sets up its environment, since a missed deny can't fail safe.
+function ruleWords(words: string[]) {
+  let start = 0;
+  for (;;) {
+    const word = words[start] ?? "";
+    if (COMMAND_STARTS.has(word) || ASSIGNMENT.test(word)) start += 1;
+    else if (word === "timeout" && DURATION.test(words[start + 1] ?? "")) start += 2;
+    else if (word === "env") {
+      start += 1;
+      while ((words[start] ?? "").startsWith("-")) start += /^-[uCS]$/.test(words[start] ?? "") ? 2 : 1;
     } else return words.slice(start);
   }
 }
@@ -147,37 +168,67 @@ function insideProject(cwd: string, path: string) {
   return rel !== "" && !rel.startsWith("..") && !resolve(rel).startsWith("..");
 }
 
+// A path in the project as the project-relative path, so `./a` and `/project/a` match a rule for `a`.
+function projectPath(cwd: string, path: string) {
+  const rel = relative(cwd, resolve(cwd, path));
+  return rel === "" || rel.split(sep)[0] === ".." || isAbsolute(rel) ? null : rel;
+}
+
+// The rule for a file tool: the stricter of the path as written and as project-relative.
+function pathRule(rules: PermissionRules, toolName: string, cwd: string, path: string) {
+  const rel = projectPath(cwd, path);
+  const values = [ruleFor(rules, toolName, path), ...(rel && rel !== path ? [ruleFor(rules, toolName, rel)] : [])];
+  return strictest(values) ?? (values.includes("allow") ? "allow" : null);
+}
+
+// The text a shell interact call types into a running process, or "".
+function typedText(input: unknown) {
+  const typed = fieldOf(input, "action") === "interact" ? fieldOf(input, "input") : undefined;
+  return typeof typed === "string" && typed.trim() !== "" ? typed : "";
+}
+
 // The text rules match against: the command, the file path, or "server.tool".
 export function subjectOf(tool: Tool, input: unknown): string {
   const field = (key: string) => fieldOf(input, key);
   const action = field("action");
-  if (tool.name === "shell")
-    return action && action !== "run" ? `${String(action)} ${String(field("id"))}` : String(field("command") ?? "");
+  if (tool.name === "shell") {
+    if (!action || action === "run") return String(field("command") ?? "");
+    const typed = typedText(input);
+    return `${String(action)} ${String(field("id"))}${typed ? ` ${JSON.stringify(typed)}` : ""}`;
+  }
   if (tool.name === "mcp_call") return `${String(field("server"))}.${String(field("tool"))}`;
   if (field("path")) return String(field("path"));
   if (tool.name === "install_skill") return String(field("source") ?? "");
   return "";
 }
 
-const globToRegex = (pattern: string) =>
-  new RegExp(
-    `^${pattern
-      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-      .replace(/\*/g, ".*")
-      .replace(/\?/g, ".")}$`,
-  );
+// A trailing " *" also matches the bare command, so "git push *" covers `git push`.
+// `*` matches newlines too, such as in a quoted commit message.
+const globToRegex = (pattern: string) => {
+  const bare = pattern.endsWith(" *");
+  const body = (bare ? pattern.slice(0, -2) : pattern)
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  return new RegExp(`^${body}${bare ? "( .*)?" : ""}$`, "s");
+};
 
-// The last matching rule wins: a tool-wide value, then patterns in order.
+// The stricter of several rules: a deny, then an ask, else null.
+const strictest = (values: (RuleValue | null)[]) =>
+  values.includes("deny") ? "deny" : values.includes("ask") ? "ask" : null;
+
+// The last matching rule wins: a tool-wide value, then patterns in order. A value that isn't
+// allow, ask or deny is skipped, so a typo can't cancel an earlier deny. Startup warns about it.
 export function ruleFor(rules: PermissionRules, toolName: string, subject: string): RuleValue | null {
   let result: RuleValue | null = null;
   const apply = (value: RuleValue | Record<string, RuleValue> | undefined) => {
     if (!value) return;
     if (typeof value === "string") {
-      result = value;
+      if (isRuleValue(value)) result = value;
       return;
     }
     for (const [pattern, ruleValue] of Object.entries(value)) {
-      if (globToRegex(pattern).test(subject)) result = ruleValue;
+      if (isRuleValue(ruleValue) && globToRegex(pattern).test(subject)) result = ruleValue;
     }
   };
   apply(rules["*"]);
@@ -185,16 +236,30 @@ export function ruleFor(rules: PermissionRules, toolName: string, subject: strin
   return result;
 }
 
+// A line that can't be parsed, cut at anything that could start a command. Quoted text is
+// cut too, which can only add matches.
+const roughCommands = (line: string) =>
+  line
+    .replace(/\\\r?\n/g, " ")
+    .split(/&&|\|\||\$\(|[;|&\n\r()`]/)
+    .map((part) =>
+      part
+        .trim()
+        .split(/\s+/)
+        .map((word) => word.replace(/^["']+|["']+$/g, "")),
+    )
+    .filter((words) => words[0]);
+
 // The rule for a shell command line. Each command in a chain gets its own rule, so a deny
-// can't hide behind `cd x &&`, and an allow can't carry a second command along. A line that
-// can't be parsed can match a deny or an ask, but never an allow.
+// can't hide behind `cd x &&`, and an allow can't carry a second command along. Deny and ask
+// rules also see the command past `time`, `env` and variables. A line that can't be parsed
+// can match a deny or an ask, but never an allow.
 function shellRule(rules: PermissionRules, line: string): RuleValue | null {
+  const strict = (words: string[]) =>
+    strictest([ruleFor(rules, "shell", words.join(" ")), ruleFor(rules, "shell", ruleWords(words).join(" "))]);
   const commands = parseCommand(line);
-  if (!commands?.length) {
-    const rule = ruleFor(rules, "shell", line);
-    return rule === "allow" ? null : rule;
-  }
-  const values = commands.map((words) => ruleFor(rules, "shell", words.join(" ")));
+  if (!commands?.length) return strictest([ruleFor(rules, "shell", line), ...roughCommands(line).map(strict)]);
+  const values = commands.map((words) => strict(words) ?? ruleFor(rules, "shell", words.join(" ")));
   if (values.includes("deny")) return "deny";
   if (values.includes("ask")) return "ask";
   return values.every((value) => value === "allow") ? "allow" : null;
@@ -234,9 +299,12 @@ export class Permissions {
   }
 
   // The pattern an "always allow" answer saves: the command's program, or the whole tool.
+  // The program is the one past `time`, `env` and safe variables, never the wrapper.
   static grantPattern(tool: Tool, subject: string) {
     if (tool.name === "shell") {
-      const words = subject.trim().split(/\s+/);
+      const parsed = parseCommand(subject)?.[0];
+      const unwrapped = parsed && unwrap(parsed);
+      const words = unwrapped?.length ? unwrapped : subject.trim().split(/\s+/);
       return words[0] === "git" || words[0] === "npm" || words[0] === "bun"
         ? `${words.slice(0, 2).join(" ")} *`
         : `${words[0]} *`;
@@ -251,14 +319,22 @@ export class Permissions {
     const matches = (text: string) => patterns.some((pattern) => globToRegex(pattern).test(text));
     if (!runsCommand) return matches(subject);
     const commands = parseCommand(subject);
-    return commands !== null && commands.length > 0 && commands.every((words) => matches(words.join(" ")));
+    return commands !== null && commands.length > 0 && commands.every((words) => matches(unwrap(words).join(" ")));
   }
 
   decide(tool: Tool, input: unknown): Decision {
     const subject = subjectOf(tool, input);
     const action = fieldOf(input, "action");
     const runsCommand = tool.name === "shell" && (action ?? "run") === "run";
-    const rule = runsCommand ? shellRule(this.rules, subject) : ruleFor(this.rules, tool.name, subject);
+    // Text typed into a running process meets the rules for commands. It isn't reviewed.
+    const typed = tool.name === "shell" ? typedText(input) : "";
+    const rule = runsCommand
+      ? shellRule(this.rules, subject)
+      : typed
+        ? shellRule(this.rules, typed.trim())
+        : fieldOf(input, "path")
+          ? pathRule(this.rules, tool.name, this.cwd, subject)
+          : ruleFor(this.rules, tool.name, subject);
     if (rule === "deny") return { action: "deny", subject, reason: "a deny rule in ~/.clue/settings.json" };
     if (tool.readOnly) return { action: "run", subject };
     if (rule === "allow") return { action: "run", subject };
