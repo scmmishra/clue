@@ -118,6 +118,15 @@ export function writeJsonFile(path: string, value: object) {
   renameSync(`${path}.new`, path);
 }
 
+const PROVIDER_KEYS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENROUTER_API_KEY"];
+
+// An environment for code clue runs. Project code and MCP servers have no need for clue's keys.
+export function withoutProviderKeys(env: Record<string, string | undefined>) {
+  const rest = { ...env };
+  for (const key of PROVIDER_KEYS) delete rest[key];
+  return rest as Record<string, string>;
+}
+
 const stripUndefined = <T extends object>(value: T) =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as Partial<T>;
 

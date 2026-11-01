@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { withoutProviderKeys } from "../src/config";
 
 const shellModule = join(import.meta.dir, "../src/tools/shell.ts");
 const SCRIPT = `
@@ -140,3 +141,54 @@ test("a shell with no support runs commands as before", async () => {
   expect(await run("echo plain")).toContain("plain");
   expect(existsSync(join(clue, "shell-snapshot.sh"))).toBe(false);
 }, 20_000);
+
+test.each(shells)(
+  "%s commands get the environment of this launch, not the one that filled the cache",
+  async (shell, file) => {
+    const { run } = setup(shell, { [file]: "export FROM_RC=yes\n" });
+    await run("true", { CLUE_TEST_PROFILE: "prod" });
+    expect(await run('echo "profile=[$CLUE_TEST_PROFILE] rc=[$FROM_RC]"', { CLUE_TEST_PROFILE: "dev" })).toContain(
+      "profile=[dev] rc=[yes]",
+    );
+    expect(await run('echo "profile=[$CLUE_TEST_PROFILE]"')).toContain("profile=[]");
+  },
+  30_000,
+);
+
+test.each(shells)(
+  "%s keeps this launch's PATH first and adds what the startup files put on it",
+  async (shell, file) => {
+    const { run } = setup(shell, { [file]: "export PATH=/from/rc:$PATH\n" });
+    await run("true");
+    const output = await run('echo "path=$PATH"', { PATH: `/from/launch:${process.env.PATH}` });
+    expect(output.indexOf("/from/launch")).toBeGreaterThan(-1);
+    expect(output.indexOf("/from/rc")).toBeGreaterThan(output.indexOf("/from/launch"));
+  },
+  30_000,
+);
+
+test.each(shells)(
+  "%s commands don't get clue's API keys, and the cache doesn't store them",
+  async (shell, file) => {
+    const { clue, run } = setup(shell, { [file]: "export OPENROUTER_API_KEY=from-rc\n" });
+    const output = await run('echo "keys=[$ANTHROPIC_API_KEY$ANTHROPIC_AUTH_TOKEN$OPENROUTER_API_KEY]"', {
+      ANTHROPIC_API_KEY: "secret-one",
+      ANTHROPIC_AUTH_TOKEN: "secret-two",
+    });
+    expect(output).toContain("keys=[]");
+    const cache = readFileSync(join(clue, "shell-env.json"), "utf8");
+    expect(cache).not.toContain("secret-");
+    expect(cache).not.toContain("from-rc");
+  },
+  20_000,
+);
+
+test("MCP servers don't get clue's API keys", () => {
+  const env = withoutProviderKeys({
+    ANTHROPIC_API_KEY: "a",
+    ANTHROPIC_AUTH_TOKEN: "b",
+    OPENROUTER_API_KEY: "c",
+    PATH: "/bin",
+  });
+  expect(env).toEqual({ PATH: "/bin" });
+});

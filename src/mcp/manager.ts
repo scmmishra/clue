@@ -7,7 +7,7 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ensureDir, paths, VERSION } from "../config";
+import { ensureDir, paths, VERSION, withoutProviderKeys } from "../config";
 import { approvalOf, loadServers, transportOf, type ServerEntry } from "./config";
 
 // Connects MCP servers in the background. Their tools never enter the request's
@@ -208,7 +208,7 @@ export class McpManager {
       return new StdioClientTransport({
         command: config.command ?? "",
         args: config.args ?? [],
-        env: { ...(process.env as Record<string, string>), ...(config.env ?? {}) },
+        env: { ...withoutProviderKeys(process.env), ...(config.env ?? {}) },
         cwd: this.cwd,
         stderr: "ignore",
       });

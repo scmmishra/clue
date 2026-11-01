@@ -1,12 +1,12 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { CLUE_HOME, ensureDir } from "../config";
+import { CLUE_HOME, ensureDir, withoutProviderKeys } from "../config";
 import { checkFields, fieldOf, type Tool } from "./types";
 
-// Commands run in the user's shell with the environment, aliases and functions their
-// startup files produce. Startup files run once. The result is cached until one changes,
-// so a slow .zshrc doesn't slow every command.
+// Commands run in the user's shell with this launch's environment, plus the variables,
+// aliases and functions their startup files add. Startup files run once. The result is cached
+// until one changes, so a slow .zshrc doesn't slow every command.
 
 const SHELL = process.env.SHELL || "/bin/sh";
 const SHELL_NAME = basename(SHELL);
@@ -69,18 +69,36 @@ function startupStamp(zdotdir?: string) {
 
 const shellCode = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
 
-type ShellState = { env: Record<string, string>; hasSnapshot: boolean };
+// `added` holds only what the startup files set. What the launch inherited stays out, because
+// the next launch can differ, such as with another AWS_PROFILE or a new SSH_AUTH_SOCK.
+type ShellState = { added: Record<string, string>; hasSnapshot: boolean };
+
+const addedByStartup = (captured: Record<string, string>) =>
+  withoutProviderKeys(
+    Object.fromEntries(Object.entries(captured).filter(([key, value]) => process.env[key] !== value)),
+  );
+
+// This launch wins. On PATH, its folders come first, then the ones the startup files add.
+function commandEnv(added: Record<string, string>) {
+  const env = withoutProviderKeys({ ...added, ...process.env });
+  const folders = [process.env.PATH, added.PATH].flatMap((path) => path?.split(":") ?? []);
+  env.PATH = [...new Set(folders)].join(":");
+  return env;
+}
 
 async function captureState(): Promise<ShellState> {
   try {
     // clue wrote this file itself, in the shape below.
-    const cached = JSON.parse(readFileSync(ENV_CACHE, "utf8")) as Partial<ShellState> & { stamp?: string };
+    const cached = JSON.parse(readFileSync(ENV_CACHE, "utf8")) as Partial<ShellState> & {
+      stamp?: string;
+      zdotdir?: string;
+    };
     if (
-      cached.env &&
-      cached.stamp === startupStamp(cached.env.ZDOTDIR) &&
+      cached.added &&
+      cached.stamp === startupStamp(cached.zdotdir) &&
       (!cached.hasSnapshot || existsSync(SNAPSHOT))
     ) {
-      return { env: cached.env, hasSnapshot: Boolean(cached.hasSnapshot) };
+      return { added: cached.added, hasSnapshot: Boolean(cached.hasSnapshot) };
     }
   } catch {}
   try {
@@ -108,11 +126,12 @@ async function captureState(): Promise<ShellState> {
       const hasSnapshot = Boolean(dump) && definitions.trim().length > 0 && definitions.length <= MAX_SNAPSHOT_BYTES;
       if (hasSnapshot) writeFileSync(SNAPSHOT, definitions, { mode: 0o600 });
       const stamp = startupStamp(env.ZDOTDIR);
-      writeFileSync(ENV_CACHE, JSON.stringify({ stamp, env, hasSnapshot }), { mode: 0o600 });
-      return { env, hasSnapshot };
+      const added = addedByStartup(env);
+      writeFileSync(ENV_CACHE, JSON.stringify({ stamp, zdotdir: env.ZDOTDIR, added, hasSnapshot }), { mode: 0o600 });
+      return { added, hasSnapshot };
     }
   } catch {}
-  return { env: { ...process.env } as Record<string, string>, hasSnapshot: false };
+  return { added: {}, hasSnapshot: false };
 }
 
 // Starts capturing the shell environment in the background.
@@ -155,9 +174,9 @@ function plain(chunk: string) {
 // `terminal: { ... }` option makes every spawn wait about 16 ms for the PTY to
 // close; a Terminal object costs 0.4 ms to build and spawns as fast as pipes.
 async function start(command: string, cwd: string): Promise<Running> {
-  const { env: shellEnv, hasSnapshot } = await warmShellEnv();
+  const { added, hasSnapshot } = await warmShellEnv();
   const env = {
-    ...shellEnv,
+    ...commandEnv(added),
     AI_AGENT: "clue",
     PAGER: "cat",
     GIT_PAGER: "cat",
