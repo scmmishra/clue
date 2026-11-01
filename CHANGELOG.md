@@ -13,6 +13,17 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - `auto` mode reviews writes to `.mcp.json`, and to sensitive files whatever their case, such as `.ENV`.
 - Startup warns about a rule for a tool that doesn't exist, or a value other than `allow`, `ask` or `deny`. A mistyped value no longer cancels an earlier deny. A bad `CLUE_PERMISSION_MODE` stops clue with an error instead of falling back to `auto`.
 - Approving a project MCP server covers its current config. When the server's entry in `.mcp.json` changes, such as a new command after a `git pull`, clue asks again. Servers approved by an earlier version need approval once more.
+- `clue ask --resume` is gone. `clue ask` always starts a new session, and it stops with a message if you pass `--resume`. `clue -r <id>` continues a session in the interactive shell, and `--json` still reports `session_id`.
+- Commands now get the environment of the current launch, plus what your startup files add. Before, they got the variables saved at an earlier launch, so `AWS_PROFILE=dev clue` could still run with `prod`, and a venv or direnv folder could get the wrong `PATH`.
+- Closing the terminal now stops running commands, and so does `SIGTERM` or `SIGHUP` to `clue ask`. A command that ignores `SIGTERM` gets `SIGKILL` when clue exits.
+- `/undo` and rewind now say when a turn ran shell commands, which clue can't undo. The `shell` tag in rewind never appeared before.
+- The session cost is more complete. It now counts automatic compactions, turns that failed partway, and the request that warms the cache on resume. `/cost` still shows the total after a rewind to the first prompt.
+- Resuming a session warms the cache on the first key you type, so opening a session only to read it costs nothing.
+- A failed turn no longer shifts footers and rewind points onto the wrong prompts, and a session whose first request failed can be resumed with the id clue printed.
+- A turn that loses fast mode partway pays the fast price only for its fast requests.
+- The prompt after a `/compact` no longer runs a second compaction, and rewind restores the files of a turn that followed a crash.
+- `/new` and `/resume` in the same folder keep MCP servers running instead of restarting each one.
+- An image is labelled by its contents, not its extension, so a JPEG named `.png` no longer blocks the session. Image formats the API doesn't take are converted.
 
 ## 0.8.1
 

@@ -5,7 +5,7 @@ import { Agent, type AgentEvents, type Steer } from "./agent/loop";
 import { msSince, now, uptimeMs } from "./clock";
 import { describeError } from "./errors";
 import { gitBranch, prefetchGitStatus } from "./agent/context";
-import { FAST_MODELS, fastEnabled, KNOWN_MODELS, modelLabel, resolveModel } from "./agent/models";
+import { cost, FAST_MODELS, fastEnabled, KNOWN_MODELS, modelLabel, resolveModel, responseUsage } from "./agent/models";
 import { getClient, MissingCredentials, preconnect, warmCache } from "./agent/provider";
 import { mcpCommand } from "./commands/mcp";
 import { EFFORTS, PERMISSION_MODES, type Effort, type PermissionMode, type Settings } from "./config";
@@ -90,6 +90,8 @@ export class App {
   private lastInterrupt = 0;
   private hint = "";
   private warming: AbortController | null = null;
+  // A resumed session warms the cache on the first key, so reading a session costs nothing.
+  private warmOnKey = false;
   private settings: Settings;
   private branch: string | null = null;
   // The message waiting for the turn to end. Only one can wait.
@@ -107,14 +109,20 @@ export class App {
     return this.session.cwd;
   }
 
-  // Everything that depends on the session's folder.
+  // Everything that depends on the session's folder. True when MCP servers need starting.
+  // Servers keep running in the same folder, so /new doesn't restart them.
   private load(session: Session) {
-    void this.mcp?.closeAll();
+    const newFolder = !this.mcp || this.session.cwd !== session.cwd;
+    this.warmOnKey = false;
+    this.warming?.abort();
     this.session = session;
     if (process.cwd() !== session.cwd) process.chdir(session.cwd);
     this.branch = gitBranch(session.cwd);
     this.skillCache = null;
-    this.mcp = new McpManager(session.cwd);
+    if (newFolder) {
+      void this.mcp?.closeAll();
+      this.mcp = new McpManager(session.cwd);
+    }
     this.permissions = new Permissions(this.settings.permission_mode, this.settings.permission, session.cwd);
     this.agent = new Agent({
       cwd: session.cwd,
@@ -127,6 +135,7 @@ export class App {
       events: this.events(),
       interactive: true,
     });
+    return newFolder;
   }
 
   // The agent talks to whichever TurnView is current.
@@ -185,9 +194,11 @@ export class App {
           "",
         ]);
     });
-    if (this.options.resumed) void this.warmResumedCache();
+    this.warmOnKey = this.options.resumed;
 
     process.on("SIGTERM", () => this.exit(0));
+    // The terminal is gone, so exit can't draw. Commands ignore SIGHUP, so clue must stop them.
+    process.on("SIGHUP", () => void stopAllProcesses().finally(() => process.exit(129)));
     process.stdout.on("resize", () => this.screen.refresh());
 
     for (const warning of this.options.warnings ?? []) this.print([`  ${style.orange(warning)}`, ""]);
@@ -212,6 +223,7 @@ export class App {
   }
 
   private async warmResumedCache() {
+    const session = this.session;
     this.warming = new AbortController();
     const started = now();
     try {
@@ -224,7 +236,15 @@ export class App {
         },
         this.warming.signal,
       );
-      if (usage) this.print([`  ${style.faint(`history cached in ${duration(msSince(started))}`)}`, ""]);
+      if (usage) {
+        const used = responseUsage(usage);
+        // Known gap: these settings are read after the request. Changing the model or fast mode
+        // during a warm-up misprices this one record. The window is short, so it stays for now.
+        const model = this.settings.model;
+        const price = cost(model, used, fastEnabled(this.settings));
+        session.append({ t: "spend", usage: used, cost: price, model, at: Date.now() });
+        this.print([`  ${style.faint(`history cached in ${duration(msSince(started))}`)}`, ""]);
+      }
     } catch {
       // Warming is an optimization. The first real request caches the history anyway.
     } finally {
@@ -538,6 +558,10 @@ export class App {
       return this.screen.flush();
     }
     if (this.cycleKey(key) || this.pasteKey(key)) return;
+    if (this.warmOnKey && key.text && key.text !== "/" && !this.editor.text.startsWith("/")) {
+      this.warmOnKey = false;
+      void this.warmResumedCache();
+    }
     const result = this.editor.handle(key);
     if (result === "submit") {
       const text = this.editor.text;
@@ -563,6 +587,7 @@ export class App {
   }
 
   private async runTurn(prompt: string, images: PromptImage[]) {
+    this.warmOnKey = false;
     this.warming?.abort();
     this.screen.setRenderer(() => ({ lines: [] }));
     this.print([...promptLines(prompt), ""]);
@@ -704,10 +729,9 @@ export class App {
           return say(style.red(`That session's folder no longer exists: ${homePath(choice.cwd)}.`));
         const session = Session.load(sessionFile(choice));
         if (!session) return say(style.red("That session file could not be read."));
-        this.load(session);
-        this.mcp.startAll();
+        if (this.load(session)) this.mcp.startAll();
         this.printResumed();
-        void this.warmResumedCache();
+        this.warmOnKey = true;
         return;
       }
       case "rename": {
@@ -724,8 +748,7 @@ export class App {
         return say(`Session is now ${style.bold(name)}.`);
       }
       case "new":
-        this.load(Session.create(this.cwd));
-        this.mcp.startAll();
+        if (this.load(Session.create(this.cwd))) this.mcp.startAll();
         prefetchGitStatus(this.cwd);
         return say(style.muted("New session. Earlier sessions stay in /resume."));
       case "mcp":
@@ -746,7 +769,9 @@ export class App {
         return this.print(undoReport(this.agent.undo.undo(args[0] === "force"), this.cwd));
       case "cost":
       case "usage":
-        return this.print(usageReport(this.session.turns, this.session.compactions, this.session.rewound));
+        return this.print(
+          usageReport(this.session.turns, this.session.compactions, this.session.rewound, this.session.spends),
+        );
       case "exit":
       case "quit":
         return this.exit(0);
@@ -763,7 +788,7 @@ export class App {
     this.screen.flush();
     this.screen.status("clear");
     this.keyboard.stop();
-    stopAllProcesses();
+    await stopAllProcesses();
     void this.mcp?.closeAll();
     if (!quiet && !this.session.isEmpty)
       process.stdout.write(

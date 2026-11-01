@@ -20,6 +20,8 @@ Session files are append-only, and nothing is written into your repository.
 
 When a conversation gets long, clue replaces older turns with a summary. See [Compaction](/docs/compaction).
 
+When you start typing in a resumed session, clue sends the history once to warm the cache, so your first reply starts sooner. Opening a session only to read it sends nothing. Typing a `/` command doesn't warm the cache either. The warm-up counts toward the session's cost.
+
 ## Undo
 
 `/undo` restores the files that clue changed in the last turn that changed files. It stops if those files changed since, and `/undo force` overwrites them. It keeps the conversation, and it can't undo shell commands. It doesn't survive quitting clue.

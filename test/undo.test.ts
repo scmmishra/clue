@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { UndoStack } from "../src/agent/undo";
 import { Session } from "../src/session";
 import { editFile, readFile, writeFile } from "../src/tools/files";
+import { shell } from "../src/tools/shell";
 import type { ToolContext } from "../src/tools/types";
 import { undoReport } from "../src/ui/undo";
 
@@ -266,4 +267,44 @@ test("forgetting turns leaves the files as they are", async () => {
   undo.forgetFrom(0);
   expect(read("a.ts")).toBe("two");
   expect(undo.undo()).toEqual({ kind: "empty" });
+});
+
+test("a turn that runs a command is marked, and reading its output is not a new run", async () => {
+  const { undo, file } = setup();
+  const context = { cwd: file(""), signal: new AbortController().signal, undo, progress() {} } as never;
+  undo.beginTurn(7);
+  await shell.run({ command: "true" }, context);
+  expect(undo.summary(7).ranShell).toBe(true);
+  undo.beginTurn(8);
+  await shell.run({ action: "interact", id: "missing" }, context);
+  expect(undo.summary(8).ranShell).toBe(false);
+});
+
+test("turns that only ran commands don't push file edits out of undo", async () => {
+  const { undo, file, read, edit } = setup();
+  writeFileSync(file("a.ts"), "one");
+  undo.beginTurn(0);
+  await read("a.ts");
+  await edit("a.ts", "one", "two");
+  for (let turn = 1; turn <= 30; turn++) {
+    undo.beginTurn(turn);
+    undo.noteShell();
+  }
+  expect(undo.covers(0)).toBe(true);
+  expect(undo.summary(30).ranShell).toBe(true);
+  expect(undo.undo().kind).toBe("done");
+  expect(readFileSync(file("a.ts"), "utf8")).toBe("one");
+});
+
+test("a turn that ran a command and then edited counts once toward the limit", async () => {
+  const { undo, file, read, edit } = setup();
+  writeFileSync(file("a.ts"), "0");
+  await read("a.ts");
+  for (let turn = 0; turn < 25; turn++) {
+    undo.beginTurn(turn);
+    undo.noteShell();
+    await edit("a.ts", String(turn), String(turn + 1));
+  }
+  expect(undo.covers(4)).toBe(false);
+  expect(undo.covers(5)).toBe(true);
 });

@@ -50,6 +50,8 @@ export type TurnRecord = {
   context?: number;
   // Claude answered in fast mode, at the fast price.
   fast?: boolean;
+  // Where the turn's prompt sits in the transcript. Older sessions don't have it.
+  transcript?: number;
 };
 
 // One /compact: the summary that replaces the messages, and what the summary cost.
@@ -61,9 +63,16 @@ export type CompactionRecord = {
   at: number;
 };
 
-// Everything a session paid for: its turns, turns dropped by a rewind, and compactions.
-export const totalCost = (turns: TurnRecord[], rewound: TurnRecord[], compactions: CompactionRecord[]) =>
-  [...turns, ...rewound, ...compactions].reduce((sum, { cost }) => sum + (cost ?? 0), 0);
+// A request outside any turn, such as warming the cache on resume.
+export type SpendRecord = { usage: Usage; cost: number | null; model: string; at: number };
+
+// Everything a session paid for: its turns, turns dropped by a rewind, compactions, and other requests.
+export const totalCost = (
+  turns: TurnRecord[],
+  rewound: TurnRecord[],
+  compactions: CompactionRecord[],
+  spends: SpendRecord[] = [],
+) => [...turns, ...rewound, ...compactions, ...spends].reduce((sum, { cost }) => sum + (cost ?? 0), 0);
 
 export type SessionRecord =
   | { t: "session"; id: string; cwd: string; created: number; version: string }
@@ -71,6 +80,7 @@ export type SessionRecord =
   | { t: "tool"; tool: ToolRecord }
   | { t: "turn"; turn: TurnRecord }
   | ({ t: "compacted" } & CompactionRecord)
+  | ({ t: "spend" } & SpendRecord)
   | { t: "rewind"; transcript: number; turns: number }
   | { t: "name"; name: string };
 
@@ -100,6 +110,16 @@ export function steerText(message: MessageParam) {
   if (!message.content.some((block) => block.type === "tool_result")) return null;
   const text = message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
   return text || null;
+}
+
+// Tokens in the last request, or undefined when a compaction has replaced that context.
+// Known gap: a turn that compacts mid-run and then ends early saves the size from before the
+// compaction. A resume can then compact again, at the cost of one extra summary. It's rare, so
+// it stays for now.
+export function lastContextSize(turns: TurnRecord[], compactions: CompactionRecord[]) {
+  const last = turns.at(-1);
+  const compactedSince = last && (compactions.at(-1)?.at ?? 0) > last.startedAt + last.ms;
+  return compactedSince ? undefined : turns.findLast((turn) => turn.context !== undefined)?.context;
 }
 
 // A prompt the session can go back to. Rewinding drops it and everything after it.
@@ -161,12 +181,12 @@ export class Session {
   // Every message of the session, for showing it again on resume.
   transcript: MessageParam[] = [];
   compactions: CompactionRecord[] = [];
+  spends: SpendRecord[] = [];
   // Turns a rewind dropped. Their cost still counts.
   rewound: TurnRecord[] = [];
   tools = new Map<string, ToolRecord>();
   turns: TurnRecord[] = [];
   records: SessionRecord[] = [];
-  private prompts = 0;
   private title = "";
   // Subagent sessions live in memory only.
   ephemeral = false;
@@ -207,6 +227,7 @@ export class Session {
       this.transcript.length = record.transcript;
       this.rewound.push(...this.turns.splice(record.turns));
     }
+    if (record.t === "spend") this.spends.push(record);
     if (record.t === "compacted") {
       this.compactions.push(record);
       this.messages = [record.message];
@@ -214,16 +235,7 @@ export class Session {
     if (record.t === "message") {
       this.messages.push(record.message);
       this.transcript.push(record.message);
-      if (record.message.role === "user" && typeof record.message.content === "string") {
-        this.prompts += 1;
-        this.title ||= record.message.content;
-      } else if (record.message.role === "user" && !this.title) {
-        // The first prompt of a session sits in blocks, after the context.
-        const blocks = record.message.content as Anthropic.Beta.Messages.BetaContentBlockParam[];
-        this.title = blocks
-          .flatMap((block) => (block.type === "text" && !block.text.startsWith("<context>") ? [block.text] : []))
-          .join(" ");
-      }
+      this.title ||= promptText(record.message) ?? "";
     } else if (record.t === "tool") this.tools.set(record.tool.id, record.tool);
     else if (record.t === "turn") {
       this.turns.push(record.turn);
@@ -292,7 +304,27 @@ export class Session {
 
   // What the session has cost so far. /usage reports the same total.
   get spent() {
-    return totalCost(this.turns, this.rewound, this.compactions);
+    return totalCost(this.turns, this.rewound, this.compactions, this.spends);
+  }
+
+  get lastContextSize() {
+    return lastContextSize(this.turns, this.compactions);
+  }
+
+  // The turn a prompt started. In an older session turns have no position, so the Nth prompt
+  // pairs with the Nth turn.
+  turnOfPrompt(transcript: number, prompt: number) {
+    const turn = this.turns[prompt];
+    return (
+      this.turns.find((candidate) => candidate.transcript === transcript) ??
+      (turn?.transcript === undefined ? turn : undefined)
+    );
+  }
+
+  private turnsBefore(transcript: number, prompt: number) {
+    return this.turns.filter((turn, position) =>
+      turn.transcript === undefined ? position < prompt : turn.transcript < transcript,
+    ).length;
   }
 
   get isEmpty() {
@@ -308,7 +340,12 @@ export class Session {
       const text = promptText(message);
       if (text === null) return;
       if (index >= this.transcript.length - sent) {
-        points.push({ text, transcript: index, turns: prompt, at: this.turns[prompt]?.startedAt });
+        points.push({
+          text,
+          transcript: index,
+          turns: this.turnsBefore(index, prompt),
+          at: this.turnOfPrompt(index, prompt)?.startedAt,
+        });
       }
       prompt += 1;
     });
@@ -463,11 +500,6 @@ export function resolveSession(reference: string, cwd: string) {
 
 export const sessionFile = (meta: { id: string; cwd: string }) =>
   join(paths.sessions, projectKey(meta.cwd), `${meta.id}.jsonl`);
-
-export function findSession(id: string): SessionMeta | null {
-  const all = listSessions();
-  return all.find((meta) => meta.id === id) ?? all.find((meta) => meta.id.startsWith(id)) ?? null;
-}
 
 // The newest session for a folder, read from the folder's directory so it works without the index.
 export function latestSessionFile(cwd: string): string | null {

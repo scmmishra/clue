@@ -29,14 +29,6 @@ The answer goes to stdout, and progress goes to stderr. clue exits with a nonzer
 
 If the request fails, the object has `error` and `session_id` instead.
 
-## Continue a session
-
-```bash
-clue ask --resume <id> "now fix them"
-```
-
-`--resume` takes an ID, not a name.
-
 ## Approvals
 
 Nobody can answer a prompt in a script. An action that needs approval doesn't run, and the model reports what it wanted to do.

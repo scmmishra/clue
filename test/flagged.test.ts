@@ -89,3 +89,28 @@ test("clue ask still holds a flagged action, since no one can answer", async () 
   await proc.exited;
   expect(lastToolResult()).toContain("clue held this action: haiku reviewed it and the reviewer's reason");
 }, 20_000);
+
+const slowCommandRuns = () => Bun.spawnSync(["pgrep", "-f", "^sleep 26\\.5$"]).exitCode === 0;
+
+test.each(["SIGTERM", "SIGHUP"] as const)(
+  "clue ask stops its commands on %s",
+  async (signal) => {
+    const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), "ask", "please push slowly"], {
+      cwd: mkdtempSync(join(tmpdir(), "clue-flagged-")),
+      env: env(),
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    for (let tries = 0; tries < 500 && !slowCommandRuns(); tries++) await Bun.sleep(10);
+    expect(slowCommandRuns()).toBe(true);
+    proc.kill(signal);
+    await Promise.race([proc.exited, Bun.sleep(5000)]);
+    proc.kill("SIGKILL");
+    // A signalled process takes a moment to go. A survivor would stay.
+    for (let tries = 0; tries < 100 && slowCommandRuns(); tries++) await Bun.sleep(10);
+    const stopped = !slowCommandRuns();
+    Bun.spawnSync(["pkill", "-9", "-f", "^sleep 26\\.5$"]);
+    expect(stopped).toBe(true);
+  },
+  20_000,
+);

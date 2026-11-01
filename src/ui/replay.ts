@@ -15,12 +15,13 @@ type Entry =
 export function sessionEntries(session: Session): Entry[] {
   const entries: Entry[] = [];
   let prompt = 0;
+  let turn: TurnRecord | undefined;
   let group: ToolRecord[] = [];
   const flush = () => {
     if (group.length) entries.push({ type: "tools", tools: group });
     group = [];
   };
-  for (const message of session.transcript) {
+  for (const [index, message] of session.transcript.entries()) {
     if (message.role === "user") {
       const text = promptText(message);
       if (text === null) {
@@ -33,8 +34,9 @@ export function sessionEntries(session: Session): Entry[] {
         continue;
       }
       flush();
-      if (prompt > 0 && session.turns[prompt - 1]) entries.push({ type: "footer", turn: session.turns[prompt - 1] });
-      entries.push({ type: "prompt", text, at: session.turns[prompt]?.startedAt });
+      if (turn) entries.push({ type: "footer", turn });
+      turn = session.turnOfPrompt(index, prompt);
+      entries.push({ type: "prompt", text, at: turn?.startedAt });
       prompt += 1;
       continue;
     }
@@ -66,7 +68,7 @@ export function sessionEntries(session: Session): Entry[] {
     }
   }
   flush();
-  if (prompt > 0 && session.turns[prompt - 1]) entries.push({ type: "footer", turn: session.turns[prompt - 1] });
+  if (turn) entries.push({ type: "footer", turn });
   return entries;
 }
 

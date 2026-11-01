@@ -64,6 +64,14 @@ test("the system prompt and tools are byte-identical across sessions", async () 
   expect(JSON.stringify(a.tools)).toBe(JSON.stringify(b.tools));
 });
 
+// A turn on a saved session, in a new process, as `clue -r` would run it.
+const continueSession = (file: string | undefined, prompt: string) =>
+  Bun.spawn(["bun", join(import.meta.dir, "agent-turn.ts"), file!, prompt], {
+    env: { ...process.env, CLUE_HOME: home, ANTHROPIC_BASE_URL: server.url.origin, ANTHROPIC_API_KEY: "sk-ant-test" },
+    stdout: "ignore",
+    stderr: "inherit",
+  }).exited;
+
 test("a session that crashed during a tool call continues, and a torn line loses nothing after it", async () => {
   const { stdout } = await run(["ask", "--json", "before the crash"]);
   const id = JSON.parse(stdout).session_id;
@@ -76,15 +84,14 @@ test("a session that crashed during a tool call continues, and a torn line loses
   appendFileSync(file, `${JSON.stringify({ t: "message", message: orphan })}\n{"t":"tool","tool":{"id":"toolu_or`);
 
   const before = requests.length;
-  const resumed = await run(["ask", "--resume", id, "after the crash"]);
-  expect(resumed.code, resumed.stderr).toBe(0);
+  expect(await continueSession(file, "after the crash")).toBe(0);
   const [tool, prompt] = (requests[before] as any).messages.slice(-2);
   expect(tool.content[0]).toMatchObject({ type: "tool_result", tool_use_id: "toolu_orphan", is_error: true });
   expect(prompt.content).toBe("after the crash");
 
   // A third run reads the file back: the records written after the torn line are still there.
   const after = requests.length;
-  await run(["ask", "--resume", id, "and again"]);
+  await continueSession(file, "and again");
   const texts = (requests[after] as any).messages.map((message: any) => JSON.stringify(message.content));
   expect(texts.filter((text: string) => text.includes("toolu_orphan")).length).toBe(2);
   expect(texts).toContain(JSON.stringify("after the crash"));
