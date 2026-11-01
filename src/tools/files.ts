@@ -19,6 +19,12 @@ const IMAGE_TYPES: Record<string, "image/png" | "image/jpeg" | "image/gif" | "im
   ".gif": "image/gif",
   ".webp": "image/webp",
 };
+const MEDIA_TYPES: Partial<Record<Bun.Image.Format, "image/png" | "image/jpeg" | "image/gif" | "image/webp">> = {
+  png: "image/png",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+};
 const IGNORED_DIRS = new Set([
   "node_modules",
   ".git",
@@ -52,14 +58,16 @@ export const shrinkImage = (image: Bun.Image) =>
 // An image as Claude receives it.
 export async function encodeImage(file: string, size: number) {
   const image = Bun.file(file).image();
-  const { width, height } = await image.metadata();
-  const large = isLargeImage(width, height) || size > MAX_IMAGE_BYTES;
+  const { width, height, format } = await image.metadata();
+  // The bytes decide the type: the API refuses a wrong one, and the block stays in the session.
+  const type = MEDIA_TYPES[format];
+  const large = !type || isLargeImage(width, height) || size > MAX_IMAGE_BYTES;
   const data = large ? await shrinkImage(image) : Buffer.from(await Bun.file(file).bytes()).toString("base64");
   const block = {
     type: "image" as const,
     source: {
       type: "base64" as const,
-      media_type: large ? ("image/webp" as const) : IMAGE_TYPES[extname(file).toLowerCase()],
+      media_type: large ? ("image/webp" as const) : type!,
       data,
     },
   };

@@ -7,7 +7,7 @@ import { Session } from "../src/session";
 import { chmodSync, mkdirSync } from "node:fs";
 import { UndoStack } from "../src/agent/undo";
 import { nestedInstructions } from "../src/agent/context";
-import { editFile, globFiles, grepFiles, readFile } from "../src/tools/files";
+import { editFile, encodeImage, globFiles, grepFiles, readFile } from "../src/tools/files";
 import { skillTool } from "../src/tools/skills";
 import { shell, stopAllProcesses } from "../src/tools/shell";
 import type { ToolContext } from "../src/tools/types";
@@ -306,4 +306,12 @@ test("a skill resource must sit inside the skill folder, not in a sibling with t
   const sibling = await skillTool.run({ name: "my-skill", resource: "../my-skill-old/a" }, ctx);
   expect(sibling).toMatchObject({ isError: true });
   expect(sibling.content).not.toContain("secret");
+});
+
+test("an image's type comes from its bytes, not its extension", async () => {
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  const file = join(mkdtempSync(join(tmpdir(), "clue-image-")), "named-wrong.jpg");
+  writeFileSync(file, Buffer.from(png, "base64"));
+  const { block } = await encodeImage(file, 70);
+  expect(block.source.media_type).toBe("image/png");
 });
