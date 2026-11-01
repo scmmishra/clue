@@ -1,6 +1,6 @@
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { CLUE_HOME, ensureDir, paths, readJson } from "../config";
+import { CLUE_HOME, ensureDir, paths, readJson, readJsonForWriting, writeJsonFile } from "../config";
 
 export type ServerConfig = {
   type?: "stdio" | "http" | "sse";
@@ -36,35 +36,48 @@ export function loadServers(cwd: string): ServerEntry[] {
 export const transportOf = (config: ServerConfig) => config.type ?? (config.url ? "http" : "stdio");
 
 export function saveServer(file: string, name: string, config: ServerConfig) {
-  const data = readJson<McpFile>(file, {});
+  const data = readJsonForWriting(file) as McpFile;
   data.mcpServers ??= {};
   if (data.mcpServers[name]) throw new Error(`${name} already exists in ${file}.`);
   data.mcpServers[name] = config;
   if (file === paths.mcp) ensureDir(CLUE_HOME);
-  writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+  writeJsonFile(file, data);
 }
 
 export function removeServer(file: string, name: string) {
-  const data = readJson<McpFile>(file, {});
+  const data = readJsonForWriting(file) as McpFile;
   if (!data.mcpServers?.[name]) return false;
   delete data.mcpServers[name];
-  writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+  writeJsonFile(file, data);
   return true;
 }
 
-// Project servers start only after the user approves them, per project folder.
-type Approvals = Record<string, Record<string, "approved" | "rejected">>;
+// Project servers start only after the user approves them, per project folder. An approval
+// holds a hash of what the server runs, because the repository can change that later.
+type Approvals = Record<string, Record<string, string>>;
 
-export function approvalOf(cwd: string, name: string) {
-  return readJson<Approvals>(paths.approvals, {})[cwd]?.[name] ?? null;
+const REJECTED = "rejected";
+
+const sorted = (values?: Record<string, string>) => values && Object.entries(values).sort();
+
+function configHash({ type, command, args, env, url, headers, bearer_token_env }: ServerConfig) {
+  const facts = [type, command, args, sorted(env), url, sorted(headers), bearer_token_env];
+  return new Bun.CryptoHasher("sha256").update(JSON.stringify(facts)).digest("hex");
 }
 
-export function setApproval(cwd: string, name: string, value: "approved" | "rejected") {
+// null means it needs approval. So does an approval of a different config.
+export function approvalOf(cwd: string, name: string, config: ServerConfig) {
+  const stored = readJson<Approvals>(paths.approvals, {})[cwd]?.[name];
+  if (stored === REJECTED) return "rejected";
+  return stored === configHash(config) ? "approved" : null;
+}
+
+export function setApproval(cwd: string, name: string, value: "approved" | "rejected", config: ServerConfig) {
   ensureDir(CLUE_HOME);
-  const approvals = readJson<Approvals>(paths.approvals, {});
+  const approvals = readJsonForWriting(paths.approvals) as Approvals;
   approvals[cwd] ??= {};
-  approvals[cwd][name] = value;
-  writeFileSync(paths.approvals, `${JSON.stringify(approvals, null, 2)}\n`);
+  approvals[cwd][name] = value === "approved" ? configHash(config) : REJECTED;
+  writeJsonFile(paths.approvals, approvals);
 }
 
 export const hasProjectMcp = (cwd: string) => existsSync(projectMcpFile(cwd));

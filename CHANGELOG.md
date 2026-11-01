@@ -15,6 +15,9 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - An "always allow" answer on a command such as `time cargo publish` now covers `cargo`, not every program behind `time`, `env` or `timeout`.
 - The permission prompt ignores `y`, `enter` and `a` for 300 ms after it opens, so keys typed for a steering message can't approve an action. `n` and `esc` work at once.
 - clue warns about permission rules with a value other than `allow`, `ask` or `deny`, or with an unknown tool name, and ignores those rules. An invalid `CLUE_PERMISSION_MODE` now stops clue with status 2.
+- Approving a project MCP server now covers its command, arguments, environment, URL and headers. If `.mcp.json` changes any of them, the server waits for approval again. Project servers need one new approval after this update.
+- clue no longer overwrites an MCP file it can't read. It warns at startup and in `clue doctor`, and `clue mcp add`, `remove` and `approve` stop with an error.
+- `clue mcp login` shows a connection error at once instead of waiting five minutes for the browser, and it says when a server needs no sign-in.
 
 ## 0.8.1
 

@@ -21,6 +21,12 @@ const STATUS_STYLE: Record<string, (text: string) => string> = {
   disabled: style.faint,
 };
 
+// Shows why a command failed. `clue mcp` then exits nonzero. Inside clue the code goes unused.
+function refuse(error: unknown, print: (lines: string[]) => void) {
+  print([`  ${style.red((error as Error).message)}`, ""]);
+  process.exitCode = 1;
+}
+
 export const MCP_USAGE = [
   "/mcp add <name> <url>                 add a remote server",
   "/mcp add <name> -- <command> [args]   add a local server over stdio",
@@ -88,10 +94,9 @@ export async function mcpCommand(args: string[], cwd: string, manager: McpManage
       const file = project ? projectMcpFile(cwd) : paths.mcp;
       try {
         saveServer(file, name, config);
-        if (project) setApproval(cwd, name, "approved");
+        if (project) setApproval(cwd, name, "approved", config);
       } catch (error) {
-        print([line(style.red((error as Error).message)), ""]);
-        return;
+        return refuse(error, print);
       }
       await manager.reload();
       print([line(`${style.green("Added")} ${style.bold(name)} to ${homePath(file)}.`), ""]);
@@ -104,7 +109,11 @@ export async function mcpCommand(args: string[], cwd: string, manager: McpManage
         print([line(style.red(`No server named ${name}.`)), ""]);
         return;
       }
-      removeServer(entry.file, entry.name);
+      try {
+        removeServer(entry.file, entry.name);
+      } catch (error) {
+        return refuse(error, print);
+      }
       forgetLogin(entry.name);
       await manager.reload();
       print([line(`Removed ${style.bold(entry.name)}.`), ""]);
@@ -118,7 +127,12 @@ export async function mcpCommand(args: string[], cwd: string, manager: McpManage
         print([line(style.red(all ? "No project servers." : `No project server named ${rest[0]}.`)), ""]);
         return;
       }
-      for (const entry of targets) setApproval(cwd, entry.name, sub === "approve" ? "approved" : "rejected");
+      try {
+        for (const entry of targets)
+          setApproval(cwd, entry.name, sub === "approve" ? "approved" : "rejected", entry.config);
+      } catch (error) {
+        return refuse(error, print);
+      }
       await manager.reload();
       print([
         line(
@@ -151,10 +165,10 @@ export async function mcpCommand(args: string[], cwd: string, manager: McpManage
     }
     case "login": {
       try {
-        await manager.login(rest[0], (text) => print([line(style.muted(text))]));
-        print([line(`${style.green("Signed in")} to ${style.bold(rest[0])}.`), ""]);
+        const signedIn = await manager.login(rest[0], (text) => print([line(style.muted(text))]));
+        if (signedIn) print([line(`${style.green("Signed in")} to ${style.bold(rest[0])}.`), ""]);
       } catch (error) {
-        print([line(style.red((error as Error).message)), ""]);
+        refuse(error, print);
       }
       return;
     }

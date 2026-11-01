@@ -172,7 +172,7 @@ async function main() {
     manager.startAll();
     await mcpCommand(positional, process.cwd(), manager, (lines) => process.stdout.write(`${lines.join("\n")}\n`));
     await manager.closeAll();
-    process.exit(0);
+    process.exit();
   }
 
   if (flags.name !== undefined) {

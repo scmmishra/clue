@@ -127,7 +127,7 @@ export class McpManager {
       .filter(
         (entry) =>
           entry.config.enabled !== false &&
-          (entry.scope === "profile" || approvalOf(this.cwd, entry.name) === "approved"),
+          (entry.scope === "profile" || approvalOf(this.cwd, entry.name, entry.config) === "approved"),
       )
       .map((entry) => entry.name);
   }
@@ -138,10 +138,11 @@ export class McpManager {
       const state: ServerState = { entry, status: "starting", tools: [], failures: 0 };
       this.servers.set(entry.name, state);
       if (entry.config.enabled === false) state.status = "disabled";
-      else if (entry.scope === "project" && approvalOf(this.cwd, entry.name) === "rejected") state.status = "rejected";
-      else if (entry.scope === "project" && approvalOf(this.cwd, entry.name) !== "approved")
-        state.status = "needs-approval";
-      else void this.connect(state);
+      else {
+        const approval = entry.scope === "project" ? approvalOf(this.cwd, entry.name, entry.config) : "approved";
+        if (approval === "approved") void this.connect(state);
+        else state.status = approval === "rejected" ? "rejected" : "needs-approval";
+      }
     }
     this.changed();
   }
@@ -230,10 +231,12 @@ export class McpManager {
   }
 
   // Browser sign-in: opens the authorization page and waits for the redirect on a local port.
-  async login(name: string, report: (text: string) => void): Promise<void> {
+  // Returns false when the server let clue in without a sign-in.
+  async login(name: string, report: (text: string) => void): Promise<boolean> {
     const state = this.servers.get(name);
     if (!state) throw new Error(`No server named ${name}.`);
     if (transportOf(state.entry.config) === "stdio") throw new Error(`${name} runs locally and has no sign-in.`);
+    let stopWaiting = () => {};
     const code = new Promise<string>((resolve, reject) => {
       const server = Bun.serve({
         port: CALLBACK_PORT,
@@ -251,11 +254,17 @@ export class McpManager {
           return new Response("Signed in to clue. You can close this tab.");
         },
       });
-      setTimeout(() => {
+      const timeout = setTimeout(() => {
         server.stop();
         reject(new Error("Sign-in timed out after 5 minutes."));
       }, 300_000).unref();
+      stopWaiting = () => {
+        clearTimeout(timeout);
+        server.stop();
+      };
     });
+    // Awaited below. Without this, a failure before then is an unhandled rejection.
+    code.catch(() => {});
     report(`Opening the browser to sign in to ${name}…`);
     const transport = (await this.transport(state, true)) as { finishAuth?: (code: string) => Promise<void> };
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
@@ -263,12 +272,22 @@ export class McpManager {
     try {
       await client.connect(transport as never);
       await client.close();
-    } catch {
-      // Expected: the first connection fails with UnauthorizedError and opens the browser.
+      stopWaiting();
+      report(`${name} needs no sign-in.`);
+      await this.connect(state);
+      return false;
+    } catch (error) {
+      // A server that needs a sign-in fails with UnauthorizedError, after opening the browser.
+      const { UnauthorizedError } = await import("@modelcontextprotocol/sdk/client/auth.js");
+      if (!(error instanceof UnauthorizedError)) {
+        stopWaiting();
+        throw error;
+      }
     }
     const authorization = await code;
     await transport.finishAuth?.(authorization);
     await this.connect(state);
+    return true;
   }
 
   approved(name: string) {

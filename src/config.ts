@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 // package.json is the one place the version is set. The release workflow publishes when it changes.
@@ -95,6 +95,27 @@ export function loadSettings(flags: Partial<Settings> = {}): Settings {
   if (!EFFORTS.includes(merged.effort)) merged.effort = DEFAULTS.effort;
   if (!PERMISSION_MODES.includes(merged.permission_mode)) merged.permission_mode = DEFAULTS.permission_mode;
   return merged;
+}
+
+// A JSON file about to be changed and written back. It throws on a file that exists and
+// can't be read, because writing back from an empty result would destroy that file.
+export function readJsonForWriting(path: string): JsonObject {
+  if (!existsSync(path)) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    throw new Error(`${path} isn't valid JSON. Fix it and try again.`);
+  }
+  if (!isObject(parsed)) throw new Error(`${path} isn't a JSON object. Fix it and try again.`);
+  return parsed;
+}
+
+// A rename, so a crash can't leave half a file. The file keeps its mode.
+export function writeJsonFile(path: string, value: object) {
+  const mode = existsSync(path) ? statSync(path).mode & 0o777 : undefined;
+  writeFileSync(`${path}.new`, `${JSON.stringify(value, null, 2)}\n`, { mode });
+  renameSync(`${path}.new`, path);
 }
 
 const stripUndefined = <T extends object>(value: T) =>
@@ -194,10 +215,24 @@ export function settingsProblems(text: string): string[] {
   return problems;
 }
 
-// The problems with the file on disk, as warnings for startup.
+// MCP files that can't be read. clue starts without their servers, so this is the only sign of it.
+export function mcpFileProblems(cwd: string) {
+  return [paths.mcp, join(cwd, ".mcp.json"), paths.approvals].flatMap((file) => {
+    try {
+      readJsonForWriting(file);
+      return [];
+    } catch (error) {
+      return [(error as Error).message];
+    }
+  });
+}
+
+// The problems with the files on disk, as warnings for startup.
 export function settingsWarnings() {
-  if (!existsSync(paths.settings)) return [];
-  return settingsProblems(readFileSync(paths.settings, "utf8")).map(
-    (problem) => `${problem}. Fix it with clue config edit.`,
-  );
+  const settings = existsSync(paths.settings)
+    ? settingsProblems(readFileSync(paths.settings, "utf8")).map(
+        (problem) => `${problem}. Fix it with clue config edit.`,
+      )
+    : [];
+  return [...settings, ...mcpFileProblems(process.cwd())];
 }

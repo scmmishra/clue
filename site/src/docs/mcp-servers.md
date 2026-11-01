@@ -41,4 +41,6 @@ Set `"enabled": false` to turn a server off without removing it.
 | `/mcp reject <name>` | Keeps a project server from starting. |
 | `/mcp remove <name>` | Removes a server and its login. |
 
-A project server starts only after you approve it.
+A project server starts only after you approve it. An approval covers the server's command, arguments, environment, URL and headers. If `.mcp.json` changes any of them, the server waits for you to approve it again.
+
+clue won't change an MCP file it can't read. It reports the file at startup and in `clue doctor`, and `clue mcp add` stops with an error.
