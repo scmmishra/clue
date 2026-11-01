@@ -18,6 +18,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - Approving a project MCP server now covers its command, arguments, environment, URL and headers. If `.mcp.json` changes any of them, the server waits for approval again. Project servers need one new approval after this update.
 - clue no longer overwrites an MCP file it can't read. It warns at startup and in `clue doctor`, and `clue mcp add`, `remove` and `approve` stop with an error.
 - `clue mcp login` shows a connection error at once instead of waiting five minutes for the browser, and it says when a server needs no sign-in.
+- Inside a subagent, the reviewer now gets the prompt you wrote. Before, it treated the task Claude wrote for the subagent as your request.
 
 ## 0.8.1
 

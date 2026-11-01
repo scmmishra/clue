@@ -104,3 +104,16 @@ test("clue ask holds an action too long to review, and says why", async () => {
   );
   expect(reviewers.claudeCalls).toEqual([]);
 }, 20_000);
+
+test("a subagent's reviewer gets the user's prompt, not the task the model wrote", async () => {
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), "ask", "delegate this rollout"], {
+    cwd: mkdtempSync(join(tmpdir(), "clue-flagged-")),
+    env: env(),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+  await proc.exited;
+  expect(reviewers.claudeStates).toHaveLength(1);
+  expect(JSON.parse(reviewers.claudeStates[0]).user_request).toBe("delegate this rollout");
+}, 20_000);

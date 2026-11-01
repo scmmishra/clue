@@ -168,7 +168,7 @@ export function startMockApi(port = 0, delay = DELAY) {
       }
       const promptText = JSON.stringify(body.messages.filter((item) => item.role === "user").at(-1)?.content ?? "");
       if (!hasToolResult && !JSON.stringify(body.messages).includes("Continue with the task.")) {
-        const wantsPush = promptText.includes("push");
+        const wantsPush = promptText.includes("push") && !promptText.includes("delegate this");
         const wantsWrite = promptText.includes("create the note");
         const wantsSubagent = promptText.includes("delegate this");
         const input = JSON.stringify(
@@ -177,7 +177,10 @@ export function startMockApi(port = 0, delay = DELAY) {
             : wantsWrite
               ? { path: "note.txt", content: "from clue" }
               : wantsSubagent
-                ? { task: "the child task", description: "look around" }
+                ? {
+                    task: promptText.includes("delegate this rollout") ? "the user wants a push" : "the child task",
+                    description: "look around",
+                  }
                 : { path: "package.json" },
         );
         const toolName = wantsPush ? "shell" : wantsWrite ? "write_file" : wantsSubagent ? "subagent" : "read_file";

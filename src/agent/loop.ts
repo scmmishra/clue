@@ -57,6 +57,8 @@ export type AgentOptions = {
   events: AgentEvents;
   interactive: boolean;
   subagent?: boolean;
+  // A subagent's prompt is text the model wrote, so the reviewer gets the user's prompt instead.
+  userRequest?: string;
   // A subagent can't show a notice, and its settings are a copy, so its parent turns fast mode off.
   onFastOff?: () => void;
 };
@@ -457,7 +459,8 @@ export class Agent {
         tool.name === "shell" && fieldOf(input, "action") === "interact"
           ? processCommand(fieldOf(input, "id"))
           : undefined;
-      const verdict = await reviewAction(tool.name, input, prompt, this.options.settings.review, signal, sentTo);
+      const request = this.options.userRequest ?? prompt;
+      const verdict = await reviewAction(tool.name, input, request, this.options.settings.review, signal, sentTo);
       if (!verdict.approved) {
         events.review(use.id, "held", `${verdict.reviewer}: ${verdict.reason ?? "held"}`);
         if (!this.options.interactive || signal.aborted) {
@@ -521,7 +524,8 @@ export class Agent {
       seenInstructions: this.seenInstructions,
       ask: (question) => events.question(question),
       progress: (note) => events.toolUpdate(use.id, label, note),
-      subagent: (task, description, childSignal) => this.runSubagent(task, description, childSignal, use.id, usage),
+      subagent: (task, description, childSignal) =>
+        this.runSubagent(task, description, childSignal, use.id, usage, prompt),
       interactive: this.options.interactive,
     };
     let output: ToolOutput;
@@ -539,6 +543,7 @@ export class Agent {
     signal: AbortSignal,
     parentId: string,
     usage: Usage,
+    userRequest: string,
   ): Promise<ToolOutput> {
     const child = new Session(`${this.session.id}-sub`, this.options.cwd);
     child.ephemeral = true;
@@ -549,6 +554,7 @@ export class Agent {
       ...this.options,
       session: child,
       subagent: true,
+      userRequest,
       onFastOff: () => this.turnOffFast(),
       settings: { ...this.options.settings },
       events: {
