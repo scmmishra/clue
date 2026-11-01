@@ -121,6 +121,8 @@ function seedSession(turns: number) {
       },
     });
   }
+  // clue -c opens this session next, and a live writer would hold it.
+  session.release();
   return session;
 }
 
