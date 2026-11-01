@@ -92,6 +92,9 @@ function fail(message: string): never {
 
 function settingsFrom(flags: Parsed["flags"]): Settings {
   const overrides: Partial<Settings> = {};
+  const envMode = process.env.CLUE_PERMISSION_MODE;
+  if (envMode && !PERMISSION_MODES.includes(envMode as PermissionMode))
+    fail(`CLUE_PERMISSION_MODE must be one of ${PERMISSION_MODES.join(", ")}`);
   if (typeof flags.model === "string") overrides.model = flags.model;
   if (typeof flags.effort === "string") {
     if (!EFFORTS.includes(flags.effort as Effort)) fail(`--effort must be one of ${EFFORTS.join(", ")}`);

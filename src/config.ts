@@ -31,8 +31,29 @@ export type Effort = (typeof EFFORTS)[number];
 export const PERMISSION_MODES = ["ask", "auto", "full-access"] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
 
-export type RuleValue = "allow" | "deny" | "ask";
+export const RULE_VALUES = ["allow", "ask", "deny"] as const;
+export type RuleValue = (typeof RULE_VALUES)[number];
 export type PermissionRules = Record<string, RuleValue | Record<string, RuleValue>>;
+export const isRuleValue = (value: unknown): value is RuleValue => RULE_VALUES.includes(value as RuleValue);
+
+// The tools a rule can name, and "*" for all of them. A test keeps this in step with TOOLS,
+// which can't be imported here: the tools import this file.
+const RULE_TOOLS = [
+  "*",
+  "glob_files",
+  "grep_files",
+  "read_file",
+  "write_file",
+  "edit_file",
+  "shell",
+  "subagent",
+  "skill",
+  "install_skill",
+  "capability_search",
+  "mcp_call",
+  "ask_user_question",
+  "read_tool_result",
+];
 
 // Who reviews actions in auto mode. Both keys are optional.
 export type ReviewSetting = { provider?: string; model?: string };
@@ -138,7 +159,24 @@ export function settingsProblems(text: string): string[] {
       ...Object.entries(settings.review).flatMap(([key, value]) => checkSetting(`review.${key}`, value) ?? []),
     );
   }
+  if (isObject(settings.permission)) problems.push(...ruleProblems(settings.permission));
   return problems;
+}
+
+// A rule that names no tool or has a mistyped value matches nothing, so a deny would
+// silently stop working.
+function ruleProblems(permission: JsonObject) {
+  const values = RULE_VALUES.join(", ");
+  return Object.entries(permission).flatMap(([tool, rule]) => {
+    const problems = RULE_TOOLS.includes(tool) ? [] : [`permission.${tool} isn't a tool`];
+    if (isObject(rule)) {
+      for (const [pattern, value] of Object.entries(rule))
+        if (!isRuleValue(value))
+          problems.push(`permission.${tool} ${JSON.stringify(pattern)} must be one of ${values}`);
+    } else if (!isRuleValue(rule))
+      problems.push(`permission.${tool} must be one of ${values}, or an object of patterns`);
+    return problems;
+  });
 }
 
 // The problems with the file on disk, as warnings for startup.

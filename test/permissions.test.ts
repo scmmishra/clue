@@ -345,6 +345,11 @@ test("a rule matches a quoted message that spans lines", () => {
   expect(action(permissions, `gh pr create --body "fix: a\n\nlonger body"`)).toBe("run");
 });
 
+test("a mistyped rule value doesn't cancel an earlier deny", () => {
+  const rules = { shell: { "rm *": "deny", "rm -rf *": "block" } } as never;
+  expect(action(new Permissions("full-access", rules, "/tmp/project"), "rm -rf dist")).toBe("deny");
+});
+
 test("cd with an absolute path is routine only into the project", () => {
   const permissions = new Permissions("auto", {}, "/tmp/project");
   expect(action(permissions, "cd /tmp/project && bun test")).toBe("run");

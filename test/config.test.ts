@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { settingsProblems } from "../src/config";
 import { commandIsRoutine } from "../src/permissions";
+import { TOOLS } from "../src/tools";
 
 const folder = () => realpathSync(mkdtempSync(join(tmpdir(), "clue-config-")));
 
@@ -75,8 +76,39 @@ test.each([
   ["a bad review", '{"review":"haiku"}', "review must be an object"],
   ["a bad provider", '{"review":{"provider":"acme"}}', "review.provider must be one of anthropic, openrouter"],
   ["an unknown review key", '{"review":{"effort":"low"}}', "review.effort isn't a setting"],
+  [
+    "a rule value in the wrong case",
+    '{"permission":{"shell":{"git push *":"Deny"}}}',
+    `permission.shell "git push *" must be one of allow, ask, deny`,
+  ],
+  [
+    "an unknown rule value",
+    '{"permission":{"shell":{"rm -rf *":"block"}}}',
+    `permission.shell "rm -rf *" must be one of allow, ask, deny`,
+  ],
+  [
+    "a bad tool-wide rule",
+    '{"permission":{"write_file":"never"}}',
+    "permission.write_file must be one of allow, ask, deny, or an object of patterns",
+  ],
+  ["an unknown tool", '{"permission":{"bash":{"git *":"allow"}}}', "permission.bash isn't a tool"],
 ])("%s is a problem", (_name, text, expected) => {
   expect(settingsProblems(text).join(" ")).toContain(expected);
+});
+
+test("rules for every tool, and for all tools, have no problems", () => {
+  const permission = Object.fromEntries(["*", ...TOOLS.map((tool) => tool.name)].map((name) => [name, "ask"]));
+  expect(settingsProblems(JSON.stringify({ permission }))).toEqual([]);
+});
+
+test("a bad CLUE_PERMISSION_MODE fails like a bad --permission-mode", async () => {
+  const { run } = setup();
+  const { stderr, code } = await run(["ask", "hi"], {
+    CLUE_PERMISSION_MODE: "yolo",
+    ANTHROPIC_BASE_URL: "http://127.0.0.1:9",
+  });
+  expect(code).not.toBe(0);
+  expect(stderr).toContain("CLUE_PERMISSION_MODE must be one of ask, auto, full-access");
 });
 
 test("config path prints the settings file", async () => {

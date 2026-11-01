@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import type { PermissionMode, PermissionRules, ReviewSetting, RuleValue } from "./config";
+import { isRuleValue, type PermissionMode, type PermissionRules, type ReviewSetting, type RuleValue } from "./config";
 import { KNOWN_MODELS, modelLabel, resolveModel, REVIEW_FALLBACK_MODEL } from "./agent/models";
 import { getClient } from "./agent/provider";
 import { parseCommand } from "./shell-command";
@@ -217,17 +217,18 @@ const globToRegex = (pattern: string) => {
 const strictest = (values: (RuleValue | null)[]) =>
   values.includes("deny") ? "deny" : values.includes("ask") ? "ask" : null;
 
-// The last matching rule wins: a tool-wide value, then patterns in order.
+// The last matching rule wins: a tool-wide value, then patterns in order. A value that isn't
+// allow, ask or deny is skipped, so a typo can't cancel an earlier deny. Startup warns about it.
 export function ruleFor(rules: PermissionRules, toolName: string, subject: string): RuleValue | null {
   let result: RuleValue | null = null;
   const apply = (value: RuleValue | Record<string, RuleValue> | undefined) => {
     if (!value) return;
     if (typeof value === "string") {
-      result = value;
+      if (isRuleValue(value)) result = value;
       return;
     }
     for (const [pattern, ruleValue] of Object.entries(value)) {
-      if (globToRegex(pattern).test(subject)) result = ruleValue;
+      if (isRuleValue(ruleValue) && globToRegex(pattern).test(subject)) result = ruleValue;
     }
   };
   apply(rules["*"]);
