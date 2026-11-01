@@ -183,3 +183,27 @@ test("the capture doesn't depend on the launch's variables", async () => {
   await run("true", { CLUE_TEST_SECRET: "from-the-launch" });
   expect(readFileSync(join(clue, "shell-env.json"), "utf8")).not.toContain("from-the-launch");
 }, 20_000);
+
+test("stopping all processes also kills a command that ignores SIGTERM", async () => {
+  const script = `
+const { shell, stopAllProcesses } = await import(${JSON.stringify(shellModule)});
+const context = { cwd: process.cwd(), signal: new AbortController().signal, undo: { noteShell() {} }, progress() {} };
+const { content } = await shell.run({ command: "trap '' TERM; echo pid=$$; sleep 25.5", wait_ms: 500 }, context);
+const pid = Number(content.match(/pid=(\\d+)/)[1]);
+await stopAllProcesses();
+// SIGKILL takes a moment to finish, and the group lasts until then. A survivor would stay.
+let alive = true;
+for (let tries = 0; alive && tries < 100; tries++) {
+  try { process.kill(-pid, 0); await Bun.sleep(10); } catch { alive = false; }
+}
+console.log(alive ? "still alive" : "gone");
+process.exit(0);
+`;
+  const proc = Bun.spawn(["bun", "-e", script], {
+    cwd: realpathSync(mkdtempSync(join(tmpdir(), "clue-stop-"))),
+    env: { ...process.env, SHELL: "/bin/sh", CLUE_HOME: mkdtempSync(join(tmpdir(), "clue-stop-home-")) },
+    stdout: "pipe",
+    stderr: "inherit",
+  });
+  expect(await new Response(proc.stdout).text()).toContain("gone");
+}, 15_000);

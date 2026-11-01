@@ -50,7 +50,7 @@ export async function runAsk(prompt: string, settings: Settings, session: Sessio
     interactive: false,
   });
   const controller = new AbortController();
-  process.on("SIGINT", () => controller.abort());
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(signal, () => controller.abort());
   let code = 0;
   try {
     const turn = await agent.runTurn(prompt, controller.signal);
@@ -67,7 +67,7 @@ export async function runAsk(prompt: string, settings: Settings, session: Sessio
     else process.stderr.write(`clue: ${message}\n`);
     code = 1;
   }
-  stopAllProcesses();
+  await stopAllProcesses();
   await mcp.closeAll();
   process.exit(code);
 }

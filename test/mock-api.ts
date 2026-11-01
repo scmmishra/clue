@@ -169,7 +169,7 @@ export function startMockApi(port = 0, delay = DELAY) {
         const wantsSubagent = promptText.includes("delegate this");
         const input = JSON.stringify(
           wantsPush
-            ? { command: "deploy-preview --dry-run" }
+            ? { command: promptText.includes("push slowly") ? "sleep 26.5" : "deploy-preview --dry-run" }
             : wantsWrite
               ? { path: "note.txt", content: "from clue" }
               : wantsSubagent

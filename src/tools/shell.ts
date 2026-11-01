@@ -48,6 +48,8 @@ const LOAD_DEFINITIONS: Record<string, string> = {
 const DEFAULT_WAIT_MS = 120_000;
 const MAX_BUFFER = 2_000_000;
 const DRAIN_MAX_TURNS = 40;
+// How long commands get to stop on SIGTERM when clue exits.
+const EXIT_GRACE_MS = 300;
 
 let shellState: Promise<ShellState> | null = null;
 
@@ -249,10 +251,13 @@ function groupAlive(pid: number) {
   }
 }
 
+// A finished command has nothing to stop, unless background children outlived its shell.
+// Only then is the pid still ours: a group's id can't be reused while the group exists.
+const stillRunning = (running: Running) =>
+  running.exitCode === null || (running.orphaned && groupAlive(running.proc.pid));
+
 function kill(running: Running) {
-  // A finished command has nothing to stop, unless background children outlived its shell.
-  // Only then is the pid still ours: a group's id can't be reused while the group exists.
-  if (running.exitCode !== null && !(running.orphaned && groupAlive(running.proc.pid))) return;
+  if (!stillRunning(running)) return;
   // The command leads its own group (detached), so its pid is the group id.
   try {
     process.kill(-running.proc.pid, "SIGTERM");
@@ -269,11 +274,19 @@ function kill(running: Running) {
   }, 2000).unref();
 }
 
-export function stopAllProcesses() {
-  for (const running of processes.values()) {
-    kill(running);
-    if (!running.terminal.closed) running.terminal.close();
+// clue exits right after this, so no timer would be left to send SIGKILL.
+export async function stopAllProcesses() {
+  const all = [...processes.values()];
+  all.forEach(kill);
+  const alive = () => all.filter((running) => stillRunning(running) && groupAlive(running.proc.pid));
+  const deadline = Date.now() + EXIT_GRACE_MS;
+  while (alive().length && Date.now() < deadline) await Bun.sleep(10);
+  for (const running of alive()) {
+    try {
+      process.kill(-running.proc.pid, "SIGKILL");
+    } catch {}
   }
+  for (const running of all) if (!running.terminal.closed) running.terminal.close();
 }
 
 // Resolves after `ms` or when the signal aborts. Call cancel() when done, so a
@@ -372,6 +385,7 @@ export const shell: Tool<ShellInput> = {
   async run(input, context) {
     const action = input.action ?? "run";
     if (action === "run") {
+      context.undo.noteShell();
       const running = await start(input.command!, context.cwd);
       const limit = Math.max(500, input.wait_ms ?? DEFAULT_WAIT_MS);
       const done = await exitedWithin(running, limit, context.signal);

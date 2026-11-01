@@ -67,6 +67,7 @@ async function startClue(
     screen: () => Bun.stripANSI(output),
     raw: () => output,
     exited: () => Promise.race([proc.exited, Bun.sleep(3000)]),
+    hangUp: () => proc.kill("SIGHUP"),
     type: async (text: string) => {
       terminal.write(text);
       await Bun.sleep(40);
@@ -1167,4 +1168,20 @@ test("when a subagent loses fast mode, the session does too, and clue says so", 
   } finally {
     fastMode.rejectedFor = null;
   }
+}, 25_000);
+
+test("closing the terminal stops running commands", async () => {
+  const clue = await startClue();
+  const runs = () => Bun.spawnSync(["pgrep", "-f", "^sleep 26\\.5$"]).exitCode === 0;
+  await clue.type("please push slowly");
+  await clue.type(ENTER);
+  for (let tries = 0; tries < 500 && !runs(); tries++) await Bun.sleep(10);
+  expect(runs()).toBe(true);
+  clue.hangUp();
+  await clue.exited();
+  // A signalled process takes a moment to go. A survivor would stay.
+  for (let tries = 0; tries < 100 && runs(); tries++) await Bun.sleep(10);
+  const stopped = !runs();
+  Bun.spawnSync(["pkill", "-9", "-f", "^sleep 26\\.5$"]);
+  expect(stopped).toBe(true);
 }, 25_000);

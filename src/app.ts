@@ -188,6 +188,8 @@ export class App {
     if (this.options.resumed) void this.warmResumedCache();
 
     process.on("SIGTERM", () => this.exit(0));
+    // The terminal is gone, so exit can't draw. Commands ignore SIGHUP, so clue must stop them.
+    process.on("SIGHUP", () => void stopAllProcesses().finally(() => process.exit(129)));
     process.stdout.on("resize", () => this.screen.refresh());
 
     for (const warning of this.options.warnings ?? []) this.print([`  ${style.orange(warning)}`, ""]);
@@ -763,7 +765,7 @@ export class App {
     this.screen.flush();
     this.screen.status("clear");
     this.keyboard.stop();
-    stopAllProcesses();
+    await stopAllProcesses();
     void this.mcp?.closeAll();
     if (!quiet && !this.session.isEmpty)
       process.stdout.write(
