@@ -6,8 +6,8 @@ import { toolDefinitions } from "../tools";
 import { modelInfo } from "./models";
 import { SYSTEM_PROMPT } from "./prompt";
 
-// Every model call goes through this file. Other providers, such as
-// OpenRouter or Codex, would be a sibling of this module.
+// Every conversation request goes through this file. A Codex driver would be a sibling of
+// this module. The reviewer in review.ts sends its own requests.
 
 const API_ORIGIN = process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com";
 const MAX_OUTPUT_TOKENS = 64_000;

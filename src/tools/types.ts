@@ -49,7 +49,7 @@ export type Tool<Input = unknown> = {
   description: string;
   schema: Anthropic.Beta.Messages.BetaTool.InputSchema;
   kind: ToolKind;
-  // Runs without permission checks in every mode.
+  // Skips approval and review in every mode. Deny rules still apply.
   readOnly?: boolean;
   // Present-tense label while running and past-tense label once done. It also draws the
   // input still streaming in, so a field can be missing.

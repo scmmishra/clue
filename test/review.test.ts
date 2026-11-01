@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:te
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chooseReviewer, reviewAction } from "../src/permissions";
+import { chooseReviewer, reviewAction } from "../src/agent/review";
 import { resetReviewers, reviewers, startMockApi } from "./mock-api";
 
 const KEY = "sk-or-test";

@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { isObject, type Effort, type Settings } from "../config";
 import type { McpManager } from "../mcp/manager";
-import { approvalQuestion, Permissions, reviewAction } from "../permissions";
+import { approvalQuestion, Permissions } from "../permissions";
 import {
   CONTINUE_PROMPT,
   Session,
@@ -19,6 +19,7 @@ import { buildContext } from "./context";
 import { msSince, now } from "../clock";
 import { COMPACTION_TRIGGER_TOKENS, cost, fastEnabled } from "./models";
 import { dropRejectedFeature, fastRejected, stream, summarize } from "./provider";
+import { reviewAction } from "./review";
 import { UndoStack, type UndoResult } from "./undo";
 
 type ContentBlock = Anthropic.Beta.Messages.BetaContentBlock;
