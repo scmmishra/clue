@@ -2,3 +2,4 @@ node_modules
 dist
 *.order
 .DS_Store
+notes/
