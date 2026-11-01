@@ -38,9 +38,78 @@ const NOT_A_SCRIPT_NAME: UnsafeArgs = ([name = ""]) => !/^\w[\w:-]*$/.test(name)
 const NOT_A_LINE_RANGE: UnsafeArgs = ([script = "", ...files]) =>
   !/^(\d+|\$)(,(\d+|\$))?p$/.test(script) || files.some((file) => file.startsWith("-"));
 
+const anyOf =
+  (...checks: UnsafeArgs[]): UnsafeArgs =>
+  (args) =>
+    checks.some((check) => check(args));
+
+// A path that leaves the project: absolute, under the home folder, or climbing with `..`.
+const leavesProject = (path: string) => /^[/~]/.test(path) || path.split("/").includes("..");
+// Tests an argument, and the value of a --flag=value. An absolute path inside the project also fails.
+const PATH_LEAVES_PROJECT: UnsafeArgs = (args) =>
+  args.some((arg) => leavesProject(arg) || (arg.includes("=") && leavesProject(arg.slice(arg.indexOf("=") + 1))));
+
+// Flags that load code, config or plugins, or that point at another folder. Names are
+// space separated. A one-letter name is a short flag, which may have its value attached
+// (-Iinc). Any other name matches as -name or --name, with the value after = or in the next
+// argument. With abbreviations, a long flag also matches its unique prefixes, which Python
+// argparse accepts.
+const flagged =
+  (names: string, abbreviations = false): UnsafeArgs =>
+  (args) => {
+    const flags = names.split(" ");
+    return args.some((arg) => {
+      if (!arg.startsWith("-")) return false;
+      const name = arg.replace(/^--?/, "").split("=")[0] ?? "";
+      return flags.some((flag) =>
+        flag.length === 1
+          ? arg.startsWith(`-${flag}`) && !arg.startsWith("--")
+          : name === flag || (abbreviations && arg.startsWith("--") && name.length >= 3 && flag.startsWith(name)),
+      );
+    });
+  };
+
+// make and ninja take many flags, so only plain targets and -j, -k and -n pass.
+// A VAR=value argument is not a target, because `make CC=./x` runs that program.
+const NOT_TARGETS_AND_JOBS: UnsafeArgs = anyArg(/^(?!(-(j\d*|k|n)|[\w.][\w.+/-]*)$)/);
+
+// A project's test and build runners, with the flags that load code from outside it.
+// Every runner also gets PATH_LEAVES_PROJECT.
+const runner = (commands: string, ...checks: UnsafeArgs[]) => routine(commands, anyOf(PATH_LEAVES_PROJECT, ...checks));
+const viaNpx = (tools: string) => `${tools.replaceAll(" ", ",")},${forEach("npx bunx", tools)}`;
+
+const PACKAGE_MANAGER = "script-shell prefix registry dir C cwd g global userconfig";
+const BUN = `${PACKAGE_MANAGER} preload r config c env-file tsconfig-override`;
+const GO = "exec toolexec vettool overlay modfile pkgdir C o";
+const CARGO = "config config-path manifest-path target-dir artifact-dir out-dir lockfile-path Z";
+const TEST_RUNNER = [
+  "config c root rootDir setupFiles setupFilesAfterEnv globalSetup globalTeardown require",
+  "testRunner testEnvironment transform preset watchPlugins resolver snapshotResolver testSequencer",
+  "environment workspace dir outputFile",
+].join(" ");
+const LINTER =
+  "config c plugin plugin-search-dir rulesdir resolve-plugins-relative-to config-path parser output-file o";
+const TSC = "project p outDir outFile plugins declarationDir tsBuildInfoFile generateTrace";
+const PYTEST = "p c rootdir confcutdir override-ini o basetemp";
+const RSPEC = "r require I O options";
+const RUBOCOP = "r require I c config";
+const RUFF = "config config-file output-file";
+const MYPY = "config config-file python-executable";
+const BLACK = "config config-file";
+const ZIG = "build-file zig-lib-dir cache-dir global-cache-dir build-runner prefix p libc sysroot";
+const GRADLE =
+  "build-file b settings-file c project-dir p init-script I gradle-user-home g project-cache-dir include-build";
+const MAVEN = "file f settings s global-settings gs toolchains t";
+const SWIFT = "package-path scratch-path build-path cache-path config-path toolset sdk";
+const MIX = "dot-formatter";
+
 // Commands that only read, or that are a normal part of working on a project, keyed by
-// their leading words. Everything else goes to review, so this list stays short.
-// Programs that run other programs, such as awk, node or xargs, stay off it.
+// their leading words. Everything else goes to review.
+// Programs that run whatever code they are given, such as awk, node or xargs, stay off it.
+// Test and build runners, such as make, bun test and cargo build, are on it although they
+// run the project's own code, so a file written to the project can be run through them.
+// The runners get an argument check, so a flag that loads code or config from elsewhere,
+// or a path outside the project, goes to review.
 const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
   ...routine(
     "ls,pwd,cat,head,tail,wc,echo,printf,which,file,stat,du,df,true,false,cut,tr,cmp,basename,dirname,realpath,readlink,grep,egrep,fgrep,jq",
@@ -73,21 +142,32 @@ const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
   ...routine(forEach("node bun deno npm pnpm yarn python python3 ruby cargo rustc git", "--version"), anyArg(/./)),
   ...routine("node -v,bun -v,npm -v,pnpm -v,yarn -v,go version,zig version", anyArg(/./)),
 
-  ...routine(forEach("npm pnpm yarn bun", "test outdated ls list why")),
-  ...routine("bun check,bun fmt"),
-  ...routine(forEach("npm pnpm yarn bun", "install i ci"), PACKAGE_NAME),
-  ...routine(forEach("npm pnpm yarn bun", "run"), NOT_A_SCRIPT_NAME),
-  ...routine(forEach("pnpm yarn", "build lint typecheck format")),
-  ...routine(forEach("npx bunx", "tsc vitest jest eslint prettier biome")),
+  ...runner(forEach("npm pnpm yarn", "test outdated ls list why"), flagged(PACKAGE_MANAGER)),
+  ...runner(forEach("bun", "test outdated ls list why") + ",bun check,bun fmt", flagged(BUN)),
+  ...runner(forEach("npm pnpm yarn", "install i ci"), PACKAGE_NAME, flagged(PACKAGE_MANAGER)),
+  ...runner(forEach("bun", "install i ci"), PACKAGE_NAME, flagged(BUN)),
+  ...runner(forEach("npm pnpm yarn", "run"), NOT_A_SCRIPT_NAME, flagged(PACKAGE_MANAGER)),
+  ...runner(forEach("bun", "run"), NOT_A_SCRIPT_NAME, flagged(BUN)),
+  ...runner(forEach("pnpm yarn", "build lint typecheck format"), flagged(PACKAGE_MANAGER)),
 
-  ...routine("tsc,vitest,jest,eslint,prettier,biome,pytest,rspec,rubocop,ruff,mypy,black,make,ninja"),
-  ...routine(
-    "python -m pytest,python3 -m pytest,bundle exec rspec,bundle exec rubocop,rails test,gradle test,gradle build,mvn test,zig build",
-  ),
-  ...routine(forEach("cargo", "test build check clippy fmt")),
-  ...routine(forEach("go", "test build vet fmt")),
-  ...routine(forEach("swift", "test build")),
-  ...routine(forEach("mix", "test compile format")),
+  ...runner(viaNpx("tsc"), flagged(TSC)),
+  ...runner(viaNpx("vitest jest"), flagged(TEST_RUNNER)),
+  ...runner(viaNpx("eslint prettier biome"), flagged(LINTER)),
+  ...runner("pytest,python -m pytest,python3 -m pytest", flagged(PYTEST, true)),
+  ...runner("rspec,bundle exec rspec", flagged(RSPEC)),
+  ...runner("rubocop,bundle exec rubocop", flagged(RUBOCOP)),
+  ...runner("ruff", flagged(RUFF)),
+  ...runner("mypy", flagged(MYPY, true)),
+  ...runner("black", flagged(BLACK)),
+  ...runner("make,ninja", NOT_TARGETS_AND_JOBS),
+  ...runner("rails test", flagged("I")),
+  ...runner("gradle test,gradle build", flagged(GRADLE)),
+  ...runner("mvn test", flagged(MAVEN)),
+  ...runner("zig build", flagged(ZIG)),
+  ...runner(forEach("cargo", "test build check clippy fmt"), flagged(CARGO)),
+  ...runner(forEach("go", "test build vet fmt"), flagged(GO)),
+  ...runner(forEach("swift", "test build"), flagged(SWIFT)),
+  ...runner(forEach("mix", "test compile format"), flagged(MIX)),
   ...routine("docker ps,docker images,docker logs,docker compose ps,docker compose logs"),
 ]);
 
