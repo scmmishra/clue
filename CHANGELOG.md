@@ -6,6 +6,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 - `/fast` and `--fast` turn on fast mode for Opus 5.5 and Opus 5: faster replies at twice the token price. The line under the input and the footer of each reply show `fast`. Set `"fast": true` in `settings.json` to start with it on.
 - The line under the input shows what the session has cost so far, the same total as `/cost`.
+- Deny and ask shell rules now also match a command behind `time`, `env`, `timeout` or a leading `NAME=value`, a bare command (`git push` for `git push *`), multi-line commands and lines clue can't parse. Allow rules stay strict.
 
 ## 0.8.1
 

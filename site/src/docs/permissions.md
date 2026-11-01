@@ -31,7 +31,7 @@ A review sends the exact action to a review model, which checks it for prompt in
 
 ## Rules
 
-Rules in `settings.json` skip the review. The last match wins. In a shell chain, a deny on one command denies the chain, and an allow needs every command to match. A command clue can't parse never matches an allow rule. Deny rules also apply to read-only tools.
+Rules in `settings.json` skip the review. The last match wins. In a shell chain, a deny on one command denies the chain, and an allow needs every command to match. A command clue can't parse never matches an allow rule. Deny and ask rules also match a command after `time`, `env`, `timeout` and leading `NAME=value` words, but allow rules do not. A deny or ask rule that ends in ` *` also matches the bare command, so `git push *` matches `git push`. An allow rule does not. Rules can't see inside `bash -c '...'` and don't match a full path such as `/usr/bin/git push`. Deny rules also apply to read-only tools.
 
 ```json
 {

@@ -159,13 +159,16 @@ export function subjectOf(tool: Tool, input: unknown): string {
   return "";
 }
 
-const globToRegex = (pattern: string) =>
-  new RegExp(
-    `^${pattern
-      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-      .replace(/\*/g, ".*")
-      .replace(/\?/g, ".")}$`,
-  );
+// With bareCommand, a trailing " *" also matches the command alone, so `git push *` matches `git push`.
+// Only deny and ask rules use it, so an allow never covers more than it names.
+const globToRegex = (pattern: string, bareCommand = false) => {
+  const bare = bareCommand && pattern.endsWith(" *");
+  const body = (bare ? pattern.slice(0, -2) : pattern)
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  return new RegExp(`^${body}${bare ? "( .*)?" : ""}$`, "s");
+};
 
 // The last matching rule wins: a tool-wide value, then patterns in order.
 export function ruleFor(rules: PermissionRules, toolName: string, subject: string): RuleValue | null {
@@ -177,7 +180,7 @@ export function ruleFor(rules: PermissionRules, toolName: string, subject: strin
       return;
     }
     for (const [pattern, ruleValue] of Object.entries(value)) {
-      if (globToRegex(pattern).test(subject)) result = ruleValue;
+      if (globToRegex(pattern, toolName === "shell" && ruleValue !== "allow").test(subject)) result = ruleValue;
     }
   };
   apply(rules["*"]);
@@ -185,16 +188,41 @@ export function ruleFor(rules: PermissionRules, toolName: string, subject: strin
   return result;
 }
 
+const VARIABLE_ASSIGNMENT = /^[A-Za-z_]\w*=/;
+
+// The command a deny or ask rule should also test: no time, env, timeout or leading
+// NAME=value, whether or not the variable is safe.
+function withoutWrappers(words: string[]) {
+  let rest = words;
+  for (;;) {
+    let next = unwrap(rest);
+    while (VARIABLE_ASSIGNMENT.test(next[0] ?? "")) next = next.slice(1);
+    if (next.length === rest.length) return next;
+    rest = next;
+  }
+}
+
+// Deny and ask rules test the text as written and without its wrappers. Either can win.
+function restrictiveRule(rules: PermissionRules, text: string, words: string[]): RuleValue | null {
+  const forms = [ruleFor(rules, "shell", text), ruleFor(rules, "shell", withoutWrappers(words).join(" "))];
+  return forms.includes("deny") ? "deny" : forms.includes("ask") ? "ask" : null;
+}
+
 // The rule for a shell command line. Each command in a chain gets its own rule, so a deny
 // can't hide behind `cd x &&`, and an allow can't carry a second command along. A line that
-// can't be parsed can match a deny or an ask, but never an allow.
+// can't be parsed is split on its separators, so it can match a deny or an ask but never an
+// allow. Splitting ignores quotes, so a separator inside a string can over-match.
 function shellRule(rules: PermissionRules, line: string): RuleValue | null {
   const commands = parseCommand(line);
   if (!commands?.length) {
-    const rule = ruleFor(rules, "shell", line);
-    return rule === "allow" ? null : rule;
+    const pieces = line.split(/&&|\|\||[;|&\n]/).map((piece) => piece.trim());
+    const found = [line, ...pieces].map((piece) => restrictiveRule(rules, piece, piece.split(/\s+/)));
+    return found.includes("deny") ? "deny" : found.includes("ask") ? "ask" : null;
   }
-  const values = commands.map((words) => ruleFor(rules, "shell", words.join(" ")));
+  const values = commands.map((words) => {
+    const raw = ruleFor(rules, "shell", words.join(" "));
+    return restrictiveRule(rules, words.join(" "), words) ?? raw;
+  });
   if (values.includes("deny")) return "deny";
   if (values.includes("ask")) return "ask";
   return values.every((value) => value === "allow") ? "allow" : null;

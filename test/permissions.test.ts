@@ -377,3 +377,53 @@ test("rules for commands don't touch interact and stop", () => {
   expect(permissions.decide(shell, { action: "interact", id: "1" }).action).toBe("run");
   expect(permissions.decide(shell, { action: "stop", id: "1" }).action).toBe("run");
 });
+
+test("a deny rule sees through wrappers, leading variables and the bare command", () => {
+  for (const mode of ["auto", "full-access"] as const) {
+    const permissions = new Permissions(mode, gitRules, "/tmp/project");
+    for (const command of [
+      "time git push origin",
+      "env git push origin",
+      "timeout 5 git push origin",
+      "NO_COLOR=1 git push origin",
+      "PATH=/tmp git push origin",
+      "env PATH=/tmp time git push origin",
+      "git push",
+      "git status\ngit push origin",
+      "git push origin main\n--force",
+    ])
+      expect([mode, command, action(permissions, command)]).toEqual([mode, command, "deny"]);
+  }
+});
+
+test("a deny rule applies to a line that can't be parsed, wherever the command sits", () => {
+  const permissions = new Permissions("full-access", gitRules, "/tmp/project");
+  expect(action(permissions, `cd app && git push origin "$BRANCH"`)).toBe("deny");
+  expect(action(permissions, `cd app; time git push origin "$BRANCH"`)).toBe("deny");
+  expect(action(permissions, `git status | tee $LOG\nNO_COLOR=1 git push`)).toBe("deny");
+  expect(action(permissions, `git status "$X"`)).toBe("run");
+});
+
+test("an ask rule sees through wrappers", () => {
+  const permissions = new Permissions("auto", { shell: { "git push *": "ask" } } as never, "/tmp/project");
+  expect(action(permissions, "time git push origin")).toBe("ask");
+  expect(action(permissions, "git push")).toBe("ask");
+});
+
+test("a wrapper never gains an allow rule", () => {
+  const permissions = new Permissions("auto", { shell: { "git push *": "allow" } } as never, "/tmp/project");
+  expect(action(permissions, "git push origin")).toBe("run");
+  expect(action(permissions, "time git push origin")).toBe("review");
+  expect(action(permissions, `git push "$X"`)).toBe("review");
+});
+
+test("a rule ending in * matches the bare command and nothing longer-named", () => {
+  const permissions = new Permissions("full-access", gitRules, "/tmp/project");
+  expect(action(permissions, "git pushed")).toBe("run");
+});
+
+test("an allow rule ending in * does not match the bare command", () => {
+  const permissions = new Permissions("ask", { shell: { "git push *": "allow" } } as never, "/tmp/project");
+  expect(action(permissions, "git push")).toBe("ask");
+  expect(action(permissions, "git push origin")).toBe("run");
+});
