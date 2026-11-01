@@ -12,6 +12,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - `auto` mode reviews writes that reach a sensitive or outside file through a link or a different letter case, and `.mcp.json` counts as sensitive. Permission rules for file paths match `./`, absolute, relative and linked spellings of the same file.
 - A path that starts with `~/` now means your home folder in the file tools. Before, it made a folder named `~` in the project.
 - `auto` mode sends build and test commands to review when their flags load code or config from elsewhere, or point outside the project, such as `make -f`, `go test -exec`, `bun test --preload` or `prettier --write ~/file`.
+- An "always allow" answer on a command such as `time cargo publish` now covers `cargo`, not every program behind `time`, `env` or `timeout`.
 
 ## 0.8.1
 

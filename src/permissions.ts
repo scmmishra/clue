@@ -332,6 +332,19 @@ function withoutWrappers(words: string[]) {
   }
 }
 
+const WRAPPER_WORDS = new Set(["time", "timeout", "env"]);
+
+// The pattern for an "always allow" answer on one command: its program without wrappers or
+// variables, with two words for git, npm and bun. When no program can be told, such as for
+// `time`, `env -i ./x` or `timeout -s KILL 5 ./x`, the pattern is that command and nothing
+// else. Wildcard characters are dropped from it, so it can't match more than it names.
+function shellGrantPattern(words: string[]) {
+  const program = withoutWrappers(words);
+  const [name = ""] = program;
+  if (name === "" || name.startsWith("-") || WRAPPER_WORDS.has(name)) return words.join(" ").replace(/[*?]/g, "");
+  return `${program.slice(0, name === "git" || name === "npm" || name === "bun" ? 2 : 1).join(" ")} *`;
+}
+
 // Deny and ask rules test the text as written and without its wrappers. Either can win.
 function restrictiveRule(rules: PermissionRules, text: string, words: string[]): RuleValue | null {
   const forms = [ruleFor(rules, "shell", text), ruleFor(rules, "shell", withoutWrappers(words).join(" "))];
@@ -404,22 +417,31 @@ export class Permissions {
   // The pattern an "always allow" answer saves: the command's program, or the whole tool.
   static grantPattern(tool: Tool, subject: string) {
     if (tool.name === "shell") {
-      const words = subject.trim().split(/\s+/);
-      return words[0] === "git" || words[0] === "npm" || words[0] === "bun"
-        ? `${words.slice(0, 2).join(" ")} *`
-        : `${words[0]} *`;
+      const words =
+        parseCommand(subject)?.[0] ??
+        subject
+          .split(/&&|\|\||[;|&\n]/)[0]!
+          .trim()
+          .split(/\s+/);
+      return shellGrantPattern(words);
     }
     if (tool.name === "mcp_call") return subject;
     return "*";
   }
 
-  // An "always allow" answer must cover every command in a chain.
+  // An "always allow" answer must cover every command in a chain. A command also counts
+  // without its wrappers, so a grant for cargo covers `time cargo publish`. A variable
+  // that unwrap keeps, such as PATH=/tmp, stays in the text, so the grant doesn't match.
   private granted(toolName: string, subject: string, runsCommand: boolean) {
     const patterns = this.grants.get(toolName) ?? [];
     const matches = (text: string) => patterns.some((pattern) => globToRegex(pattern).test(text));
     if (!runsCommand) return matches(subject);
     const commands = parseCommand(subject);
-    return commands !== null && commands.length > 0 && commands.every((words) => matches(words.join(" ")));
+    return (
+      commands !== null &&
+      commands.length > 0 &&
+      commands.every((words) => matches(words.join(" ")) || matches(unwrap(words).join(" ")))
+    );
   }
 
   decide(tool: Tool, input: unknown): Decision {
