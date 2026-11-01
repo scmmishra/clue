@@ -140,3 +140,46 @@ test("a shell with no support runs commands as before", async () => {
   expect(await run("echo plain")).toContain("plain");
   expect(existsSync(join(clue, "shell-snapshot.sh"))).toBe(false);
 }, 20_000);
+
+test.each(shells)(
+  "%s commands get the environment of this launch, not the one that filled the cache",
+  async (shell, file) => {
+    const { run } = setup(shell, { [file]: "export FROM_RC=yes\n" });
+    await run("true", { CLUE_TEST_PROFILE: "prod" });
+    expect(await run('echo "profile=[$CLUE_TEST_PROFILE] rc=[$FROM_RC]"', { CLUE_TEST_PROFILE: "dev" })).toContain(
+      "profile=[dev] rc=[yes]",
+    );
+    expect(await run('echo "profile=[$CLUE_TEST_PROFILE]"')).toContain("profile=[]");
+  },
+  30_000,
+);
+
+test.each(shells)(
+  "%s commands keep what startup files set, even if the launch that filled the cache already had it",
+  async (shell, file) => {
+    const { run } = setup(shell, { [file]: "export FROM_RC=yes\nexport PATH=/from/rc:$PATH\n" });
+    await run("true", { FROM_RC: "yes", PATH: `/from/rc:${process.env.PATH}` });
+    const output = await run('echo "rc=[$FROM_RC] path=$PATH"');
+    expect(output).toContain("rc=[yes]");
+    expect(output).toContain("/from/rc");
+  },
+  30_000,
+);
+
+test.each(shells)(
+  "%s keeps this launch's PATH first and adds what the startup files put on it",
+  async (shell, file) => {
+    const { run } = setup(shell, { [file]: "export PATH=/from/rc:$PATH\n" });
+    await run("true");
+    const output = await run('echo "path=$PATH"', { PATH: `/from/launch:${process.env.PATH}` });
+    expect(output.indexOf("/from/launch")).toBeGreaterThan(-1);
+    expect(output.indexOf("/from/rc")).toBeGreaterThan(output.indexOf("/from/launch"));
+  },
+  30_000,
+);
+
+test("the capture doesn't depend on the launch's variables", async () => {
+  const { clue, run } = setup("/bin/bash", { ".bash_profile": "export FROM_RC=yes\n" });
+  await run("true", { CLUE_TEST_SECRET: "from-the-launch" });
+  expect(readFileSync(join(clue, "shell-env.json"), "utf8")).not.toContain("from-the-launch");
+}, 20_000);

@@ -4,9 +4,9 @@ import { basename, join } from "node:path";
 import { CLUE_HOME, ensureDir } from "../config";
 import { checkFields, fieldOf, type Tool } from "./types";
 
-// Commands run in the user's shell with the environment, aliases and functions their
-// startup files produce. Startup files run once. The result is cached until one changes,
-// so a slow .zshrc doesn't slow every command.
+// Commands run in the user's shell with this launch's environment, plus the variables, aliases
+// and functions their startup files add. Startup files run once. The result is cached until one
+// changes, so a slow .zshrc doesn't slow every command.
 
 const SHELL = process.env.SHELL || "/bin/sh";
 const SHELL_NAME = basename(SHELL);
@@ -69,18 +69,37 @@ function startupStamp(zdotdir?: string) {
 
 const shellCode = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
 
-type ShellState = { env: Record<string, string>; hasSnapshot: boolean };
+// `startup` is what the startup files give a shell from CAPTURE_BASE. What this launch inherited
+// stays out of it, because the next launch can differ, such as with another AWS_PROFILE.
+type ShellState = { startup: Record<string, string>; hasSnapshot: boolean };
+
+const CAPTURE_KEEP = ["HOME", "USER", "LOGNAME", "SHELL", "TERM", "ZDOTDIR", "TMPDIR", "LANG"];
+const CAPTURE_PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+
+// The same every launch, so the cached result doesn't depend on which launch filled it.
+const captureBase = () => ({
+  ...Object.fromEntries(CAPTURE_KEEP.flatMap((key) => (process.env[key] ? [[key, process.env[key]]] : []))),
+  PATH: CAPTURE_PATH,
+});
+
+// This launch wins. On PATH, its folders come first, then the ones the startup files add.
+function commandEnv(startup: Record<string, string>) {
+  const env = { ...startup, ...process.env } as Record<string, string>;
+  const folders = [process.env.PATH, startup.PATH].flatMap((path) => path?.split(":") ?? []);
+  env.PATH = [...new Set(folders)].join(":");
+  return env;
+}
 
 async function captureState(): Promise<ShellState> {
   try {
     // clue wrote this file itself, in the shape below.
     const cached = JSON.parse(readFileSync(ENV_CACHE, "utf8")) as Partial<ShellState> & { stamp?: string };
     if (
-      cached.env &&
-      cached.stamp === startupStamp(cached.env.ZDOTDIR) &&
+      cached.startup &&
+      cached.stamp === startupStamp(cached.startup.ZDOTDIR) &&
       (!cached.hasSnapshot || existsSync(SNAPSHOT))
     ) {
-      return { env: cached.env, hasSnapshot: Boolean(cached.hasSnapshot) };
+      return { startup: cached.startup, hasSnapshot: Boolean(cached.hasSnapshot) };
     }
   } catch {}
   try {
@@ -90,6 +109,7 @@ async function captureState(): Promise<ShellState> {
       stdout: "pipe",
       stderr: "ignore",
       stdin: "ignore",
+      env: captureBase(),
       // An interactive shell takes the terminal's foreground while it starts. Without its own
       // session it would do that to clue's terminal, and a key pressed then would suspend clue.
       detached: true,
@@ -98,21 +118,21 @@ async function captureState(): Promise<ShellState> {
     const text = await new Response(proc.stdout).text();
     clearTimeout(timer);
     const [, body = "", definitions = ""] = text.split(marker);
-    const env: Record<string, string> = {};
+    const startup: Record<string, string> = {};
     for (const entry of body.split("\0")) {
       const split = entry.indexOf("=");
-      if (split > 0) env[entry.slice(0, split)] = entry.slice(split + 1);
+      if (split > 0) startup[entry.slice(0, split)] = entry.slice(split + 1);
     }
-    if (Object.keys(env).length > 3) {
+    if (Object.keys(startup).length > 3) {
       ensureDir(CLUE_HOME);
       const hasSnapshot = Boolean(dump) && definitions.trim().length > 0 && definitions.length <= MAX_SNAPSHOT_BYTES;
       if (hasSnapshot) writeFileSync(SNAPSHOT, definitions, { mode: 0o600 });
-      const stamp = startupStamp(env.ZDOTDIR);
-      writeFileSync(ENV_CACHE, JSON.stringify({ stamp, env, hasSnapshot }), { mode: 0o600 });
-      return { env, hasSnapshot };
+      const stamp = startupStamp(startup.ZDOTDIR);
+      writeFileSync(ENV_CACHE, JSON.stringify({ stamp, startup, hasSnapshot }), { mode: 0o600 });
+      return { startup, hasSnapshot };
     }
   } catch {}
-  return { env: { ...process.env } as Record<string, string>, hasSnapshot: false };
+  return { startup: {}, hasSnapshot: false };
 }
 
 // Starts capturing the shell environment in the background.
@@ -152,9 +172,9 @@ function plain(chunk: string) {
 // `terminal: { ... }` option makes every spawn wait about 16 ms for the PTY to
 // close; a Terminal object costs 0.4 ms to build and spawns as fast as pipes.
 async function start(command: string, cwd: string): Promise<Running> {
-  const { env: shellEnv, hasSnapshot } = await warmShellEnv();
+  const { startup, hasSnapshot } = await warmShellEnv();
   const env = {
-    ...shellEnv,
+    ...commandEnv(startup),
     AI_AGENT: "clue",
     PAGER: "cat",
     GIT_PAGER: "cat",
