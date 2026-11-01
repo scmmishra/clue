@@ -166,3 +166,17 @@ test("clue reads the review setting from settings.json", async () => {
   expect(reviewers.claudeCalls.map((call) => call.model)).toEqual(["claude-sonnet-5-5"]);
   expect(reviewers.jevCalls).toEqual([]);
 }, 20_000);
+
+test("the reviewer sees the input and the command of the process it goes to", async () => {
+  await reviewAction(
+    "shell",
+    { action: "interact", id: "3", input: "git push origin main\n" },
+    "ship it",
+    { provider: "anthropic" } as never,
+    new AbortController().signal,
+    "bash",
+  );
+  const state = JSON.parse(reviewers.claudeStates[0]);
+  expect(state.pending_action_arguments).toContain("git push origin main");
+  expect(state.process_command).toBe("bash");
+});

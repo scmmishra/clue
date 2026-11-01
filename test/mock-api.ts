@@ -26,12 +26,14 @@ export const reviewers = {
   jev: "clear",
   claudeCalls: [] as { model: string; effort?: string }[],
   jevCalls: [] as { model: string }[],
+  // The state each Claude reviewer received, as the JSON text of the user message.
+  claudeStates: [] as string[],
 };
 
 export const resetReviewers = () => {
   reviewers.failing.clear();
   reviewers.decision = reviewers.jev = "clear";
-  reviewers.claudeCalls.length = reviewers.jevCalls.length = 0;
+  reviewers.claudeCalls.length = reviewers.jevCalls.length = reviewers.claudeStates.length = 0;
 };
 
 // MOCK_DELAY_MS spaces the events out, so tests can watch the live view.
@@ -131,6 +133,8 @@ export function startMockApi(port = 0, delay = DELAY) {
       // A review is the one request that doesn't stream and asks for a reply.
       if (!body.stream && body.max_tokens !== 0) {
         reviewers.claudeCalls.push({ model: body.model!, effort: body.output_config?.effort });
+        const content = body.messages?.[0]?.content;
+        reviewers.claudeStates.push(typeof content === "string" ? content : "");
         if (reviewers.failing.has(body.model!))
           return Response.json(
             { type: "error", error: { type: "invalid_request_error", message: "reviewer is down" } },

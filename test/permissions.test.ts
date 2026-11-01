@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { commandIsRoutine, Permissions } from "../src/permissions";
+import { approvalQuestion, commandIsRoutine, Permissions } from "../src/permissions";
 import { parseCommand } from "../src/shell-command";
 import { readFile } from "../src/tools/files";
 import { shell } from "../src/tools/shell";
@@ -426,4 +426,52 @@ test("an allow rule ending in * does not match the bare command", () => {
   const permissions = new Permissions("ask", { shell: { "git push *": "allow" } } as never, "/tmp/project");
   expect(action(permissions, "git push")).toBe("ask");
   expect(action(permissions, "git push origin")).toBe("run");
+});
+
+const send = (input: string) => ({ action: "interact", id: "3", input });
+
+test("input sent to a process is reviewed in auto mode and asked in ask mode", () => {
+  expect(
+    new Permissions("auto", {} as never, "/tmp/project").decide(shell, send("git push origin main\n")).action,
+  ).toBe("review");
+  expect(new Permissions("ask", {} as never, "/tmp/project").decide(shell, send("ls\n")).action).toBe("ask");
+  expect(new Permissions("full-access", {} as never, "/tmp/project").decide(shell, send("ls\n")).action).toBe("run");
+});
+
+test("input to a process is never a routine command", () => {
+  expect(new Permissions("auto", {} as never, "/tmp/project").decide(shell, send("ls")).action).toBe("review");
+});
+
+test("a deny rule matches the input sent to a process", () => {
+  for (const mode of ["auto", "ask", "full-access"] as const) {
+    const permissions = new Permissions(mode, gitRules, "/tmp/project");
+    expect(permissions.decide(shell, send("git push origin main\n")).action).toBe("deny");
+    expect(permissions.decide(shell, send("time git push\n")).action).toBe("deny");
+  }
+});
+
+test("an ask rule matches the input sent to a process", () => {
+  const permissions = new Permissions("auto", { shell: { "git push *": "ask" } } as never, "/tmp/project");
+  expect(permissions.decide(shell, send("git push origin\n")).action).toBe("ask");
+});
+
+test("an allow rule or a grant never lets input run", () => {
+  const allowing = new Permissions("auto", { shell: { "*": "allow", "interact *": "allow" } } as never, "/tmp/project");
+  expect(allowing.decide(shell, send("ls\n")).action).toBe("review");
+  const granted = new Permissions("auto", {} as never, "/tmp/project");
+  granted.grant("shell", "*");
+  granted.grant("shell", "interact *");
+  expect(granted.decide(shell, send("ls\n")).action).toBe("review");
+});
+
+test("an interact call with empty input still runs", () => {
+  const permissions = new Permissions("auto", {} as never, "/tmp/project");
+  expect(permissions.decide(shell, { action: "interact", id: "3", input: "" }).action).toBe("run");
+});
+
+test("the approval question shows the input on one line, cut to a sensible length", () => {
+  expect(approvalQuestion(shell, send("git push origin main\n"))).toBe('Send "git push origin main" to process 3?');
+  expect(approvalQuestion(shell, send("a\nb"))).toBe('Send "a b" to process 3?');
+  expect(approvalQuestion(shell, send("x".repeat(500)))).toBe(`Send "${"x".repeat(80)}..." to process 3?`);
+  expect(approvalQuestion(shell, { action: "interact", id: "3" })).toBe("Run interact 3?");
 });

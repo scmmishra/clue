@@ -12,8 +12,9 @@ import {
   type Usage,
 } from "../session";
 import { findTool } from "../tools";
+import { processCommand } from "../tools/shell";
 import type { Skill } from "../tools/skills";
-import { clip, type Question, type ToolContext, type ToolOutput } from "../tools/types";
+import { clip, fieldOf, type Question, type ToolContext, type ToolOutput } from "../tools/types";
 import { buildContext } from "./context";
 import { msSince, now } from "../clock";
 import { COMPACTION_TRIGGER_TOKENS, cost, fastEnabled } from "./models";
@@ -452,7 +453,11 @@ export class Agent {
     let note: string | undefined;
     if (decision.action === "review") {
       events.review(use.id, "reviewing");
-      const verdict = await reviewAction(tool.name, input, prompt, this.options.settings.review, signal);
+      const sentTo =
+        tool.name === "shell" && fieldOf(input, "action") === "interact"
+          ? processCommand(fieldOf(input, "id"))
+          : undefined;
+      const verdict = await reviewAction(tool.name, input, prompt, this.options.settings.review, signal, sentTo);
       if (!verdict.approved) {
         events.review(use.id, "held", `${verdict.reviewer}: ${verdict.reason ?? "held"}`);
         if (!this.options.interactive || signal.aborted) {

@@ -20,6 +20,7 @@ clue runs these directly:
 
 It has these reviewed first:
 
+- Input that the model sends to a running shell process. It can be any command, so clue treats it as an unrecognized command. Reading a process's output and stopping it run without review.
 - Any other shell command, including one with a redirect to a file, a substitution, a variable or a background `&`.
 - Writing files outside the project.
 - Changing sensitive configuration.
@@ -31,7 +32,7 @@ A review sends the exact action to a review model, which checks it for prompt in
 
 ## Rules
 
-Rules in `settings.json` skip the review. The last match wins. In a shell chain, a deny on one command denies the chain, and an allow needs every command to match. A command clue can't parse never matches an allow rule. Deny and ask rules also match a command after `time`, `env`, `timeout` and leading `NAME=value` words, but allow rules do not. A deny or ask rule that ends in ` *` also matches the bare command, so `git push *` matches `git push`. An allow rule does not. Rules can't see inside `bash -c '...'` and don't match a full path such as `/usr/bin/git push`. Deny rules also apply to read-only tools.
+Rules in `settings.json` skip the review. The last match wins. In a shell chain, a deny on one command denies the chain, and an allow needs every command to match. A command clue can't parse never matches an allow rule. Deny and ask rules also match a command after `time`, `env`, `timeout` and leading `NAME=value` words, but allow rules do not. A deny or ask rule that ends in ` *` also matches the bare command, so `git push *` matches `git push`. An allow rule does not. Rules can't see inside `bash -c '...'` and don't match a full path such as `/usr/bin/git push`. Deny rules also apply to read-only tools. Deny and ask rules also match input sent to a running process. Allow rules and "always allow" answers never cover that input.
 
 ```json
 {

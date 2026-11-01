@@ -228,12 +228,22 @@ function shellRule(rules: PermissionRules, line: string): RuleValue | null {
   return values.every((value) => value === "allow") ? "allow" : null;
 }
 
+// The text an `interact` call writes to a live process, or "" when it only reads output.
+const inputOf = (tool: Tool, input: unknown) =>
+  tool.name === "shell" && fieldOf(input, "action") === "interact" ? String(fieldOf(input, "input") ?? "") : "";
+
+const SHOWN_INPUT_LENGTH = 80;
+
 // The question an approval prompt asks, such as "Run git push origin main?".
 export function approvalQuestion(tool: Tool, input: unknown) {
   const subject = subjectOf(tool, input);
   switch (tool.name) {
-    case "shell":
-      return `Run ${subject}?`;
+    case "shell": {
+      const sent = inputOf(tool, input).replace(/\s+/g, " ").trim();
+      if (!sent) return `Run ${subject}?`;
+      const shown = sent.length > SHOWN_INPUT_LENGTH ? `${sent.slice(0, SHOWN_INPUT_LENGTH)}...` : sent;
+      return `Send "${shown}" to process ${String(fieldOf(input, "id"))}?`;
+    }
     case "edit_file":
       return `Edit ${subject}?`;
     case "write_file":
@@ -286,11 +296,20 @@ export class Permissions {
     const subject = subjectOf(tool, input);
     const action = fieldOf(input, "action");
     const runsCommand = tool.name === "shell" && (action ?? "run") === "run";
-    const rule = runsCommand ? shellRule(this.rules, subject) : ruleFor(this.rules, tool.name, subject);
+    // Input to a live process can be any command. Deny and ask rules see it, but allow rules and grants never cover it.
+    const sends = inputOf(tool, input) !== "";
+    const sentRule = sends ? shellRule(this.rules, inputOf(tool, input).replace(/[\r\n]+$/, "")) : null;
+    const rule = runsCommand
+      ? shellRule(this.rules, subject)
+      : sends
+        ? sentRule === "allow"
+          ? null
+          : sentRule
+        : ruleFor(this.rules, tool.name, subject);
     if (rule === "deny") return { action: "deny", subject, reason: "a deny rule in ~/.clue/settings.json" };
     if (tool.readOnly) return { action: "run", subject };
     if (rule === "allow") return { action: "run", subject };
-    if (this.granted(tool.name, subject, runsCommand)) return { action: "run", subject };
+    if (!sends && this.granted(tool.name, subject, runsCommand)) return { action: "run", subject };
     if (this.mode === "full-access") return { action: "run", subject };
     if (rule === "ask" || this.mode === "ask") return { action: "ask", subject };
     // auto mode
@@ -304,6 +323,7 @@ export class Permissions {
       };
     }
     if (tool.name === "shell") {
+      if (sends) return { action: "review", subject, reason: "input to a running process" };
       if (action === "interact" || action === "stop") return { action: "run", subject };
       return commandIsRoutine(subject, this.cwd)
         ? { action: "run", subject }
@@ -419,12 +439,15 @@ export async function reviewAction(
   userRequest: string,
   review: ReviewSetting | undefined,
   signal: AbortSignal,
+  // For input to a running shell process: the command that started it.
+  processCommand?: string,
 ): Promise<Review> {
   const state = {
     review_policy: POLICY,
     user_request: userRequest.slice(0, 4000),
     pending_action_tool: toolName,
     pending_action_arguments: JSON.stringify(input).slice(0, 8000),
+    ...(processCommand === undefined ? {} : { process_command: processCommand.slice(0, 2000) }),
   };
   const ask = ({ provider, model }: Reviewer) => {
     const timeout = AbortSignal.any([signal, AbortSignal.timeout(REVIEW_TIMEOUT_MS)]);

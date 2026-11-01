@@ -133,6 +133,9 @@ type Running = {
 };
 
 const processes = new Map<string, Running>();
+
+// The command that started a process, for the reviewer of input sent to it.
+export const processCommand = (id: unknown) => processes.get(String(id))?.command;
 let nextId = 1;
 
 // Terminal output, as plain text: no escape codes, and progress bars redrawn
