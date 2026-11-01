@@ -12,6 +12,8 @@ type ModelInfo = {
   dynamicWebTools: boolean;
   // Server-side fallback on refusal.
   fallbacks: boolean;
+  // speed: "fast", at FAST_PRICE_MULTIPLIER times the token prices.
+  fastMode: boolean;
 };
 
 const MODELS: Record<string, ModelInfo> = {
@@ -24,6 +26,7 @@ const MODELS: Record<string, ModelInfo> = {
     progressNotes: true,
     dynamicWebTools: true,
     fallbacks: true,
+    fastMode: false,
   },
   "claude-fable-5": {
     label: "fable 5",
@@ -34,6 +37,7 @@ const MODELS: Record<string, ModelInfo> = {
     progressNotes: true,
     dynamicWebTools: true,
     fallbacks: false,
+    fastMode: false,
   },
   "claude-opus-5-5": {
     label: "opus 5.5",
@@ -44,6 +48,7 @@ const MODELS: Record<string, ModelInfo> = {
     progressNotes: true,
     dynamicWebTools: true,
     fallbacks: true,
+    fastMode: true,
   },
   "claude-opus-5": {
     label: "opus 5",
@@ -54,6 +59,7 @@ const MODELS: Record<string, ModelInfo> = {
     progressNotes: false,
     dynamicWebTools: true,
     fallbacks: true,
+    fastMode: true,
   },
   "claude-sonnet-5-5": {
     label: "sonnet 5.5",
@@ -64,6 +70,7 @@ const MODELS: Record<string, ModelInfo> = {
     progressNotes: true,
     dynamicWebTools: true,
     fallbacks: true,
+    fastMode: false,
   },
   "claude-sonnet-5": {
     label: "sonnet 5",
@@ -74,6 +81,7 @@ const MODELS: Record<string, ModelInfo> = {
     progressNotes: false,
     dynamicWebTools: true,
     fallbacks: false,
+    fastMode: false,
   },
   "claude-haiku-5-5": {
     label: "haiku 5.5",
@@ -84,6 +92,7 @@ const MODELS: Record<string, ModelInfo> = {
     progressNotes: false,
     dynamicWebTools: false,
     fallbacks: false,
+    fastMode: false,
   },
 };
 
@@ -97,9 +106,17 @@ export const COMPACTION_TRIGGER_TOKENS = 150_000;
 // Cost of one web search, in dollars.
 const WEB_SEARCH_COST = 0.01;
 
+const FAST_PRICE_MULTIPLIER = 2;
+
 export const modelInfo = (id: string): ModelInfo | null => MODELS[id] ?? null;
 
 export const modelLabel = (id: string) => MODELS[id]?.label ?? id.replace(/^claude-/, "");
+
+export const FAST_MODELS = KNOWN_MODELS.filter((id) => MODELS[id].fastMode).map(modelLabel);
+
+// Fast mode is on and this model has it. The setting alone says nothing about a model without it.
+export const fastEnabled = ({ model, fast }: { model: string; fast: boolean }) =>
+  fast && MODELS[model]?.fastMode === true;
 
 // Accepts short names like "opus" or "sonnet-5.5" as well as full model ids.
 export function resolveModel(name: string) {
@@ -113,15 +130,13 @@ export function resolveModel(name: string) {
 
 export type UsageCounts = { input: number; output: number; cacheRead: number; cacheWrite: number; webSearches: number };
 
-export function cost(model: string, usage: UsageCounts): number | null {
+export function cost(model: string, usage: UsageCounts, fast = false): number | null {
   const info = MODELS[model];
   if (!info) return null;
-  return (
-    (usage.input * info.input +
-      usage.output * info.output +
-      usage.cacheRead * info.cacheRead +
-      usage.cacheWrite * info.cacheWrite) /
-      1_000_000 +
-    usage.webSearches * WEB_SEARCH_COST
-  );
+  const tokens =
+    usage.input * info.input +
+    usage.output * info.output +
+    usage.cacheRead * info.cacheRead +
+    usage.cacheWrite * info.cacheWrite;
+  return (tokens * (fast ? FAST_PRICE_MULTIPLIER : 1)) / 1_000_000 + usage.webSearches * WEB_SEARCH_COST;
 }

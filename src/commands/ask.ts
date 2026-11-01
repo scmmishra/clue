@@ -42,7 +42,7 @@ export async function runAsk(prompt: string, settings: Settings, session: Sessio
   const agent = new Agent({
     cwd: session.cwd,
     session,
-    settings: { model: settings.model, effort: settings.effort, review: settings.review },
+    settings: { model: settings.model, effort: settings.effort, fast: settings.fast, review: settings.review },
     permissions: new Permissions(settings.permission_mode, settings.permission, session.cwd),
     mcp,
     skills: () => discoverSkills(session.cwd),

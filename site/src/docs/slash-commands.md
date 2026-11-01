@@ -6,6 +6,7 @@ title: Slash commands
 | --- | --- |
 | `/help` | Lists commands and keys. |
 | `/model`, `/effort` | Change the model or effort. |
+| `/fast` | Turns [fast mode](/docs/models#fast-mode) on or off. |
 | `/permissions` | Changes the permission mode. |
 | `/resume`, `/new` | Open a past session, or start a new one. |
 | `/rename` | Shows or changes the session name. |
@@ -13,5 +14,5 @@ title: Slash commands
 | `/mcp` | Manages MCP servers. |
 | `/compact` | Replaces the conversation with a summary. See [Compaction](/docs/compaction). |
 | `/undo` | Restores the files changed in the last turn that changed files. `/undo force` overwrites later changes to them. Shell commands aren't undone, and the conversation stays as it is. |
-| `/usage`, `/cost` | Show how full the context is, and this session's cost and tokens. |
+| `/usage`, `/cost` | Show how full the context is, and this session's cost and tokens. The line under the input always shows the cost. |
 | `/exit` | Quits clue. |

@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
+import { mkdtempSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { contextTokens } from "../src/agent/loop";
-import type { TurnRecord } from "../src/session";
+import { Session, type TurnRecord } from "../src/session";
 import { usageReport } from "../src/ui/usage";
 
 const turn = (overrides: Partial<TurnRecord> = {}): TurnRecord => ({
@@ -90,4 +93,14 @@ test("after a compaction, context size comes from the last message entry", () =>
     ],
   };
   expect(contextTokens(usage as never)).toBe(5000);
+});
+
+test("the report's cost is the session's total", () => {
+  const session = Session.create(realpathSync(mkdtempSync(join(tmpdir(), "clue-usage-"))));
+  session.turns.push(turn({ cost: 0.25 }), turn({ cost: null }));
+  session.rewound.push(turn({ cost: 0.5 }));
+  session.compactions.push({ cost: 0.5, usage: turn().usage, model: "claude-opus-5-5", at: 0 } as never);
+  const text = Bun.stripANSI(usageReport(session.turns, session.compactions, session.rewound).join("\n"));
+  expect(session.spent).toBe(1.25);
+  expect(text).toContain("$1.25 across 2 prompts");
 });

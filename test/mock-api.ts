@@ -7,9 +7,14 @@ type Body = {
   max_tokens: number;
   stream?: boolean;
   output_config?: { effort?: string };
+  speed?: string;
+  betas?: string[];
 };
 
 export const requests: Body[] = [];
+
+// Fast requests whose first message holds this text get a 400. An empty string matches every fast request.
+export const fastMode = { rejectedFor: null as string | null };
 
 // How the reviewers answer. Tests change this to force each failure.
 export const reviewers = {
@@ -138,7 +143,18 @@ export function startMockApi(port = 0, delay = DELAY) {
           ),
         );
       }
+      // The SDK sends betas as a header.
+      body.betas = request.headers.get("anthropic-beta")?.split(",") ?? [];
       requests.push(body);
+      if (
+        body.speed === "fast" &&
+        fastMode.rejectedFor !== null &&
+        JSON.stringify(body.messages[0]).includes(fastMode.rejectedFor)
+      )
+        return Response.json(
+          { type: "error", error: { type: "invalid_request_error", message: "speed: fast mode isn't enabled" } },
+          { status: 400 },
+        );
       const last = body.messages.at(-1);
       const hasToolResult =
         Array.isArray(last?.content) &&
@@ -150,14 +166,17 @@ export function startMockApi(port = 0, delay = DELAY) {
       if (!hasToolResult && !JSON.stringify(body.messages).includes("Continue with the task.")) {
         const wantsPush = promptText.includes("push");
         const wantsWrite = promptText.includes("create the note");
+        const wantsSubagent = promptText.includes("delegate this");
         const input = JSON.stringify(
           wantsPush
             ? { command: "deploy-preview --dry-run" }
             : wantsWrite
               ? { path: "note.txt", content: "from clue" }
-              : { path: "package.json" },
+              : wantsSubagent
+                ? { task: "the child task", description: "look around" }
+                : { path: "package.json" },
         );
-        const toolName = wantsPush ? "shell" : wantsWrite ? "write_file" : "read_file";
+        const toolName = wantsPush ? "shell" : wantsWrite ? "write_file" : wantsSubagent ? "subagent" : "read_file";
         return sse(
           [
             { type: "message_start", message: message([], "") },

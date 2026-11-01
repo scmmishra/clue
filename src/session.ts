@@ -48,6 +48,8 @@ export type TurnRecord = {
   stop: string;
   // Tokens in the last request. Sessions from before 0.7 don't have it.
   context?: number;
+  // Claude answered in fast mode, at the fast price.
+  fast?: boolean;
 };
 
 // One /compact: the summary that replaces the messages, and what the summary cost.
@@ -58,6 +60,10 @@ export type CompactionRecord = {
   model: string;
   at: number;
 };
+
+// Everything a session paid for: its turns, turns dropped by a rewind, and compactions.
+export const totalCost = (turns: TurnRecord[], rewound: TurnRecord[], compactions: CompactionRecord[]) =>
+  [...turns, ...rewound, ...compactions].reduce((sum, { cost }) => sum + (cost ?? 0), 0);
 
 export type SessionRecord =
   | { t: "session"; id: string; cwd: string; created: number; version: string }
@@ -282,6 +288,11 @@ export class Session {
     if (this.ephemeral || existsSync(this.file)) return this.append({ t: "name", name });
     this.name = name;
     this.heldName = true;
+  }
+
+  // What the session has cost so far. /usage reports the same total.
+  get spent() {
+    return totalCost(this.turns, this.rewound, this.compactions);
   }
 
   get isEmpty() {

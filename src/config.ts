@@ -40,6 +40,7 @@ export type ReviewSetting = { provider?: string; model?: string };
 export type Settings = {
   model: string;
   effort: Effort;
+  fast: boolean;
   permission_mode: PermissionMode;
   permission: PermissionRules;
   review?: ReviewSetting;
@@ -49,6 +50,7 @@ export type Settings = {
 const DEFAULTS: Settings = {
   model: "claude-opus-5-5",
   effort: "medium",
+  fast: false,
   permission_mode: "auto",
   permission: {},
   bell: true,
@@ -95,12 +97,15 @@ const oneOf = (options: readonly string[]) => (value: unknown) =>
 const aString = (value: unknown) => (typeof value === "string" ? null : "must be a string");
 const anObject = (value: unknown) => (isObject(value) ? null : "must be an object");
 
+const aBoolean = (value: unknown) => (typeof value === "boolean" ? null : "must be true or false");
+
 const SETTING_CHECKS = new Map<string, (value: unknown) => string | null>([
   ["model", aString],
   ["effort", oneOf(EFFORTS)],
+  ["fast", aBoolean],
   ["permission_mode", oneOf(PERMISSION_MODES)],
   ["permission", anObject],
-  ["bell", (value) => (typeof value === "boolean" ? null : "must be true or false")],
+  ["bell", aBoolean],
   ["review", anObject],
   ["review.provider", oneOf(REVIEW_PROVIDERS)],
   ["review.model", aString],
