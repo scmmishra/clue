@@ -8,6 +8,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - The line under the input shows what the session has cost so far, the same total as `/cost`.
 - Deny and ask shell rules now also match a command behind `time`, `env`, `timeout` or a leading `NAME=value`, a bare command (`git push` for `git push *`), multi-line commands and lines clue can't parse. Allow rules stay strict.
 - In `auto` mode, input that Claude sends to a running shell process now goes to review, deny and ask rules match it, and the approval prompt shows it.
+- clue asks you before running an action too long for the reviewer to read in full. Before, the reviewer read only the first part and its approval covered the rest.
 
 ## 0.8.1
 

@@ -347,13 +347,15 @@ const {
   policy: POLICY,
 } = reviewPrompt as Record<"instructions" | "clear" | "caution" | "policy", string>;
 
-export type Review = { approved: boolean; reviewer: string; reason?: string };
+// `unreviewed` marks a hold that happened without any model reading the action.
+export type Review = { approved: boolean; reviewer: string; reason?: string; unreviewed?: true };
 export type Reviewer = { provider: "anthropic" | "openrouter"; model: string };
 type Verdict = Pick<Review, "approved" | "reason">;
 
 const JEV = /^(?:typesafe\/)?(jev(?:-[\d.]+)?)$/;
 const LATEST_JEV = "typesafe/jev-1.14";
 const REVIEW_TIMEOUT_MS = 20_000;
+const MAX_REVIEWED_ACTION_CHARS = 8000;
 
 // Throws when the setting can't work, which counts as a broken reviewer.
 export function chooseReviewer(review: ReviewSetting = {}, openrouterKey?: string): Reviewer {
@@ -442,11 +444,21 @@ export async function reviewAction(
   // For input to a running shell process: the command that started it.
   processCommand?: string,
 ): Promise<Review> {
+  const action = JSON.stringify(input);
+  // Approval covers the whole action, so the reviewer must be able to read all of it.
+  if (action.length > MAX_REVIEWED_ACTION_CHARS) {
+    return {
+      approved: false,
+      reviewer: "clue",
+      reason: "the action is too long for a reviewer to read in full",
+      unreviewed: true,
+    };
+  }
   const state = {
     review_policy: POLICY,
     user_request: userRequest.slice(0, 4000),
     pending_action_tool: toolName,
-    pending_action_arguments: JSON.stringify(input).slice(0, 8000),
+    pending_action_arguments: action,
     ...(processCommand === undefined ? {} : { process_command: processCommand.slice(0, 2000) }),
   };
   const ask = ({ provider, model }: Reviewer) => {

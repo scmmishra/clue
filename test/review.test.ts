@@ -180,3 +180,33 @@ test("the reviewer sees the input and the command of the process it goes to", as
   expect(state.pending_action_arguments).toContain("git push origin main");
   expect(state.process_command).toBe("bash");
 });
+
+test("an action too long to read in full is held without asking any reviewer", async () => {
+  const long = { command: `deploy ${"x".repeat(9000)}` };
+  const result = await reviewAction(
+    "shell",
+    long,
+    "ship it",
+    { provider: "anthropic" } as never,
+    new AbortController().signal,
+  );
+  expect(result.approved).toBe(false);
+  expect(result.reviewer).toBe("clue");
+  expect(result.reason).toContain("too long");
+  expect(reviewers.claudeCalls).toEqual([]);
+  expect(reviewers.jevCalls).toEqual([]);
+});
+
+test("an action just under the limit is sent whole", async () => {
+  const overhead = JSON.stringify({ command: "" }).length;
+  const command = "x".repeat(8000 - overhead);
+  const result = await reviewAction(
+    "shell",
+    { command },
+    "ship it",
+    { provider: "anthropic" } as never,
+    new AbortController().signal,
+  );
+  expect(result.approved).toBe(true);
+  expect(JSON.parse(reviewers.claudeStates[0]).pending_action_arguments).toBe(JSON.stringify({ command }));
+});

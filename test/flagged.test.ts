@@ -89,3 +89,18 @@ test("clue ask still holds a flagged action, since no one can answer", async () 
   await proc.exited;
   expect(lastToolResult()).toContain("clue held this action: haiku reviewed it and the reviewer's reason");
 }, 20_000);
+
+test("clue ask holds an action too long to review, and says why", async () => {
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), "ask", "please push long"], {
+    cwd: mkdtempSync(join(tmpdir(), "clue-flagged-")),
+    env: env(),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+  await proc.exited;
+  expect(lastToolResult()).toContain(
+    "clue held this action without a review: the action is too long for a reviewer to read in full.",
+  );
+  expect(reviewers.claudeCalls).toEqual([]);
+}, 20_000);

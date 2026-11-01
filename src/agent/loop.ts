@@ -463,7 +463,9 @@ export class Agent {
         if (!this.options.interactive || signal.aborted) {
           return finish(
             {
-              content: `clue held this action: ${verdict.reviewer} reviewed it and ${verdict.reason ?? "did not approve it"}. Tell the user what you wanted to do and why.`,
+              content: verdict.unreviewed
+                ? `clue held this action without a review: ${verdict.reason}. Tell the user what you wanted to do and why.`
+                : `clue held this action: ${verdict.reviewer} reviewed it and ${verdict.reason ?? "did not approve it"}. Tell the user what you wanted to do and why.`,
               isError: true,
             },
             label,

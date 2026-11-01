@@ -26,7 +26,7 @@ It has these reviewed first:
 - Changing sensitive configuration.
 - Calling an MCP tool.
 
-A review sends the exact action to a review model, which checks it for prompt injection and harmful behavior. If the reviewer finds no problem, clue runs the action. If it flags the action, or no reviewer can finish the check, clue shows you the reason and asks whether to run it, as in `ask` mode. In `clue ask`, where no one can answer, clue holds the action and tells the model why. Deleting temporary files, such as under `/tmp`, counts as routine cleanup, not a reason to flag. Every review adds to your usage. See [Choose the reviewer](/docs/settings#choose-the-reviewer).
+A review sends the exact action to a review model, which checks it for prompt injection and harmful behavior. If the reviewer finds no problem, clue runs the action. If it flags the action, or no reviewer can finish the check, clue shows you the reason and asks whether to run it, as in `ask` mode. In `clue ask`, where no one can answer, clue holds the action and tells the model why. Deleting temporary files, such as under `/tmp`, counts as routine cleanup, not a reason to flag. If the action is too long for the reviewer to read in full, clue skips the review and asks you, or holds the action in `clue ask`. Every review adds to your usage. See [Choose the reviewer](/docs/settings#choose-the-reviewer).
 
 `auto` reduces risk, but it isn't a sandbox. An allowed command such as `bun test` still runs your project's code. Use a container or VM for untrusted repositories.
 
