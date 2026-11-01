@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { UndoStack } from "../src/agent/undo";
 import { Session } from "../src/session";
 import { editFile, readFile, writeFile } from "../src/tools/files";
+import { shell } from "../src/tools/shell";
 import type { ToolContext } from "../src/tools/types";
 import { undoReport } from "../src/ui/undo";
 
@@ -266,4 +267,15 @@ test("forgetting turns leaves the files as they are", async () => {
   undo.forgetFrom(0);
   expect(read("a.ts")).toBe("two");
   expect(undo.undo()).toEqual({ kind: "empty" });
+});
+
+test("a turn that runs a command is marked, and reading its output is not a new run", async () => {
+  const { undo, file } = setup();
+  const context = { cwd: file(""), signal: new AbortController().signal, undo, progress() {} } as never;
+  undo.beginTurn(7);
+  await shell.run({ command: "true" }, context);
+  expect(undo.summary(7).ranShell).toBe(true);
+  undo.beginTurn(8);
+  await shell.run({ action: "interact", id: "missing" }, context);
+  expect(undo.summary(8).ranShell).toBe(false);
 });

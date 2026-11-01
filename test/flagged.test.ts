@@ -117,3 +117,24 @@ test("a subagent's reviewer gets the user's prompt, not the task the model wrote
   expect(reviewers.claudeStates).toHaveLength(1);
   expect(JSON.parse(reviewers.claudeStates[0]).user_request).toBe("delegate this rollout");
 }, 20_000);
+
+const slowCommandRuns = () => Bun.spawnSync(["pgrep", "-f", "sleep 26.5"]).exitCode === 0;
+
+test.each(["SIGTERM", "SIGHUP"] as const)(
+  "clue ask stops its commands on %s",
+  async (signal) => {
+    const proc = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts"), "ask", "please push slowly"], {
+      cwd: mkdtempSync(join(tmpdir(), "clue-flagged-")),
+      env: env(),
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    for (let tries = 0; tries < 500 && !slowCommandRuns(); tries++) await Bun.sleep(10);
+    expect(slowCommandRuns()).toBe(true);
+    proc.kill(signal);
+    await proc.exited;
+    expect(slowCommandRuns()).toBe(false);
+    Bun.spawnSync(["pkill", "-f", "sleep 26.5"]);
+  },
+  20_000,
+);

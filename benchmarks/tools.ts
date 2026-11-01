@@ -359,7 +359,7 @@ await compare("skills and first-turn setup", [
 ]);
 
 console.log(lines.join("\n"));
-stopAllProcesses();
+await stopAllProcesses();
 // CLUE_BENCH_KEEP=1 leaves the generated repository in place, for trying other tools on it.
 if (process.env.CLUE_BENCH_KEEP) console.error(`kept ${repo}`);
 else rmSync(root, { recursive: true, force: true });
