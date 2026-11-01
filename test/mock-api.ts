@@ -7,9 +7,14 @@ type Body = {
   max_tokens: number;
   stream?: boolean;
   output_config?: { effort?: string };
+  speed?: string;
+  betas?: string[];
 };
 
 export const requests: Body[] = [];
+
+// Tests set this to answer a fast request with a 400.
+export const fastMode = { rejected: false };
 
 // How the reviewers answer. Tests change this to force each failure.
 export const reviewers = {
@@ -138,7 +143,14 @@ export function startMockApi(port = 0, delay = DELAY) {
           ),
         );
       }
+      // The SDK sends betas as a header.
+      body.betas = request.headers.get("anthropic-beta")?.split(",") ?? [];
       requests.push(body);
+      if (body.speed === "fast" && fastMode.rejected)
+        return Response.json(
+          { type: "error", error: { type: "invalid_request_error", message: "speed: fast mode isn't enabled" } },
+          { status: 400 },
+        );
       const last = body.messages.at(-1);
       const hasToolResult =
         Array.isArray(last?.content) &&

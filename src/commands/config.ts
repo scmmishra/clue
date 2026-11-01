@@ -18,7 +18,7 @@ const USAGE = `Usage:
   clue config set <key> <value>     change one setting
   clue config unset <key>           go back to the default`;
 
-const SHOWN = ["model", "effort", "permission_mode", "bell", "review.provider", "review.model", "permission"];
+const SHOWN = ["model", "effort", "fast", "permission_mode", "bell", "review.provider", "review.model", "permission"];
 const ENV: Record<string, string> = {
   model: "CLUE_MODEL",
   effort: "CLUE_EFFORT",
@@ -92,7 +92,7 @@ function set(args: string[]) {
   if (args.length !== 2) stop(`Usage: clue config set <key> <value>`);
   const [key, text] = args;
   if (EDIT_ONLY.has(key)) stop(`${key} holds nested settings. Use clue config edit.`);
-  const value = key === "bell" && (text === "true" || text === "false") ? text === "true" : text;
+  const value = (key === "bell" || key === "fast") && (text === "true" || text === "false") ? text === "true" : text;
   const problem = checkSetting(key, value);
   if (problem) stop(problem);
   const settings = readForWriting();

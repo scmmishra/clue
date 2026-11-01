@@ -41,6 +41,7 @@ Usage
 Options
   --model <id>               model for this run, such as sonnet or claude-opus-5-5
   --effort <level>           low, medium, high, xhigh or max
+  --fast                     faster replies at twice the price, on Opus
   --permission-mode <mode>   ask, auto or full-access
   --full-access              shorthand for --permission-mode full-access
   --name <name>              open the session with this name in this folder, or create it
@@ -102,6 +103,7 @@ function settingsFrom(flags: Parsed["flags"]): Settings {
     overrides.permission_mode = flags["permission-mode"] as PermissionMode;
   }
   if (flags["full-access"]) overrides.permission_mode = "full-access";
+  if (flags.fast) overrides.fast = true;
   return loadSettings(overrides);
 }
 
@@ -180,8 +182,9 @@ async function main() {
   }
 
   const settings = settingsFrom(flags);
-  const { resolveModel } = await import("./agent/models");
+  const { FAST_MODELS, fastEnabled, resolveModel } = await import("./agent/models");
   settings.model = resolveModel(settings.model);
+  if (flags.fast && !fastEnabled(settings)) fail(`--fast only works with ${FAST_MODELS.join(" and ")}.`);
 
   const warnings = settingsWarnings();
 

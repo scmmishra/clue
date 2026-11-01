@@ -16,8 +16,8 @@ import type { Skill } from "../tools/skills";
 import { clip, type Question, type ToolContext, type ToolOutput } from "../tools/types";
 import { buildContext } from "./context";
 import { msSince, now } from "../clock";
-import { COMPACTION_TRIGGER_TOKENS, cost } from "./models";
-import { dropRejectedFeature, stream, summarize } from "./provider";
+import { COMPACTION_TRIGGER_TOKENS, cost, fastEnabled } from "./models";
+import { dropRejectedFeature, fastRejected, stream, summarize } from "./provider";
 import { UndoStack, type UndoResult } from "./undo";
 
 type ContentBlock = Anthropic.Beta.Messages.BetaContentBlock;
@@ -49,7 +49,7 @@ export type Steer = { text: string; images: PromptImage[] };
 export type AgentOptions = {
   cwd: string;
   session: Session;
-  settings: Pick<Settings, "model" | "effort" | "review">;
+  settings: Pick<Settings, "model" | "effort" | "fast" | "review">;
   permissions: Permissions;
   mcp: McpManager;
   skills: () => Skill[];
@@ -90,7 +90,8 @@ export class Agent {
     const { session, settings } = this.options;
     session.closeUnfinishedTools();
     const model = settings.model;
-    const message = await summarize({ model, effort: settings.effort, messages: session.messages }, signal);
+    const fast = fastEnabled(settings);
+    const message = await summarize({ model, effort: settings.effort, fast, messages: session.messages }, signal);
     const iterations = message.usage.iterations ?? [];
     const usage = emptyUsage();
     for (const iteration of iterations) addUsage(usage, iteration as unknown as Anthropic.Beta.Messages.BetaUsage);
@@ -101,7 +102,7 @@ export class Agent {
       t: "compacted",
       message: { role: "assistant", content: message.content as Anthropic.Beta.Messages.BetaContentBlockParam[] },
       usage,
-      cost: cost(model, usage),
+      cost: cost(model, usage, fast),
       model,
       at: Date.now(),
     });
@@ -161,6 +162,7 @@ export class Agent {
     let toolCount = 0;
     let stop = "end_turn";
     let model = settings.model;
+    let fast = false;
 
     if (!this.options.subagent) this.undo.beginTurn(this.session.transcript.length);
     session.closeUnfinishedTools();
@@ -194,9 +196,10 @@ export class Agent {
       }
       if (toolCount) await this.compactIfFull(signal, true);
       model = settings.model;
+      const askedFast = fastEnabled(settings);
       let message: Anthropic.Beta.Messages.BetaMessage;
       try {
-        message = await this.request(model, settings.effort, signal, () => {
+        message = await this.request(model, settings.effort, askedFast, signal, () => {
           firstTokenMs ??= msSince(clock);
         });
         jsonRetries = 0;
@@ -215,6 +218,15 @@ export class Agent {
           featureRetries += 1;
           continue;
         }
+        // Fast mode has its own rate limit, so a standard request can still go through.
+        if (
+          askedFast &&
+          (error instanceof Sdk.RateLimitError || (error instanceof Sdk.BadRequestError && fastRejected(error)))
+        ) {
+          settings.fast = false;
+          events.notice("Fast mode isn't available now, so clue turned it off. Run /fast to try again.", "warn");
+          continue;
+        }
         if (!(error instanceof Sdk.APIError) && error instanceof SyntaxError && jsonRetries < MAX_JSON_RETRIES) {
           jsonRetries += 1;
           events.notice("A tool input arrived as broken JSON. Asking again.", "warn");
@@ -224,6 +236,7 @@ export class Agent {
       }
 
       addUsage(usage, message.usage);
+      fast ||= (message.usage.speed ?? (askedFast ? "fast" : "standard")) === "fast";
       context = this.lastContext = contextTokens(message.usage);
       session.appendMessage({
         role: "assistant",
@@ -274,20 +287,21 @@ export class Agent {
       firstTokenMs,
       tools: toolCount,
       usage,
-      cost: cost(model, usage),
+      cost: cost(model, usage, fast),
       model,
       stop,
       context,
+      fast: fast || undefined,
     };
     session.append({ t: "turn", turn });
     return turn;
   }
 
   // One streamed model request. Forwards text, progress notes and tool activity as they arrive.
-  private async request(model: string, effort: Effort, signal: AbortSignal, onFirstToken: () => void) {
+  private async request(model: string, effort: Effort, fast: boolean, signal: AbortSignal, onFirstToken: () => void) {
     const { events } = this.options;
     const response = await stream(
-      { model, effort, messages: this.session.messages, subagent: this.options.subagent },
+      { model, effort, fast, messages: this.session.messages, subagent: this.options.subagent },
       signal,
     );
     const blocks = new Map<number, { type: string; id?: string; name?: string; json: string }>();

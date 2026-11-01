@@ -51,6 +51,7 @@ export type RequestOptions = {
   effort: Effort;
   messages: MessageParam[];
   subagent?: boolean;
+  fast?: boolean;
 };
 
 export function buildRequest(options: RequestOptions) {
@@ -86,6 +87,10 @@ export function buildRequest(options: RequestOptions) {
     (request as { fallbacks?: unknown }).fallbacks = "default";
     betas.push("server-side-fallback-2026-07-01");
   }
+  if (options.fast) {
+    request.speed = "fast";
+    betas.push("fast-mode-2026-02-01");
+  }
   if (betas.length) request.betas = betas;
   return request;
 }
@@ -101,6 +106,10 @@ export function dropRejectedFeature(error: unknown) {
     return !(features.compaction = false);
   return false;
 }
+
+// A 400 about fast mode, such as from an account without access. Unlike the features above, the
+// user chose this one and the status line shows it, so the loop turns the setting off instead.
+export const fastRejected = (error: unknown) => /\bspeed\b|fast.mode/i.test(String((error as Error)?.message ?? ""));
 
 export async function stream(options: RequestOptions, signal: AbortSignal) {
   const client = await getClient();

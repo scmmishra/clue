@@ -18,6 +18,7 @@ clue warns at startup if the file has a problem. If the JSON is broken, clue use
 | --- | --- | --- |
 | `model` | `claude-opus-5-5` | The model for new sessions. |
 | `effort` | `medium` | The effort level. |
+| `fast` | `false` | Starts in [fast mode](/docs/models#fast-mode) on a model that has it. |
 | `permission_mode` | `auto` | `ask`, `auto` or `full-access`. |
 | `permission` | none | Allow, ask and deny rules. See [Permissions](/docs/permissions). |
 | `review` | automatic | Who reviews actions in `auto` mode. See below. |

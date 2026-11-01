@@ -89,7 +89,6 @@ export function duration(ms: number) {
 
 export function money(usd: number | null) {
   if (usd === null) return "–";
-  if (usd > 0 && usd < 0.01) return "<$0.01";
   return `$${usd.toFixed(2)}`;
 }
 

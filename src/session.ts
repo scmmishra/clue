@@ -48,6 +48,8 @@ export type TurnRecord = {
   stop: string;
   // Tokens in the last request. Sessions from before 0.7 don't have it.
   context?: number;
+  // Claude answered in fast mode, at the fast price.
+  fast?: boolean;
 };
 
 // One /compact: the summary that replaces the messages, and what the summary cost.
@@ -282,6 +284,11 @@ export class Session {
     if (this.ephemeral || existsSync(this.file)) return this.append({ t: "name", name });
     this.name = name;
     this.heldName = true;
+  }
+
+  // What the session has cost so far, the same total as /usage.
+  get spent() {
+    return [...this.turns, ...this.rewound, ...this.compactions].reduce((sum, { cost }) => sum + (cost ?? 0), 0);
   }
 
   get isEmpty() {

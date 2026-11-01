@@ -2,6 +2,11 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- `/fast` and `--fast` turn on fast mode for Opus 5.5 and Opus 5: faster replies at twice the token price. The line under the input and the footer of each reply show `fast`. Set `"fast": true` in `settings.json` to start with it on.
+- The line under the input shows what the session has cost so far, the same total as `/cost`.
+
 ## 0.8.1
 
 - Pasting an image from the clipboard is about 9x faster, around 30 ms instead of 290 ms. clue reads the image directly instead of starting `osascript`.

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { projectKey } from "../src/session";
 import { statusReport, type ProgramStatus } from "../src/ui/status";
-import { compactions, compactionStop, requests, startMockApi, usage } from "./mock-api";
+import { compactions, compactionStop, fastMode, requests, startMockApi, usage } from "./mock-api";
 
 // A 1×1 PNG.
 const PNG = Buffer.from(
@@ -1049,4 +1049,83 @@ test("/effort and /permissions open a list too", async () => {
   await clue.type("\x1b[B");
   await clue.type(ENTER);
   await clue.seen("Permission mode is now auto.");
+}, 25_000);
+
+test("/fast sends fast requests, and the status line and the footer show it", async () => {
+  const clue = await startClue();
+  await clue.type("/fast");
+  await clue.type(ENTER);
+  await clue.seen("Fast mode is on.");
+  await clue.seen("medium · fast");
+  await clue.type("read it");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(requests.every((request) => request.speed === "fast")).toBe(true);
+  expect(requests[0].betas).toContain("fast-mode-2026-02-01");
+  await clue.seen("out · fast");
+  await clue.type("/fast");
+  await clue.type(ENTER);
+  await clue.seen("Fast mode is off.");
+}, 25_000);
+
+test("the status line keeps the same total as /usage", async () => {
+  const clue = await startClue();
+  await clue.type("read it");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  await clue.seen("medium · $0.0");
+  await clue.type("/usage");
+  await clue.type(ENTER);
+  const total = clue.screen().match(/medium · (\$\d+\.\d\d)/)![1];
+  await clue.seen(`${total} across 1 prompt`);
+}, 25_000);
+
+test("switching to a model without fast mode turns it off for good", async () => {
+  const clue = await startClue({ args: ["--fast"] });
+  await clue.seen("medium · fast");
+  await clue.type("/model sonnet");
+  await clue.type(ENTER);
+  await clue.seen("Fast mode is off.");
+  await clue.type("/model opus");
+  await clue.type(ENTER);
+  await clue.seen("Model is now opus");
+  await clue.type("read it");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(requests.some((request) => request.speed === "fast")).toBe(false);
+}, 25_000);
+
+test("/fast refuses on a model without fast mode, and --fast does too", async () => {
+  const clue = await startClue({ args: ["--model", "sonnet"] });
+  await clue.type("/fast");
+  await clue.type(ENTER);
+  await clue.seen("Fast mode only works with opus 5.5 and opus 5.");
+  const flag = Bun.spawnSync(
+    ["bun", join(import.meta.dir, "../src/main.ts"), "ask", "--fast", "--model", "sonnet", "hi"],
+    {
+      env: { ...process.env, CLUE_HOME: mkdtempSync(join(tmpdir(), "clue-fast-home-")) },
+      stderr: "pipe",
+    },
+  );
+  expect(flag.exitCode).toBe(2);
+  expect(flag.stderr.toString()).toContain("--fast only works with opus 5.5 and opus 5.");
+}, 25_000);
+
+test("when the API rejects fast mode, clue turns it off, says so and finishes the turn", async () => {
+  fastMode.rejected = true;
+  try {
+    const clue = await startClue({ args: ["--fast"] });
+    await clue.type("read it");
+    await clue.type(ENTER);
+    await clue.turns(1);
+    await clue.seen("Fast mode isn't available now");
+    expect(requests[0].speed).toBe("fast");
+    expect(requests.at(-1)!.speed).toBeUndefined();
+    await clue.type("/fast off");
+    await clue.type(ENTER);
+    await clue.seen("Fast mode is off.");
+    expect(clue.screen().split("Fast mode isn't available now").at(-1)).not.toContain("out · fast");
+  } finally {
+    fastMode.rejected = false;
+  }
 }, 25_000);

@@ -15,10 +15,20 @@ export function header() {
   return style.muted(`clue ${VERSION} · /help for commands`);
 }
 
-// The line under the input: permission mode, model and effort, then the folder.
-// A folder too long for the line loses its start: "…/mentioninator/clue (main)".
-export function statusLine(mode: string, model: string, effort: string, cwd: string, branch: string | null) {
-  const left = `${mode === "full-access" ? style.orange(mode) : style.muted(mode)}${style.muted(` · ${modelLabel(model)} · ${effort}`)}`;
+const FAST_LABEL = `${style.muted(" · ")}${style.orange("fast")}`;
+
+// The line under the input: permission mode, model, effort, fast mode and what the session
+// has cost, then the folder. A folder too long for the line loses its start: "…/mentioninator/clue (main)".
+export function statusLine(
+  mode: string,
+  model: string,
+  effort: string,
+  cwd: string,
+  branch: string | null,
+  fast = false,
+  spent = 0,
+) {
+  const left = `${mode === "full-access" ? style.orange(mode) : style.muted(mode)}${style.muted(` · ${modelLabel(model)} · ${effort}`)}${fast ? FAST_LABEL : ""}${spent ? style.muted(` · ${money(spent)}`) : ""}`;
   const room = columns() - 1 - width(left) - 4;
   let place = `${homePath(cwd)}${branch ? ` (${branch})` : ""}`;
   if (width(place) > room) place = room > 12 ? `…${Bun.sliceAnsi(place, -(room - 1))}` : "";
@@ -142,10 +152,10 @@ export function toolTree(rows: Row[] | ToolRecord[], clock?: string) {
   return lines;
 }
 
-export function footerLine(turn: Pick<TurnRecord, "ms" | "cost" | "stop" | "usage">) {
+export function footerLine(turn: Pick<TurnRecord, "ms" | "cost" | "stop" | "usage" | "fast">) {
   // Most input is read from or written to the cache, so "in" counts all three.
   const input = turn.usage.input + turn.usage.cacheRead + turn.usage.cacheWrite;
-  const left = `  ${style.muted(`${duration(turn.ms)} · ${money(turn.cost)} · ${tokens(input)} in · ${tokens(turn.usage.output)} out`)}`;
+  const left = `  ${style.muted(`${duration(turn.ms)} · ${money(turn.cost)} · ${tokens(input)} in · ${tokens(turn.usage.output)} out`)}${turn.fast ? FAST_LABEL : ""}`;
   return turn.stop === "interrupted" ? `${left}${style.muted(" · ")}${style.orange("interrupted")}` : left;
 }
 

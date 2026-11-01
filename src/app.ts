@@ -5,7 +5,7 @@ import { Agent, type AgentEvents, type Steer } from "./agent/loop";
 import { msSince, now, uptimeMs } from "./clock";
 import { describeError } from "./errors";
 import { gitBranch, prefetchGitStatus } from "./agent/context";
-import { KNOWN_MODELS, modelLabel, resolveModel } from "./agent/models";
+import { FAST_MODELS, fastEnabled, KNOWN_MODELS, modelLabel, resolveModel } from "./agent/models";
 import { getClient, MissingCredentials, preconnect, warmCache } from "./agent/provider";
 import { mcpCommand } from "./commands/mcp";
 import { EFFORTS, PERMISSION_MODES, type Effort, type PermissionMode, type Settings } from "./config";
@@ -36,6 +36,7 @@ const COMMANDS: Command[] = [
   { name: "help", description: "commands and keys" },
   { name: "model", description: "switch model for this session" },
   { name: "effort", description: "low, medium, high, xhigh or max" },
+  { name: "fast", description: "faster replies at twice the price" },
   { name: "permissions", description: "ask, auto or full-access" },
   { name: "resume", description: "pick a past session" },
   { name: "rename", description: "name this session" },
@@ -118,7 +119,8 @@ export class App {
     this.agent = new Agent({
       cwd: session.cwd,
       session,
-      settings: { model: this.settings.model, effort: this.settings.effort, review: this.settings.review },
+      // The same object: the agent turns fast mode off if the API won't serve it.
+      settings: this.settings,
       permissions: this.permissions,
       mcp: this.mcp,
       skills: () => (this.skillCache ??= discoverSkills(session.cwd)),
@@ -214,7 +216,12 @@ export class App {
     const started = now();
     try {
       const usage = await warmCache(
-        { model: this.settings.model, effort: this.settings.effort, messages: this.session.messages },
+        {
+          model: this.settings.model,
+          effort: this.settings.effort,
+          fast: fastEnabled(this.settings),
+          messages: this.session.messages,
+        },
         this.warming.signal,
       );
       if (usage) this.print([`  ${style.faint(`history cached in ${duration(msSince(started))}`)}`, ""]);
@@ -246,7 +253,15 @@ export class App {
     const frame = this.editor.frame(
       this.hint
         ? style.muted(this.hint)
-        : statusLine(this.permissions.mode, this.settings.model, this.settings.effort, this.cwd, this.branch),
+        : statusLine(
+            this.permissions.mode,
+            this.settings.model,
+            this.settings.effort,
+            this.cwd,
+            this.branch,
+            fastEnabled(this.settings),
+            this.session.spent,
+          ),
     );
     const preview = (message: Steer) => message.text.replace(/\s+/g, " ").trim();
     const waiting = [
@@ -436,18 +451,38 @@ export class App {
   }
 
   private setModel(model: string) {
+    const wasFast = fastEnabled(this.settings);
     this.settings.model = model;
     this.agent.setModel(model);
     this.print([
       `  Model is now ${style.bold(modelLabel(model))} ${style.faint(`(${model}). The next request starts a fresh cache.`)}`,
       "",
     ]);
+    // Coming back to a fast model later must not start charging double without a word.
+    if (wasFast && !fastEnabled(this.settings)) {
+      this.settings.fast = false;
+      this.print([`  ${style.muted(`Fast mode is off. It only works with ${FAST_MODELS.join(" and ")}.`)}`, ""]);
+    }
   }
 
   private setEffort(effort: Effort) {
     this.settings.effort = effort;
     this.agent.setEffort(effort);
     this.print([`  Effort is now ${style.bold(effort)}.`, ""]);
+  }
+
+  private setFast(fast: boolean) {
+    if (fast && !fastEnabled({ ...this.settings, fast })) {
+      this.print([`  ${style.muted(`Fast mode only works with ${FAST_MODELS.join(" and ")}.`)}`, ""]);
+      return;
+    }
+    this.settings.fast = fast;
+    this.print([
+      fast
+        ? `  Fast mode is ${style.orange("on")}. ${style.faint("Tokens cost twice as much. The next request starts a fresh cache.")}`
+        : `  Fast mode is ${style.bold("off")}. ${style.faint("The next request starts a fresh cache.")}`,
+      "",
+    ]);
   }
 
   private announcePermissionMode(mode: PermissionMode) {
@@ -644,6 +679,13 @@ export class App {
         if (!EFFORTS.includes(effort))
           return say(style.muted(`Effort is ${this.settings.effort}. Choose one of ${EFFORTS.join(", ")}.`));
         return this.setEffort(effort);
+      }
+      case "fast": {
+        if (args[0] && args[0] !== "on" && args[0] !== "off")
+          return say(
+            style.muted(`Fast mode is ${this.settings.fast ? "on" : "off"}. Use /fast, /fast on or /fast off.`),
+          );
+        return this.setFast(args[0] ? args[0] === "on" : !this.settings.fast);
       }
       case "permissions": {
         const mode = args[0] as PermissionMode;
