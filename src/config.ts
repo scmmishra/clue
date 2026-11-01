@@ -31,7 +31,27 @@ export type Effort = (typeof EFFORTS)[number];
 export const PERMISSION_MODES = ["ask", "auto", "full-access"] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
 
-export type RuleValue = "allow" | "deny" | "ask";
+export const RULE_VALUES = ["allow", "ask", "deny"] as const;
+export type RuleValue = (typeof RULE_VALUES)[number];
+export const isRuleValue = (value: unknown): value is RuleValue => RULE_VALUES.includes(value as RuleValue);
+
+// The tool names a permission rule can use. Importing the tools here would load every tool
+// at startup, so test/config.test.ts checks that this list matches them.
+export const TOOL_NAMES = [
+  "glob_files",
+  "grep_files",
+  "read_file",
+  "write_file",
+  "edit_file",
+  "shell",
+  "subagent",
+  "skill",
+  "install_skill",
+  "capability_search",
+  "mcp_call",
+  "ask_user_question",
+  "read_tool_result",
+];
 export type PermissionRules = Record<string, RuleValue | Record<string, RuleValue>>;
 
 // Who reviews actions in auto mode. Both keys are optional.
@@ -122,6 +142,38 @@ export function checkSetting(key: string, value: unknown) {
   return problem && `${key} ${problem}`;
 }
 
+const RULE_VALUE_HELP = `must be ${RULE_VALUES.slice(0, -1).join(", ")} or ${RULE_VALUES.at(-1)}`;
+
+// A rule with a value other than allow, ask or deny does nothing, and a mistyped deny is easy to miss.
+function permissionProblems(permission: JsonObject) {
+  const problems: string[] = [];
+  for (const [tool, value] of Object.entries(permission)) {
+    if (tool !== "*" && !TOOL_NAMES.includes(tool))
+      problems.push(`permission.${tool} isn't a tool name or *. Tool names: ${TOOL_NAMES.join(", ")}`);
+    if (isObject(value)) {
+      for (const [pattern, ruleValue] of Object.entries(value)) {
+        if (!isRuleValue(ruleValue))
+          problems.push(
+            `permission.${tool} ${JSON.stringify(pattern)} is ${JSON.stringify(ruleValue)}, which ${RULE_VALUE_HELP}`,
+          );
+      }
+    } else if (!isRuleValue(value)) {
+      problems.push(
+        `permission.${tool} is ${JSON.stringify(value)}, which ${RULE_VALUE_HELP}, or an object of patterns`,
+      );
+    }
+  }
+  return problems;
+}
+
+// A CLUE_PERMISSION_MODE that isn't a mode. loadSettings would run it as auto, which is looser
+// than a mistyped ask, so clue stops instead.
+export function permissionModeEnvProblem() {
+  const mode = process.env.CLUE_PERMISSION_MODE;
+  if (!mode || PERMISSION_MODES.includes(mode as PermissionMode)) return null;
+  return `CLUE_PERMISSION_MODE must be one of ${PERMISSION_MODES.join(", ")}`;
+}
+
 // What's wrong with the text of settings.json. loadSettings ignores a file it can't read,
 // and that silently drops the user's deny rules, so startup warns about it.
 export function settingsProblems(text: string): string[] {
@@ -138,6 +190,7 @@ export function settingsProblems(text: string): string[] {
       ...Object.entries(settings.review).flatMap(([key, value]) => checkSetting(`review.${key}`, value) ?? []),
     );
   }
+  if (isObject(settings.permission)) problems.push(...permissionProblems(settings.permission));
   return problems;
 }
 

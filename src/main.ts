@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import {
   loadSettings,
   PERMISSION_MODES,
+  permissionModeEnvProblem,
   settingsWarnings,
   VERSION,
   EFFORTS,
@@ -91,6 +92,8 @@ function fail(message: string): never {
 }
 
 function settingsFrom(flags: Parsed["flags"]): Settings {
+  const envProblem = permissionModeEnvProblem();
+  if (envProblem) fail(envProblem);
   const overrides: Partial<Settings> = {};
   if (typeof flags.model === "string") overrides.model = flags.model;
   if (typeof flags.effort === "string") {

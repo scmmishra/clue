@@ -12,7 +12,7 @@ Settings live in `~/.clue/settings.json`. Every key is optional.
 | `clue config set <key> <value>` | Changes one setting, such as `clue config set review.provider anthropic`. |
 | `clue config unset <key>` | Removes a setting, so it goes back to its default. |
 
-clue warns at startup if the file has a problem. If the JSON is broken, clue uses its defaults, so your permission rules don't apply until you fix it.
+clue warns at startup if the file has a problem. If the JSON is broken, clue uses its defaults, so your permission rules don't apply until you fix it. clue also warns about a rule whose value isn't `allow`, `ask` or `deny`, or whose key isn't a tool name or `*`. It skips a rule with a bad value.
 
 | Key | Default | What it does |
 | --- | --- | --- |
@@ -49,4 +49,4 @@ Both keys are optional. With no `review`, clue uses Haiku. To use Jev, set `"pro
 
 If the reviewer fails or the setting can't work, Claude Haiku at low effort reviews instead. If that fails too, clue asks you, or holds the action in `clue ask`.
 
-`CLUE_MODEL`, `CLUE_EFFORT` and `CLUE_PERMISSION_MODE` override the file for one process. Command-line flags override both.
+`CLUE_MODEL`, `CLUE_EFFORT` and `CLUE_PERMISSION_MODE` override the file for one process. Command-line flags override both. clue exits with status 2 if `CLUE_PERMISSION_MODE` isn't `ask`, `auto` or `full-access`, as it does for a bad `--permission-mode`.

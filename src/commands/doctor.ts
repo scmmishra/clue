@@ -2,7 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getClient } from "../agent/provider";
 import { resolveAuth, type AuthSource } from "../auth";
-import { CLUE_HOME, loadSettings, paths, settingsWarnings, VERSION } from "../config";
+import { CLUE_HOME, loadSettings, paths, permissionModeEnvProblem, settingsWarnings, VERSION } from "../config";
 import { resolveModel } from "../agent/models";
 import { McpManager } from "../mcp/manager";
 import { style, width } from "../ui/ansi";
@@ -54,7 +54,13 @@ async function credentialChecks() {
 
 function settingsCheck() {
   const warnings = settingsWarnings();
-  return warnings.length ? warnings.map((text) => warn("settings", text)) : [ok("settings", paths.settings)];
+  // clue stops at startup with this variable, so doctor calls it a problem and not a warning.
+  const envProblem = permissionModeEnvProblem();
+  const checks = [
+    ...(envProblem ? [fail("settings", envProblem)] : []),
+    ...warnings.map((text) => warn("settings", text)),
+  ];
+  return checks.length ? checks : [ok("settings", paths.settings)];
 }
 
 function homeCheck() {

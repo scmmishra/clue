@@ -6,6 +6,7 @@ import {
   isSetting,
   loadSettings,
   paths,
+  permissionModeEnvProblem,
   readJson,
   settingsProblems,
   type JsonObject,
@@ -67,7 +68,13 @@ function show(json: boolean) {
   for (const problem of problems) process.stderr.write(`clue: ${problem}\n`);
 }
 
-const fileProblems = () => (existsSync(paths.settings) ? settingsProblems(readFileSync(paths.settings, "utf8")) : []);
+const fileProblems = () => {
+  const envProblem = permissionModeEnvProblem();
+  return [
+    ...(existsSync(paths.settings) ? settingsProblems(readFileSync(paths.settings, "utf8")) : []),
+    ...(envProblem ? [envProblem] : []),
+  ];
+};
 
 // The file as an object. A file that can't be read is left alone, so nothing overwrites it.
 function readForWriting(): JsonObject {

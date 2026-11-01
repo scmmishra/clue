@@ -53,6 +53,13 @@ test("broken settings are a warning, and clue doctor still exits 0", async () =>
   expect(stdout).toContain("! settings");
 }, 20_000);
 
+test("a bad CLUE_PERMISSION_MODE is a problem, because clue won't start with it", async () => {
+  const { stdout, code } = await run({ CLUE_PERMISSION_MODE: "yolo" });
+  expect(code).toBe(1);
+  expect(stdout).toContain("✗ settings");
+  expect(stdout).toContain("CLUE_PERMISSION_MODE must be one of ask, auto, full-access");
+}, 20_000);
+
 test("a terminal that answers the key query is reported", async () => {
   const home = mkdtempSync(join(tmpdir(), "clue-doctor-term-"));
   let output = "";

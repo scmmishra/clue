@@ -2,7 +2,9 @@ import { expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as config from "../src/config";
 import { settingsProblems } from "../src/config";
+import { TOOLS } from "../src/tools";
 import { commandIsRoutine } from "../src/permissions";
 
 const folder = () => realpathSync(mkdtempSync(join(tmpdir(), "clue-config-")));
@@ -60,6 +62,40 @@ test("good settings have no problems", () => {
     ),
   ).toEqual([]);
   expect(settingsProblems("{}")).toEqual([]);
+});
+
+test("good permission rules have no problems", () => {
+  const rules = {
+    "*": "ask",
+    shell: { "git *": "allow", "git push *": "deny" },
+    read_file: "deny",
+    mcp_call: { "github.*": "ask" },
+  };
+  expect(settingsProblems(JSON.stringify({ permission: rules }))).toEqual([]);
+});
+
+test.each([
+  ["a capitalised pattern value", { shell: { "git push *": "Deny" } }, 'permission.shell "git push *" is "Deny"'],
+  ["an unknown pattern value", { shell: { "rm -rf *": "block" } }, 'permission.shell "rm -rf *" is "block"'],
+  ["a pattern value that isn't text", { shell: { "rm *": true } }, 'permission.shell "rm *" is true'],
+  ["a bad tool-wide value", { shell: "Deny" }, 'permission.shell is "Deny"'],
+  ["a bad value for every tool", { "*": "block" }, 'permission.* is "block"'],
+  ["a number for a tool", { read_file: 5 }, "permission.read_file is 5"],
+])("%s is a problem", (_name, permission, expected) => {
+  const problems = settingsProblems(JSON.stringify({ permission }));
+  expect(problems).toHaveLength(1);
+  expect(problems[0]).toContain(expected);
+  expect(problems[0]).toContain("allow, ask or deny");
+});
+
+test("a rule for a name that isn't a tool is a problem", () => {
+  const problems = settingsProblems(JSON.stringify({ permission: { bash: { "rm *": "deny" } } }));
+  expect(problems).toHaveLength(1);
+  expect(problems[0]).toContain("permission.bash isn't a tool name or *");
+});
+
+test("the tool names that rules may use are the real tool names", () => {
+  expect([...config.TOOL_NAMES].sort()).toEqual(TOOLS.map((tool) => tool.name).sort());
 });
 
 test.each([
@@ -314,4 +350,28 @@ test("config unset won't overwrite a file it can't read", async () => {
   expect(code).toBe(2);
   expect(stderr).toContain("Fix it with clue config edit");
   expect(readFileSync(file, "utf8")).toBe("{ nope");
+});
+
+test("a bad CLUE_PERMISSION_MODE stops clue the way a bad --permission-mode flag does", async () => {
+  const { run } = setup();
+  const env = { ANTHROPIC_BASE_URL: "http://127.0.0.1:9" };
+  const flag = await run(["--permission-mode", "yolo", "ask", "hi"], env);
+  const variable = await run(["ask", "hi"], { ...env, CLUE_PERMISSION_MODE: "yolo" });
+  expect(flag.code).toBe(2);
+  expect(variable.code).toBe(2);
+  expect(variable.stderr).toBe("clue: CLUE_PERMISSION_MODE must be one of ask, auto, full-access\n");
+});
+
+test("a good CLUE_PERMISSION_MODE is accepted", async () => {
+  const { run } = setup();
+  const { stdout } = await run(["config", "show", "--json"], { CLUE_PERMISSION_MODE: "ask" });
+  expect(JSON.parse(stdout).settings.permission_mode).toEqual({ value: "ask", source: "CLUE_PERMISSION_MODE" });
+});
+
+test("config show reports a bad CLUE_PERMISSION_MODE and still exits 0", async () => {
+  const { run } = setup();
+  const { stdout, stderr, code } = await run(["config", "show", "--json"], { CLUE_PERMISSION_MODE: "yolo" });
+  expect(code).toBe(0);
+  expect(JSON.parse(stdout).problems).toEqual(["CLUE_PERMISSION_MODE must be one of ask, auto, full-access"]);
+  expect(stderr).toBe("");
 });

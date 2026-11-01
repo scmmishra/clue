@@ -1,6 +1,6 @@
 import { lstatSync, realpathSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
-import type { PermissionMode, PermissionRules, ReviewSetting, RuleValue } from "./config";
+import { isRuleValue, type PermissionMode, type PermissionRules, type ReviewSetting, type RuleValue } from "./config";
 import { KNOWN_MODELS, modelLabel, resolveModel, REVIEW_FALLBACK_MODEL } from "./agent/models";
 import { getClient } from "./agent/provider";
 import { absolute, isInside } from "./paths";
@@ -284,17 +284,19 @@ const globToRegex = (pattern: string, bareCommand = false) => {
   return new RegExp(`^${body}${bare ? "( .*)?" : ""}$`, "s");
 };
 
-// The last matching rule wins: a tool-wide value, then patterns in order.
+// The last matching rule wins: a tool-wide value, then patterns in order. A value that isn't
+// allow, ask or deny is skipped, so a typo can't cancel an earlier deny.
 export function ruleFor(rules: PermissionRules, toolName: string, subject: string): RuleValue | null {
   let result: RuleValue | null = null;
   const apply = (value: RuleValue | Record<string, RuleValue> | undefined) => {
     if (!value) return;
     if (typeof value === "string") {
-      result = value;
+      if (isRuleValue(value)) result = value;
       return;
     }
     for (const [pattern, ruleValue] of Object.entries(value)) {
-      if (globToRegex(pattern, toolName === "shell" && ruleValue !== "allow").test(subject)) result = ruleValue;
+      if (isRuleValue(ruleValue) && globToRegex(pattern, toolName === "shell" && ruleValue !== "allow").test(subject))
+        result = ruleValue;
     }
   };
   apply(rules["*"]);

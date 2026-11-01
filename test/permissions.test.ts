@@ -451,6 +451,25 @@ test.each([
   expect(commandIsRoutine(command)).toBe(false);
 });
 
+test("a rule value that isn't allow, ask or deny does nothing, so it can't cancel a deny", () => {
+  const rm = new Permissions(
+    "full-access",
+    { shell: { "rm *": "deny", "rm -rf *": "block" } } as never,
+    "/tmp/project",
+  );
+  expect(action(rm, "rm -rf x")).toBe("deny");
+  const capital = new Permissions(
+    "full-access",
+    { shell: { "rm *": "deny", "rm -rf *": "Allow" } } as never,
+    "/tmp/project",
+  );
+  expect(action(capital, "rm -rf x")).toBe("deny");
+  const wide = new Permissions("full-access", { "*": "deny", shell: "block" } as never, "/tmp/project");
+  expect(action(wide, "ls")).toBe("deny");
+  const typo = new Permissions("full-access", { shell: { "git push *": "Deny" } } as never, "/tmp/project");
+  expect(action(typo, "git push origin")).toBe("run");
+});
+
 const gitRules = { shell: { "git *": "allow", "git push *": "deny" } } as never;
 const action = (permissions: Permissions, command: string) => permissions.decide(shell, { command }).action;
 
