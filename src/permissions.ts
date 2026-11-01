@@ -84,8 +84,10 @@ const TEST_RUNNER = [
   "testRunner testEnvironment transform preset watchPlugins resolver snapshotResolver testSequencer",
   "environment workspace dir outputFile",
 ].join(" ");
-const LINTER =
-  "config c plugin plugin-search-dir rulesdir resolve-plugins-relative-to config-path parser output-file o";
+const PRETTIER =
+  "config plugin plugin-search-dir rulesdir resolve-plugins-relative-to config-path parser output-file o";
+// In prettier, -c means --check.
+const LINTER = `${PRETTIER} c`;
 const TSC = "project p outDir outFile plugins declarationDir tsBuildInfoFile generateTrace";
 const PYTEST = "p c rootdir confcutdir override-ini o basetemp";
 const RSPEC = "r require I O options";
@@ -97,6 +99,12 @@ const ZIG = "build-file zig-lib-dir cache-dir global-cache-dir build-runner pref
 const GRADLE =
   "build-file b settings-file c project-dir p init-script I gradle-user-home g project-cache-dir include-build";
 const MAVEN = "file f settings s global-settings gs toolchains t";
+// Failure modes that the -f rule would read as -f with a file attached.
+const notMavenFailMode = (args: string[]) => args.filter((arg) => !/^-(fae|ff|fn)$/.test(arg));
+// A test-name pattern, not a path, so a leading / means a subtest.
+const GO_PATTERN_FLAG = /^--?(test\.)?(run|bench|skip)$/;
+const notGoPattern = (args: string[]) =>
+  args.filter((arg, index) => !GO_PATTERN_FLAG.test(args[index - 1] ?? "") && !GO_PATTERN_FLAG.test(arg.split("=")[0]));
 const SWIFT = "package-path scratch-path build-path cache-path config-path toolset sdk";
 const MIX = "dot-formatter";
 
@@ -149,7 +157,8 @@ const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
 
   ...runner(viaNpx("tsc"), flagged(TSC)),
   ...runner(viaNpx("vitest jest"), flagged(TEST_RUNNER)),
-  ...runner(viaNpx("eslint prettier biome"), flagged(LINTER)),
+  ...runner(viaNpx("eslint biome"), flagged(LINTER)),
+  ...runner(viaNpx("prettier"), flagged(PRETTIER)),
   ...runner("pytest,python -m pytest,python3 -m pytest", flagged(PYTEST, true)),
   ...runner("rspec,bundle exec rspec", flagged(RSPEC)),
   ...runner("rubocop,bundle exec rubocop", flagged(RUBOCOP)),
@@ -159,10 +168,13 @@ const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
   ...runner("make,ninja", NOT_TARGETS_AND_JOBS),
   ...runner("rails test", flagged("I")),
   ...runner("gradle test,gradle build", flagged(GRADLE)),
-  ...runner("mvn test", flagged(MAVEN)),
+  ...runner("mvn test", (args) => flagged(MAVEN)(notMavenFailMode(args))),
   ...runner("zig build", flagged(ZIG)),
   ...runner(forEach("cargo", "test build check clippy fmt"), flagged(CARGO)),
-  ...runner(forEach("go", "test build vet fmt"), flagged(GO)),
+  ...routine(
+    forEach("go", "test build vet fmt"),
+    anyOf((args) => PATH_LEAVES_PROJECT(notGoPattern(args)), flagged(GO)),
+  ),
   ...runner(forEach("swift", "test build"), flagged(SWIFT)),
   ...runner(forEach("mix", "test compile format"), flagged(MIX)),
   ...routine("docker ps,docker images,docker logs,docker compose ps,docker compose logs"),

@@ -900,3 +900,31 @@ test("a link that stays in the project doesn't make an allow rule match", () => 
   const permissions = new Permissions("ask", { write_file: { "src/*": "allow" } } as never, project);
   expect(permissions.decide(writeFile, { path: "lib/a.ts" }).action).toBe("ask");
 });
+
+test.each([
+  "prettier -c src",
+  "prettier -c .",
+  "npx prettier -c src",
+  "mvn test -fae",
+  "mvn test -ff",
+  "mvn test -fn",
+  "go test -run /sub ./...",
+  "go test -run=/sub ./...",
+  "go test -bench /sub ./...",
+  "go test -skip /slow ./...",
+])("a harmless flag stays routine: %s", (command) => {
+  expect(commandIsRoutine(command)).toBe(true);
+});
+
+test.each([
+  "prettier --config /tmp/x src",
+  "eslint -c /tmp/x.js .",
+  "biome check -c x",
+  "mvn test -fother.xml",
+  "mvn test -f other.xml",
+  "go test -run /sub /etc",
+  "go test -exec=./x -run /sub",
+  "go test ./... -o /tmp/x",
+])("the exceptions stay narrow: %s", (command) => {
+  expect(commandIsRoutine(command)).toBe(false);
+});
