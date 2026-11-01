@@ -12,7 +12,7 @@ bun run bench:check  # build, then fail if start or resume is over budget
 bun run bench:tools  # each tool on its own, outside the agent loop
 ```
 
-CI runs the type check, the tests and a build on macOS and Linux for every push and pull request. It also installs that build with `install.sh`.
+CI runs the type check, the tests and a build on macOS and Linux for every push and pull request. It also installs that build with `install.sh`. The Linux job reports test coverage in its summary and uploads an `lcov` file. It counts only code in the test process, so code that tests reach by spawning clue reads low.
 
 ## Benchmarks
 

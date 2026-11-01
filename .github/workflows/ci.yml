@@ -31,7 +31,32 @@ jobs:
 
       - run: bun run typecheck
 
-      - run: bun test
+      - name: Run the tests
+        if: runner.os != 'Linux'
+        run: bun test
+
+      # Coverage counts only code in the test process. Tests that spawn clue don't add to it.
+      - name: Run the tests with coverage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          bun test --coverage --coverage-reporter=text --coverage-reporter=lcov 2>&1 | tee test.log
+          {
+            echo '### Coverage'
+            echo
+            echo 'Code in spawned clue processes is not counted, so files that tests reach that way read low.'
+            echo
+            echo '```'
+            grep -E '^[^|]+\|[^|]+\|[^|]+\|' test.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the coverage report
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/lcov.info
 
       - run: bun run build
 
