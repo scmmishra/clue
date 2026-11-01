@@ -41,4 +41,6 @@ Set `"enabled": false` to turn a server off without removing it.
 | `/mcp reject <name>` | Keeps a project server from starting. |
 | `/mcp remove <name>` | Removes a server and its login. |
 
+Servers keep running across `/new` and `/resume` in the same folder. clue reads a change you make to `.mcp.json` by hand at the next launch, or after a `/mcp` command that changes a server.
+
 A project server starts only after you approve it. An approval covers the server's config as it was when you approved it. If `.mcp.json` changes that server, for example after a `git pull`, clue asks you to approve it again.

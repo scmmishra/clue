@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { projectKey } from "../src/session";
@@ -1202,4 +1202,17 @@ test("a resumed session warms the cache on the first key, and the cost counts", 
   await second.type("x");
   await second.seen("history cached");
   expect(warmups()).toBe(1);
+}, 25_000);
+
+test("/new keeps MCP servers running in the same folder", async () => {
+  const home = mkdtempSync(join(tmpdir(), "clue-composer-home-"));
+  const log = join(home, "server-starts");
+  const server = { command: "sh", args: ["-c", `echo start >> ${log}; exec sleep 5`] };
+  writeFileSync(join(home, "mcp.json"), JSON.stringify({ mcpServers: { counter: server } }));
+  const clue = await startClue({ home });
+  for (let tries = 0; tries < 300 && !existsSync(log); tries++) await Bun.sleep(10);
+  await clue.type("/new");
+  await clue.type(ENTER);
+  await Bun.sleep(400);
+  expect(readFileSync(log, "utf8").trim().split("\n")).toHaveLength(1);
 }, 25_000);

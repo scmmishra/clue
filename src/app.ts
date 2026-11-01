@@ -109,14 +109,20 @@ export class App {
     return this.session.cwd;
   }
 
-  // Everything that depends on the session's folder.
+  // Everything that depends on the session's folder. True when MCP servers need starting.
+  // Servers and skills stay as they are in the same folder, so /new doesn't restart them.
   private load(session: Session) {
-    void this.mcp?.closeAll();
+    const newFolder = !this.mcp || this.session.cwd !== session.cwd;
+    this.warmOnKey = false;
+    this.warming?.abort();
     this.session = session;
     if (process.cwd() !== session.cwd) process.chdir(session.cwd);
     this.branch = gitBranch(session.cwd);
-    this.skillCache = null;
-    this.mcp = new McpManager(session.cwd);
+    if (newFolder) {
+      void this.mcp?.closeAll();
+      this.skillCache = null;
+      this.mcp = new McpManager(session.cwd);
+    }
     this.permissions = new Permissions(this.settings.permission_mode, this.settings.permission, session.cwd);
     this.agent = new Agent({
       cwd: session.cwd,
@@ -129,6 +135,7 @@ export class App {
       events: this.events(),
       interactive: true,
     });
+    return newFolder;
   }
 
   // The agent talks to whichever TurnView is current.
@@ -720,8 +727,7 @@ export class App {
           return say(style.red(`That session's folder no longer exists: ${homePath(choice.cwd)}.`));
         const session = Session.load(sessionFile(choice));
         if (!session) return say(style.red("That session file could not be read."));
-        this.load(session);
-        this.mcp.startAll();
+        if (this.load(session)) this.mcp.startAll();
         this.printResumed();
         this.warmOnKey = true;
         return;
@@ -740,8 +746,7 @@ export class App {
         return say(`Session is now ${style.bold(name)}.`);
       }
       case "new":
-        this.load(Session.create(this.cwd));
-        this.mcp.startAll();
+        if (this.load(Session.create(this.cwd))) this.mcp.startAll();
         prefetchGitStatus(this.cwd);
         return say(style.muted("New session. Earlier sessions stay in /resume."));
       case "mcp":

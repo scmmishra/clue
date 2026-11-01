@@ -22,6 +22,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - A failed turn no longer shifts footers and rewind points onto the wrong prompts, and a session whose first request failed can be resumed with the id clue printed.
 - A turn that loses fast mode partway pays the fast price only for its fast requests.
 - The prompt after a `/compact` no longer runs a second compaction, and rewind restores the files of a turn that followed a crash.
+- `/new` and `/resume` in the same folder keep MCP servers running instead of restarting each one.
+- An image is labelled by its contents, not its extension, so a JPEG named `.png` no longer blocks the session. Image formats the API doesn't take are converted.
 
 ## 0.8.1
 
