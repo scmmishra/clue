@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, extname, relative } from "node:path";
 import { nestedInstructions } from "../agent/context";
 import { snapshotFile } from "../agent/undo";
+import { absolute, isInside } from "../paths";
 import { walk } from "../walk";
 import { checkFields, type Tool, type ToolContext } from "./types";
 
@@ -32,10 +33,10 @@ const IGNORED_DIRS = new Set([
 // Stops collecting matches here. Past this, the answer is "narrow the pattern" either way.
 const MAX_WALK_FILES = 20_000;
 
-export const absolute = (cwd: string, path: string) => (isAbsolute(path) ? path : resolve(cwd, path));
 export const display = (cwd: string, path: string) => {
-  const rel = relative(cwd, absolute(cwd, path));
-  return rel && !rel.startsWith("..") ? rel : path;
+  const target = absolute(cwd, path);
+  const rel = relative(cwd, target);
+  return rel && isInside(cwd, target) ? rel : path;
 };
 
 const mtime = (file: string) => statSync(file).mtimeMs;

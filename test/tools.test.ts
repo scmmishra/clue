@@ -1,12 +1,14 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync as makeFolder, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commandIsRoutine, Permissions, ruleFor } from "../src/permissions";
 import { Session } from "../src/session";
 import { chmodSync, mkdirSync } from "node:fs";
 import { UndoStack } from "../src/agent/undo";
+import { nestedInstructions } from "../src/agent/context";
 import { editFile, globFiles, grepFiles, readFile } from "../src/tools/files";
+import { skillTool } from "../src/tools/skills";
 import { shell, stopAllProcesses } from "../src/tools/shell";
 import type { ToolContext } from "../src/tools/types";
 
@@ -277,4 +279,31 @@ test("read_file says plainly when a path is missing or is a folder", async () =>
     "No file at no-such-file.txt",
   );
   expect((await readFile.run({ path: "tree" }, context())).content).toContain("is a folder");
+});
+
+test("nested instructions come from folders in the project, not from a sibling with the same prefix", () => {
+  const root = mkdtempSync(join(tmpdir(), "clue-nested-"));
+  const project = join(root, "proj");
+  makeFolder(join(project, "sub"), { recursive: true });
+  makeFolder(`${project}-other`);
+  writeFileSync(join(project, "sub", "AGENTS.md"), "inside");
+  writeFileSync(join(`${project}-other`, "AGENTS.md"), "outside");
+  expect(nestedInstructions(project, "sub/a.ts", new Set()).join()).toContain("inside");
+  expect(nestedInstructions(project, `${project}-other/a.ts`, new Set())).toEqual([]);
+});
+
+test("a skill resource must sit inside the skill folder, not in a sibling with the same prefix", async () => {
+  const root = mkdtempSync(join(tmpdir(), "clue-skill-"));
+  const dir = join(root, "my-skill");
+  makeFolder(dir);
+  makeFolder(`${dir}-old`);
+  writeFileSync(join(dir, "SKILL.md"), "skill");
+  writeFileSync(join(dir, "note.md"), "note");
+  writeFileSync(join(`${dir}-old`, "a"), "secret");
+  const ctx = { ...context(), skills: () => [{ name: "my-skill", description: "", dir }] };
+  const note = await skillTool.run({ name: "my-skill", resource: "note.md" }, ctx);
+  expect(note.content).toBe("note");
+  const sibling = await skillTool.run({ name: "my-skill", resource: "../my-skill-old/a" }, ctx);
+  expect(sibling).toMatchObject({ isError: true });
+  expect(sibling.content).not.toContain("secret");
 });

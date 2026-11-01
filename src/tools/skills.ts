@@ -2,6 +2,7 @@ import { cpSync, existsSync, readdirSync, readFileSync, statSync } from "node:fs
 import { basename, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 import { ensureDir, paths } from "../config";
+import { isInside } from "../paths";
 import { checkFields, type Tool } from "./types";
 
 export type Skill = { name: string; description: string; dir: string };
@@ -80,7 +81,7 @@ export const skillTool: Tool<{ name: string; resource?: string }> = {
     if (!skill) return { content: `No skill named ${input.name}.`, isError: true };
     if (input.resource) {
       const file = resolve(skill.dir, input.resource);
-      if (!file.startsWith(skill.dir) || !existsSync(file))
+      if (!isInside(skill.dir, file) || !existsSync(file))
         return { content: `No file ${input.resource} in skill ${skill.name}.`, isError: true };
       return { content: readFileSync(file, "utf8") };
     }

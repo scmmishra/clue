@@ -1,8 +1,9 @@
-import { homedir } from "node:os";
-import { isAbsolute, relative, resolve } from "node:path";
+import { lstatSync, realpathSync } from "node:fs";
+import { basename, dirname, join, relative } from "node:path";
 import type { PermissionMode, PermissionRules, ReviewSetting, RuleValue } from "./config";
 import { KNOWN_MODELS, modelLabel, resolveModel, REVIEW_FALLBACK_MODEL } from "./agent/models";
 import { getClient } from "./agent/provider";
+import { absolute, isInside } from "./paths";
 import { parseCommand } from "./shell-command";
 import { fieldOf, type Tool } from "./tools/types";
 import reviewPrompt from "../prompts/review.yaml";
@@ -90,8 +91,9 @@ const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
   ...routine("docker ps,docker images,docker logs,docker compose ps,docker compose logs"),
 ]);
 
+// Case-insensitive, because the default macOS volume reads .GIT as .git.
 const SENSITIVE_PATH =
-  /(^|\/)(\.env(\..*)?|\.git\/|\.ssh\/|\.aws\/|\.npmrc|\.netrc|\.gnupg\/|id_rsa|\.clue\/settings\.json|credentials)/;
+  /(^|\/)(\.env(\..*)?|\.git\/|\.ssh\/|\.aws\/|\.npmrc|\.netrc|\.gnupg\/|id_rsa|\.clue\/settings\.json|\.mcp\.json|credentials)/i;
 
 // Variables that change how a command prints or which mode it runs in, never what it runs.
 // The value can't hold a path, so LANG or TZ can't point at a file.
@@ -120,9 +122,7 @@ function cdStaysInProject(args: string[], cwd?: string) {
   const [path = ""] = args;
   if (args.length !== 1 || path === "" || /^[-+]|[*?[]/.test(path)) return false;
   if (!path.startsWith("/")) return !path.split("/").includes("..");
-  if (!cwd) return false;
-  const rel = relative(cwd, path);
-  return !rel.startsWith("..") && !isAbsolute(rel);
+  return cwd !== undefined && isInside(cwd, path);
 }
 
 function wordsAreRoutine(words: string[], cwd?: string) {
@@ -141,10 +141,44 @@ export function commandIsRoutine(command: string, cwd?: string) {
   return commands !== null && commands.length > 0 && commands.every((words) => wordsAreRoutine(words, cwd));
 }
 
-function insideProject(cwd: string, path: string) {
-  const target = resolve(cwd, path.replace(/^~(?=\/)/, homedir()));
-  const rel = relative(cwd, target);
-  return rel !== "" && !rel.startsWith("..") && !resolve(rel).startsWith("..");
+// The path a file tool names, when it names one.
+function pathOf(tool: Tool, input: unknown) {
+  const path = tool.name === "shell" || tool.name === "mcp_call" ? null : fieldOf(input, "path");
+  return path ? String(path) : null;
+}
+
+// The file a write reaches, with every link followed. The deepest parent that exists is
+// resolved and the rest is added back, because a new file has no real path yet.
+// Null when it can't be told, which callers treat as outside the project.
+function realPath(path: string): string | null {
+  const rest: string[] = [];
+  for (let dir = path; ; dir = dirname(dir)) {
+    try {
+      return rest.includes("..") ? null : join(realpathSync(dir), ...rest);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") return null;
+      // A link with no target exists but fails realpath, and a write would create the target.
+      try {
+        lstatSync(dir);
+        return null;
+      } catch {}
+      if (dirname(dir) === dir) return null;
+      rest.unshift(basename(dir));
+    }
+  }
+}
+
+// Where a path lands, with links followed. `real` is null when that can't be told. `local` is the
+// real path relative to the project, and empty unless the path is inside it.
+function resolveTarget(cwd: string, path: string): { real: string | null; local: string } {
+  const real = realPath(absolute(cwd, path));
+  let root: string | null = null;
+  try {
+    root = realpathSync(cwd);
+  } catch {}
+  if (real === null || root === null || real === root || !isInside(root, real)) return { real, local: "" };
+  return { real, local: relative(root, real) };
 }
 
 // The text rules match against: the command, the file path, or "server.tool".
@@ -186,6 +220,22 @@ export function ruleFor(rules: PermissionRules, toolName: string, subject: strin
   apply(rules["*"]);
   apply(rules[toolName]);
   return result;
+}
+
+// A rule for a file path. Deny and ask rules test the path as written, the absolute path, the
+// project-relative path, and the real path behind any link, absolute and project-relative. A
+// match on any of them wins. An allow rule tests only the path as written and the
+// project-relative path. A path with a .. segment can't match as written, because it can leave
+// the pattern's folder, so it needs the project-relative form, which is already normalised.
+function pathRule(rules: PermissionRules, toolName: string, path: string, cwd: string): RuleValue | null {
+  const file = absolute(cwd, path);
+  const local = isInside(cwd, file) ? relative(cwd, file) : "";
+  const writtenForms = path.split("/").includes("..") ? [local] : [path, local];
+  const granting = writtenForms.filter(Boolean).map((form) => ruleFor(rules, toolName, form));
+  const target = resolveTarget(cwd, path);
+  const restricting = [path, file, target.real ?? "", target.local].filter(Boolean);
+  const forms = [...granting, ...restricting.map((form) => ruleFor(rules, toolName, form))];
+  return forms.includes("deny") ? "deny" : forms.includes("ask") ? "ask" : granting.includes("allow") ? "allow" : null;
 }
 
 const VARIABLE_ASSIGNMENT = /^[A-Za-z_]\w*=/;
@@ -294,6 +344,7 @@ export class Permissions {
 
   decide(tool: Tool, input: unknown): Decision {
     const subject = subjectOf(tool, input);
+    const path = pathOf(tool, input);
     const action = fieldOf(input, "action");
     const runsCommand = tool.name === "shell" && (action ?? "run") === "run";
     // Input to a live process can be any command. Deny and ask rules see it, but allow rules and grants never cover it.
@@ -305,7 +356,9 @@ export class Permissions {
         ? sentRule === "allow"
           ? null
           : sentRule
-        : ruleFor(this.rules, tool.name, subject);
+        : path !== null
+          ? pathRule(this.rules, tool.name, path, this.cwd)
+          : ruleFor(this.rules, tool.name, subject);
     if (rule === "deny") return { action: "deny", subject, reason: "a deny rule in ~/.clue/settings.json" };
     if (tool.readOnly) return { action: "run", subject };
     if (rule === "allow") return { action: "run", subject };
@@ -315,12 +368,11 @@ export class Permissions {
     // auto mode
     if (tool.name === "subagent") return { action: "run", subject };
     if (tool.name === "write_file" || tool.name === "edit_file") {
-      if (insideProject(this.cwd, subject) && !SENSITIVE_PATH.test(subject)) return { action: "run", subject };
-      return {
-        action: "review",
-        subject,
-        reason: insideProject(this.cwd, subject) ? "sensitive file" : "outside the project",
-      };
+      const { local } = resolveTarget(this.cwd, subject);
+      const inside = local !== "";
+      const written = relative(this.cwd, absolute(this.cwd, subject));
+      if (inside && !SENSITIVE_PATH.test(local) && !SENSITIVE_PATH.test(written)) return { action: "run", subject };
+      return { action: "review", subject, reason: inside ? "sensitive file" : "outside the project" };
     }
     if (tool.name === "shell") {
       if (sends) return { action: "review", subject, reason: "input to a running process" };

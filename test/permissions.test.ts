@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { approvalQuestion, commandIsRoutine, Permissions } from "../src/permissions";
 import { parseCommand } from "../src/shell-command";
-import { readFile } from "../src/tools/files";
+import { editFile, readFile, writeFile } from "../src/tools/files";
 import { shell } from "../src/tools/shell";
 
 test("a plain command becomes its words", () => {
@@ -474,4 +477,202 @@ test("the approval question shows the input on one line, cut to a sensible lengt
   expect(approvalQuestion(shell, send("a\nb"))).toBe('Send "a b" to process 3?');
   expect(approvalQuestion(shell, send("x".repeat(500)))).toBe(`Send "${"x".repeat(80)}..." to process 3?`);
   expect(approvalQuestion(shell, { action: "interact", id: "3" })).toBe("Run interact 3?");
+});
+
+// A real project folder with a sibling folder outside it. The path is the real one, because
+// macOS temp folders sit behind the /var link.
+function projectFolder() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "clue-perm-")));
+  const project = join(root, "project");
+  const outside = join(root, "outside");
+  for (const folder of [project, outside, join(project, "src"), join(project, ".git", "hooks")])
+    mkdirSync(folder, { recursive: true });
+  writeFileSync(join(project, ".git", "config"), "");
+  return { root, project, outside };
+}
+
+test("sensitive files are reviewed whatever their case, and .mcp.json is sensitive", () => {
+  const { project } = projectFolder();
+  const permissions = new Permissions("auto", {}, project);
+  for (const path of [
+    ".git/config",
+    ".GIT/config",
+    ".GIT/hooks/pre-commit",
+    ".mcp.json",
+    ".MCP.json",
+    ".Env",
+    ".SSH/x",
+  ])
+    expect(permissions.decide(writeFile, { path })).toMatchObject({ action: "review", reason: "sensitive file" });
+  expect(permissions.decide(writeFile, { path: "src/a.ts" }).action).toBe("run");
+});
+
+test("a link that leads out of the project sends the write to review", () => {
+  const { project, outside } = projectFolder();
+  symlinkSync(outside, join(project, "docs"));
+  writeFileSync(join(outside, "keys"), "");
+  symlinkSync(join(outside, "keys"), join(project, "keys-link"));
+  symlinkSync(join(outside, "not-there"), join(project, "dangling"));
+  const permissions = new Permissions("auto", {}, project);
+  for (const path of ["docs/authorized_keys", "docs/new/deeper.txt", "keys-link", "dangling"]) {
+    expect(permissions.decide(writeFile, { path })).toMatchObject({ action: "review", reason: "outside the project" });
+    expect(permissions.decide(editFile, { path })).toMatchObject({ action: "review", reason: "outside the project" });
+  }
+});
+
+test("a link that stays inside the project is fine", () => {
+  const { project } = projectFolder();
+  symlinkSync(join(project, "src"), join(project, "lib"));
+  const permissions = new Permissions("auto", {}, project);
+  expect(permissions.decide(writeFile, { path: "lib/a.ts" }).action).toBe("run");
+  expect(permissions.decide(writeFile, { path: "lib/new/a.ts" }).action).toBe("run");
+  expect(permissions.decide(writeFile, { path: join(project, "src", "a.ts") }).action).toBe("run");
+});
+
+test("a link to a sensitive file inside the project sends the write to review", () => {
+  const { project } = projectFolder();
+  symlinkSync(join(project, ".git", "config"), join(project, "settings.ini"));
+  symlinkSync(join(project, ".git", "hooks"), join(project, "hooks"));
+  const permissions = new Permissions("auto", {}, project);
+  for (const path of ["settings.ini", "hooks/pre-commit"])
+    expect(permissions.decide(writeFile, { path })).toMatchObject({ action: "review", reason: "sensitive file" });
+});
+
+test("a project folder that can't be resolved sends every write to review", () => {
+  const permissions = new Permissions("auto", {}, join(tmpdir(), "clue-perm-missing", "project"));
+  expect(permissions.decide(writeFile, { path: "src/a.ts" })).toMatchObject({ action: "review" });
+});
+
+test("a path outside the project, or a sibling folder with the same prefix, is reviewed", () => {
+  const { root, project } = projectFolder();
+  mkdirSync(`${project}-other`);
+  const permissions = new Permissions("auto", {}, project);
+  for (const path of [`${project}-other/a.ts`, "../outside/a.ts", join(root, "x.ts"), "~/notes.md"])
+    expect(permissions.decide(writeFile, { path })).toMatchObject({ action: "review", reason: "outside the project" });
+});
+
+test("a deny rule for a project path also matches ./, absolute and unnormalised spellings of it", () => {
+  const { project } = projectFolder();
+  const rules = { write_file: { "src/generated/*": "deny" }, read_file: { "src/generated/*": "deny" } } as never;
+  for (const mode of ["auto", "ask", "full-access"] as const) {
+    const permissions = new Permissions(mode, rules, project);
+    for (const path of [
+      "src/generated/a.ts",
+      "./src/generated/a.ts",
+      "src/x/../generated/a.ts",
+      join(project, "src/generated/a.ts"),
+    ]) {
+      expect(permissions.decide(writeFile, { path }).action).toBe("deny");
+      expect(permissions.decide(readFile, { path }).action).toBe("deny");
+    }
+    expect(permissions.decide(writeFile, { path: "src/other/a.ts" }).action).not.toBe("deny");
+  }
+});
+
+test("a deny or ask rule written with an absolute path matches a relative spelling", () => {
+  const { project } = projectFolder();
+  const denying = new Permissions("auto", { read_file: { [`${project}/secret/*`]: "deny" } } as never, project);
+  expect(denying.decide(readFile, { path: "secret/a.txt" }).action).toBe("deny");
+  expect(denying.decide(readFile, { path: `${project}/secret/a.txt` }).action).toBe("deny");
+  const asking = new Permissions("auto", { write_file: { [`${project}/src/*`]: "ask" } } as never, project);
+  expect(asking.decide(writeFile, { path: "./src/a.ts" }).action).toBe("ask");
+});
+
+test("an ask rule for a project path also matches ./ and absolute spellings of it", () => {
+  const { project } = projectFolder();
+  const permissions = new Permissions("auto", { write_file: { "src/*": "ask" } } as never, project);
+  for (const path of ["src/a.ts", "./src/a.ts", join(project, "src/a.ts")])
+    expect(permissions.decide(writeFile, { path }).action).toBe("ask");
+});
+
+test("an allow rule matches the path as written or its project-relative form", () => {
+  const { project } = projectFolder();
+  const permissions = new Permissions("ask", { write_file: { "src/*": "allow" } } as never, project);
+  expect(permissions.decide(writeFile, { path: "src/a.ts" }).action).toBe("run");
+  expect(permissions.decide(writeFile, { path: "./src/a.ts" }).action).toBe("run");
+  expect(permissions.decide(writeFile, { path: join(project, "src/a.ts") }).action).toBe("run");
+  expect(permissions.decide(writeFile, { path: "lib/a.ts" }).action).toBe("ask");
+  const absolute = new Permissions("ask", { write_file: { [`${project}/src/*`]: "allow" } } as never, project);
+  expect(absolute.decide(writeFile, { path: join(project, "src/a.ts") }).action).toBe("run");
+});
+
+test("a deny rule still wins over an allow rule that matches another spelling", () => {
+  const { project } = projectFolder();
+  const rules = { write_file: { "*": "allow", "src/generated/*": "deny" } } as never;
+  const permissions = new Permissions("auto", rules, project);
+  expect(permissions.decide(writeFile, { path: "./src/generated/a.ts" }).action).toBe("deny");
+});
+
+test("a write to ~/ resolves to the home folder, as the permission check judges it", async () => {
+  const { root, project } = projectFolder();
+  const home = join(root, "home");
+  mkdirSync(home);
+  // homedir() is read once at startup, so the test runs the write in a process that starts with the temp HOME.
+  const script = `
+    import { writeFile } from ${JSON.stringify(join(import.meta.dir, "../src/tools/files"))};
+    const context = { cwd: ${JSON.stringify(project)}, readStamps: new Map(), undo: { record() {} }, seenInstructions: new Set() };
+    const result = await writeFile.run({ path: "~/x.md", content: "hi" }, context);
+    if (result.isError) throw new Error(String(result.content));
+  `;
+  const run = Bun.spawnSync([process.execPath, "-e", script], { env: { ...process.env, HOME: home } });
+  expect(run.stderr.toString()).toBe("");
+  expect(await Bun.file(join(home, "x.md")).text()).toBe("hi");
+  expect(await Bun.file(join(project, "~", "x.md")).exists()).toBe(false);
+});
+
+test("a deny rule also matches the real path behind a link inside the project", () => {
+  const { project } = projectFolder();
+  mkdirSync(join(project, "secret"));
+  symlinkSync(join(project, "secret"), join(project, "docs"));
+  const relativeRule = new Permissions(
+    "full-access",
+    {
+      read_file: { "secret/*": "deny" },
+      write_file: { "secret/*": "deny" },
+    } as never,
+    project,
+  );
+  expect(relativeRule.decide(readFile, { path: "docs/a.txt" }).action).toBe("deny");
+  expect(relativeRule.decide(writeFile, { path: "docs/new/a.txt" }).action).toBe("deny");
+  const absoluteRule = new Permissions(
+    "full-access",
+    { read_file: { [`${project}/secret/*`]: "deny" } } as never,
+    project,
+  );
+  expect(absoluteRule.decide(readFile, { path: "docs/a.txt" }).action).toBe("deny");
+  expect(relativeRule.decide(readFile, { path: "src/a.txt" }).action).toBe("run");
+});
+
+test("an ask rule also matches the real path behind a link inside the project", () => {
+  const { project } = projectFolder();
+  mkdirSync(join(project, "secret"));
+  symlinkSync(join(project, "secret"), join(project, "docs"));
+  const permissions = new Permissions("auto", { write_file: { "secret/*": "ask" } } as never, project);
+  expect(permissions.decide(writeFile, { path: "docs/a.txt" }).action).toBe("ask");
+});
+
+test("a link to a place the project can't resolve keeps the rule result from the path text", () => {
+  const permissions = new Permissions(
+    "full-access",
+    { read_file: { "secret/*": "deny" } } as never,
+    join(tmpdir(), "clue-perm-missing", "p"),
+  );
+  expect(permissions.decide(readFile, { path: "secret/a.txt" }).action).toBe("deny");
+  expect(permissions.decide(readFile, { path: "src/a.txt" }).action).toBe("run");
+});
+
+test("an allow rule does not match a path that leaves its pattern through ..", () => {
+  const { project } = projectFolder();
+  const permissions = new Permissions("ask", { write_file: { "src/*": "allow" } } as never, project);
+  expect(permissions.decide(writeFile, { path: "src/../../x" }).action).toBe("ask");
+  expect(permissions.decide(writeFile, { path: "src/../lib/x" }).action).toBe("ask");
+  expect(permissions.decide(writeFile, { path: "src/../src/a.ts" }).action).toBe("run");
+  expect(permissions.decide(writeFile, { path: "src/a.ts" }).action).toBe("run");
+});
+
+test("a link that stays in the project doesn't make an allow rule match", () => {
+  const { project } = projectFolder();
+  symlinkSync(join(project, "src"), join(project, "lib"));
+  const permissions = new Permissions("ask", { write_file: { "src/*": "allow" } } as never, project);
+  expect(permissions.decide(writeFile, { path: "lib/a.ts" }).action).toBe("ask");
 });

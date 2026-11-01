@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { paths } from "../config";
+import { isInside } from "../paths";
 import type { Skill } from "../tools/skills";
 
 const INSTRUCTION_FILES = ["AGENTS.md", "CLAUDE.md"];
@@ -101,7 +102,7 @@ export function nestedInstructions(cwd: string, target: string, seen: Set<string
   let dir = dirname(resolve(cwd, target));
   const root = resolve(cwd);
   const found: string[] = [];
-  while (dir.startsWith(root) && dir !== root) {
+  while (isInside(root, dir) && dir !== root) {
     for (const name of INSTRUCTION_FILES) {
       const file = join(dir, name);
       if (!seen.has(file) && existsSync(file)) found.unshift(file);

@@ -9,6 +9,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - Deny and ask shell rules now also match a command behind `time`, `env`, `timeout` or a leading `NAME=value`, a bare command (`git push` for `git push *`), multi-line commands and lines clue can't parse. Allow rules stay strict.
 - In `auto` mode, input that Claude sends to a running shell process now goes to review, deny and ask rules match it, and the approval prompt shows it.
 - clue asks you before running an action too long for the reviewer to read in full. Before, the reviewer read only the first part and its approval covered the rest.
+- `auto` mode reviews writes that reach a sensitive or outside file through a link or a different letter case, and `.mcp.json` counts as sensitive. Permission rules for file paths match `./`, absolute, relative and linked spellings of the same file.
+- A path that starts with `~/` now means your home folder in the file tools. Before, it made a folder named `~` in the project.
 
 ## 0.8.1
 
