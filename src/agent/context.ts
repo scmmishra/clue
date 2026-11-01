@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { paths } from "../config";
 import { isInside } from "../paths";
+import { CONTEXT_OPEN } from "../session";
 import type { Skill } from "../tools/skills";
 
 const INSTRUCTION_FILES = ["AGENTS.md", "CLAUDE.md"];
@@ -125,7 +126,7 @@ export async function buildContext(cwd: string, skills: Skill[], mcpServers: str
   const status = branch ? await takeGitStatus(cwd) : "";
   const shell = basename(process.env.SHELL ?? "sh");
   const lines = [
-    "<context>",
+    CONTEXT_OPEN,
     `folder: ${cwd}`,
     `os: ${process.platform} ${process.arch}`,
     `shell: ${shell}`,

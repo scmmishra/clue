@@ -28,6 +28,9 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - Resuming a session warms the cache on the first key you type, so opening a session only to read it costs nothing. `/` commands don't trigger it.
 - A turn that loses fast mode partway pays the fast price only for its fast requests.
 - A session whose first request failed can be resumed with the id clue printed.
+- A missing turn record, such as after a crash, no longer shifts footers and rewind points onto the wrong prompts. Typing `Continue with the task.` or starting a first prompt with `<context>` no longer hides that prompt.
+- After a compaction during a long run, Claude gets your project instructions and git state again. The prompt after a `/compact` no longer runs a second compaction.
+- Rewind now restores the files of a turn that followed a crash.
 
 ## 0.8.1
 

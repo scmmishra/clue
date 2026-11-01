@@ -926,7 +926,9 @@ test("a compaction during a turn lets the turn continue", async () => {
   expect(compactions.length).toBe(before + 1);
   const last = (requests.at(-1) as { messages: { role: string; content: any }[] }).messages;
   expect(last[0].content[0].type).toBe("compaction");
-  expect(last.at(-1)).toEqual({ role: "user", content: "Continue with the task." });
+  const { content } = last.at(-1) as { content: { text: string }[] };
+  expect(content[0].text).toStartWith("<context>");
+  expect(content[1].text).toContain("Continue with the task.");
 }, 25_000);
 
 const ESC = "\x1b";

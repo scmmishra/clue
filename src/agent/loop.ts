@@ -152,8 +152,16 @@ export class Agent {
       return events.notice(`Compaction failed. ${problem}`, "warn");
     }
     events.notice("Compacted the conversation.", "info");
-    // A request can't end on the summary, which is an assistant message.
-    if (midTurn) session.appendMessage({ role: "user", content: CONTINUE_PROMPT });
+    // A request can't end on the summary, which is an assistant message. The summary also
+    // replaced the opening context, and no later prompt brings it back during this turn.
+    if (midTurn)
+      session.appendMessage({
+        role: "user",
+        content: [
+          { type: "text", text: await this.openingContext() },
+          { type: "text", text: CONTINUE_PROMPT },
+        ],
+      });
   }
 
   private turnOffFast() {
@@ -161,6 +169,11 @@ export class Agent {
     settings.fast = false;
     if (onFastOff) return onFastOff();
     events.notice("Fast mode isn't available now, so clue turned it off. Run /fast to try again.", "warn");
+  }
+
+  private openingContext() {
+    const { cwd, skills, mcp } = this.options;
+    return buildContext(cwd, skills(), mcp.configuredNames(), this.seenInstructions);
   }
 
   // Runs one user prompt to completion: model turns and tool calls until Claude stops.
@@ -176,17 +189,13 @@ export class Agent {
     let model = settings.model;
     let fast = false;
 
-    if (!this.options.subagent) this.undo.beginTurn(this.session.transcript.length);
     session.closeUnfinishedTools();
-    this.lastContext ||= session.turns.at(-1)?.context ?? 0;
+    this.lastContext ||= session.lastContextSize ?? 0;
     await this.compactIfFull(signal, false);
+    const promptAt = session.transcript.length;
+    if (!this.options.subagent) this.undo.beginTurn(promptAt);
     if (session.needsContext) {
-      const context = await buildContext(
-        this.options.cwd,
-        this.options.skills(),
-        this.options.mcp.configuredNames(),
-        this.seenInstructions,
-      );
+      const context = await this.openingContext();
       session.appendMessage({
         role: "user",
         content: [{ type: "text", text: context }, { type: "text", text: prompt }, ...images],
@@ -211,6 +220,7 @@ export class Agent {
         stop: ending,
         context,
         fast: fast || undefined,
+        transcript: promptAt,
       };
       session.append({ t: "turn", turn });
       return turn;

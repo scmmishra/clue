@@ -50,6 +50,8 @@ export type TurnRecord = {
   context?: number;
   // Claude answered in fast mode, at the fast price.
   fast?: boolean;
+  // Where the turn's prompt sits in the transcript. Older sessions don't have it.
+  transcript?: number;
 };
 
 // One /compact: the summary that replaces the messages, and what the summary cost.
@@ -88,17 +90,20 @@ export function startsWithSummary(messages: MessageParam[]) {
   return Array.isArray(content) && content[0]?.type === "compaction";
 }
 
-// What clue adds after a compaction during a turn. The user didn't type it.
-export const CONTINUE_PROMPT = "Continue with the task.";
+// What clue adds after a compaction during a turn. The tag keeps it apart from anything typed.
+export const CONTINUE_PROMPT = "<clue>Continue with the task.</clue>";
+
+// How the opening context starts. It sits before the prompt, in the same message.
+export const CONTEXT_OPEN = "<context>";
 
 // The text a person typed, or null for tool results and clue's own messages.
 export function promptText(message: MessageParam) {
   if (message.role !== "user") return null;
   if (typeof message.content === "string") return message.content === CONTINUE_PROMPT ? null : message.content;
   if (message.content.some((block) => block.type === "tool_result")) return null;
-  return message.content
-    .flatMap((block) => (block.type === "text" && !block.text.startsWith("<context>") ? [block.text] : []))
-    .join("\n");
+  const texts = message.content.flatMap((block) => (block.type === "text" ? [block.text] : []));
+  const typed = (texts.length > 1 && texts[0].startsWith(CONTEXT_OPEN) ? texts.slice(1) : texts).join("\n");
+  return typed === CONTINUE_PROMPT ? null : typed;
 }
 
 // A message the user sent mid-turn, after tool results, to steer the turn. It is part of the
@@ -108,6 +113,13 @@ export function steerText(message: MessageParam) {
   if (!message.content.some((block) => block.type === "tool_result")) return null;
   const text = message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
   return text || null;
+}
+
+// Tokens in the last request, or undefined when a compaction has replaced that context.
+export function lastContextSize(turns: TurnRecord[], compactions: CompactionRecord[]) {
+  const last = turns.at(-1);
+  const compactedSince = last && (compactions.at(-1)?.at ?? 0) > last.startedAt + last.ms;
+  return compactedSince ? undefined : turns.findLast((turn) => turn.context !== undefined)?.context;
 }
 
 // A prompt the session can go back to. Rewinding drops it and everything after it.
@@ -224,16 +236,8 @@ export class Session {
     if (record.t === "message") {
       this.messages.push(record.message);
       this.transcript.push(record.message);
-      if (record.message.role === "user" && typeof record.message.content === "string") {
-        this.prompts += 1;
-        this.title ||= record.message.content;
-      } else if (record.message.role === "user" && !this.title) {
-        // The first prompt of a session sits in blocks, after the context.
-        const blocks = record.message.content as Anthropic.Beta.Messages.BetaContentBlockParam[];
-        this.title = blocks
-          .flatMap((block) => (block.type === "text" && !block.text.startsWith("<context>") ? [block.text] : []))
-          .join(" ");
-      }
+      if (record.message.role === "user" && typeof record.message.content === "string") this.prompts += 1;
+      this.title ||= promptText(record.message) ?? "";
     } else if (record.t === "tool") this.tools.set(record.tool.id, record.tool);
     else if (record.t === "turn") {
       this.turns.push(record.turn);
@@ -305,6 +309,26 @@ export class Session {
     return totalCost(this.turns, this.rewound, this.compactions, this.spends);
   }
 
+  get lastContextSize() {
+    return lastContextSize(this.turns, this.compactions);
+  }
+
+  // The turn a prompt started. In an older session turns have no position, so the Nth prompt
+  // pairs with the Nth turn.
+  turnOfPrompt(transcript: number, prompt: number) {
+    const turn = this.turns[prompt];
+    return (
+      this.turns.find((candidate) => candidate.transcript === transcript) ??
+      (turn?.transcript === undefined ? turn : undefined)
+    );
+  }
+
+  private turnsBefore(transcript: number, prompt: number) {
+    return this.turns.filter((turn, position) =>
+      turn.transcript === undefined ? position < prompt : turn.transcript < transcript,
+    ).length;
+  }
+
   get isEmpty() {
     return this.messages.length === 0;
   }
@@ -318,7 +342,12 @@ export class Session {
       const text = promptText(message);
       if (text === null) return;
       if (index >= this.transcript.length - sent) {
-        points.push({ text, transcript: index, turns: prompt, at: this.turns[prompt]?.startedAt });
+        points.push({
+          text,
+          transcript: index,
+          turns: this.turnsBefore(index, prompt),
+          at: this.turnOfPrompt(index, prompt)?.startedAt,
+        });
       }
       prompt += 1;
     });

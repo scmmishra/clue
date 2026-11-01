@@ -1,5 +1,5 @@
 import { COMPACTION_TRIGGER_TOKENS, modelLabel } from "../agent/models";
-import { totalCost, type CompactionRecord, type SpendRecord, type TurnRecord } from "../session";
+import { lastContextSize, totalCost, type CompactionRecord, type SpendRecord, type TurnRecord } from "../session";
 import { money, style, tokens } from "./ansi";
 
 const LABEL_WIDTH = 10;
@@ -8,9 +8,7 @@ const BAR_WIDTH = 24;
 const row = (label: string, value: string) => `  ${style.muted(label.padEnd(LABEL_WIDTH))}${value}`;
 
 function contextRows(turns: TurnRecord[], compactions: CompactionRecord[]) {
-  const last = turns.at(-1);
-  const compactedSince = last && (compactions.at(-1)?.at ?? 0) > last.startedAt + last.ms;
-  const used = compactedSince ? undefined : turns.findLast((turn) => turn.context !== undefined)?.context;
+  const used = lastContextSize(turns, compactions);
   if (used === undefined) return [row("Context", style.muted("Shows after the next reply."))];
   const share = used / COMPACTION_TRIGGER_TOKENS;
   const filled = Math.min(BAR_WIDTH, Math.round(share * BAR_WIDTH));
