@@ -118,11 +118,13 @@ export function readJsonForWriting(path: string): JsonObject {
   return parsed;
 }
 
-// A rename, so a crash can't leave half a file. The file keeps its mode.
+// A rename, so a crash can't leave half a file. The file keeps its mode. The temporary name is
+// random and `wx` refuses an existing path, because a repository can ship a link at a fixed name.
 export function writeJsonFile(path: string, value: object) {
   const mode = existsSync(path) ? statSync(path).mode & 0o777 : undefined;
-  writeFileSync(`${path}.new`, `${JSON.stringify(value, null, 2)}\n`, { mode });
-  renameSync(`${path}.new`, path);
+  const temporary = `${path}.${crypto.randomUUID()}.new`;
+  writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode, flag: "wx" });
+  renameSync(temporary, path);
 }
 
 const PROVIDER_KEYS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENROUTER_API_KEY"];

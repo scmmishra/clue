@@ -1,5 +1,15 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as config from "../src/config";
@@ -246,3 +256,16 @@ test("clue doctor reports a broken mcp file", async () => {
   const { stdout } = await run(["doctor"]);
   expect(stdout).toContain(join(home, "mcp.json"));
 }, 20_000);
+
+test("saving never writes through a link at a temporary path", () => {
+  const dir = folder();
+  const victim = join(dir, "victim.txt");
+  const file = join(dir, ".mcp.json");
+  writeFileSync(victim, "keep me\n");
+  writeFileSync(file, "{}");
+  symlinkSync(victim, `${file}.new`);
+  mcpConfig.saveServer(file, "b", SAVED);
+  expect(readFileSync(victim, "utf8")).toBe("keep me\n");
+  expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ mcpServers: { b: SAVED } });
+  expect(readdirSync(dir).sort()).toEqual([".mcp.json", ".mcp.json.new", "victim.txt"]);
+});
