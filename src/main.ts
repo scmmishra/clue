@@ -47,7 +47,6 @@ Options
   --full-access              shorthand for --permission-mode full-access
   --name <name>              open the session with this name in this folder, or create it
   --json                     with ask: print a JSON result
-  --resume <id>              with ask: continue a saved session
   -v, --version              print the version
 `;
 
@@ -110,7 +109,7 @@ function settingsFrom(flags: Parsed["flags"]): Settings {
   return loadSettings(overrides);
 }
 
-// Loads a session by id from any folder. Scripts use this: an id never changes.
+// Loads a session by id from any folder.
 function sessionById(id: string): Session {
   const meta = findSession(id);
   if (!meta) fail(`no session with id ${id}. Run clue -r to pick one.`);
@@ -206,8 +205,8 @@ async function main() {
     for (const warning of warnings) process.stderr.write(`clue: ${warning}\n`);
     const prompt = [positional.join(" "), await readStdin()].filter(Boolean).join("\n\n");
     if (!prompt) fail("clue ask needs a prompt, as arguments or on stdin.");
-    const session = typeof flags.resume === "string" ? sessionById(flags.resume) : Session.create(process.cwd());
-    if (session.cwd !== process.cwd()) process.chdir(session.cwd);
+    if (flags.resume !== undefined) fail("clue ask starts a new session. Use clue -r <id> to continue one.");
+    const session = Session.create(process.cwd());
     const { runAsk } = await import("./commands/ask");
     return runAsk(prompt, settings, session, flags.json === true);
   }

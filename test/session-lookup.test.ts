@@ -44,18 +44,14 @@ function setup() {
     const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
     return stdout + stderr;
   };
-  return { home, cwd, clue, first, breakIndex, script };
+  // What `clue -r <id>` loads, without needing a terminal.
+  const session = join(import.meta.dir, "../src/session.ts");
+  const find = (id: string) =>
+    script(`const { findSession } = await import(${JSON.stringify(session)});
+console.log(findSession(${JSON.stringify(id)})?.id ?? "nothing");
+process.exit(0);`);
+  return { home, cwd, clue, first, breakIndex, script, find };
 }
-
-test("clue ask --resume needs the whole id", async () => {
-  const { clue, first } = setup();
-  const id = await first();
-  const truncated = await clue("ask", "--resume", id.slice(0, 6), "again");
-  expect(truncated.code).toBe(2);
-  expect(truncated.stderr).toContain("no session with id");
-  const empty = await clue("ask", "--resume=", "again");
-  expect(empty.code).toBe(2);
-}, 15_000);
 
 test("an id prefix that matches several sessions reports them all", () => {
   const cwd = folder();
@@ -72,22 +68,27 @@ test("an id prefix that matches several sessions reports them all", () => {
   expect(resolveSession("", cwd)).toEqual([]);
 });
 
-test("a session resumes by id with a broken index", async () => {
-  const { clue, first, breakIndex } = setup();
+test("a session is found by its whole id, not part of it", async () => {
+  const { first, find } = setup();
   const id = await first();
-  breakIndex();
-  const { stdout, code } = await clue("ask", "--json", "--resume", id, "again");
-  expect(code).toBe(0);
-  expect(JSON.parse(stdout).session_id).toBe(id);
+  expect(await find(id)).toContain(id);
+  expect(await find(id.slice(0, 6))).toContain("nothing");
+  expect(await find("")).toContain("nothing");
 }, 15_000);
 
-test("a session the index has lost resumes by id", async () => {
-  const { home, clue, first } = setup();
+test("a session is found by id with a broken index", async () => {
+  const { first, breakIndex, find } = setup();
+  const id = await first();
+  breakIndex();
+  expect(await find(id)).toContain(id);
+}, 15_000);
+
+test("a session the index has lost is found by id", async () => {
+  const { home, first, find } = setup();
   const id = await first();
   for (const name of readdirSync(join(home, "sessions")))
     if (name.startsWith("index.db")) rmSync(join(home, "sessions", name));
-  const { code } = await clue("ask", "--resume", id, "again");
-  expect(code).toBe(0);
+  expect(await find(id)).toContain(id);
 }, 15_000);
 
 test("with a broken index, sessions and names still come from their files", async () => {
@@ -135,16 +136,19 @@ test("clue -c ignores a session from another folder with the same key", () => {
 });
 
 test("a second clue refuses a session that a live process holds, and takes it from a dead one", async () => {
-  const { home, clue, first } = setup();
+  const { home, script, first } = setup();
   const id = await first();
   const dir = readdirSync(join(home, "sessions")).find((name) => !name.startsWith("index"))!;
-  const lock = join(home, "sessions", dir, `${id}.jsonl.lock`);
+  const file = join(home, "sessions", dir, `${id}.jsonl`);
+  const lock = `${file}.lock`;
   expect(existsSync(lock)).toBe(false);
+  const acquire = () =>
+    script(`const { Session } = await import(${JSON.stringify(join(import.meta.dir, "../src/session.ts"))});
+try { Session.load(${JSON.stringify(file)}).acquire(); console.log("taken"); } catch (error) { console.log(error.message); }
+process.exit(0);`);
   writeFileSync(lock, String(process.pid));
-  const refused = await clue("ask", "--resume", id, "again");
-  expect(refused.code).toBe(2);
-  expect(refused.stderr).toContain("open in another clue");
+  expect(await acquire()).toContain("open in another clue");
   writeFileSync(lock, "999999");
-  expect((await clue("ask", "--resume", id, "again")).code).toBe(0);
+  expect(await acquire()).toContain("taken");
   expect(existsSync(lock)).toBe(false);
 }, 15_000);

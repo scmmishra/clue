@@ -35,6 +35,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - A session opens in one clue at a time. A second clue stops with a message, because two processes writing one file could leave it unable to resume.
 - `clue -c` no longer picks up a session from another folder whose path maps to the same key.
 - `clue -r <prefix>` lists every session that matches an id prefix instead of picking the newest.
+- `clue ask --resume` is gone. `clue ask` always starts a new session, and it stops with a message if you pass `--resume`. `clue -r <id>` still continues a session in the interactive shell, and `--json` still reports `session_id`.
 
 ## 0.8.1
 

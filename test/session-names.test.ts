@@ -314,12 +314,10 @@ test("clue -r with an unknown name says so", async () => {
   expect(code).toBe(2);
 });
 
-test("clue ask --resume takes an id, not a name", async () => {
+test("clue ask refuses to resume a session", async () => {
   const cwd = folder();
-  const name = unique();
-  saved(cwd, name);
-  const { stderr, code } = await run(["ask", "--resume", name, "hello"], cwd);
-  expect(stderr).toContain(`no session with id ${name}`);
+  const { stderr, code } = await run(["ask", "--resume", "abc", "hello"], cwd);
+  expect(stderr).toContain("clue ask starts a new session");
   expect(code).toBe(2);
 });
 

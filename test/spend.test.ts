@@ -43,7 +43,14 @@ async function ask(prompt: string, ...flags: string[]) {
       .split("\n");
     return lines.map((line) => JSON.parse(line));
   };
-  return { result: await run(...flags, prompt), run, records };
+  const found = async (id: string) => {
+    const code = `const { listSessions } = await import(${JSON.stringify(join(import.meta.dir, "../src/session.ts"))});
+console.log(listSessions().map((meta) => meta.id).join(" "), ${JSON.stringify(id)}.length);
+process.exit(0);`;
+    const proc = Bun.spawn(["bun", "-e", code], { env: { ...process.env, CLUE_HOME: home }, stdout: "pipe" });
+    return new Response(proc.stdout).text();
+  };
+  return { result: await run(...flags, prompt), records, found };
 }
 
 const oneRequest = (output: number) => ({
@@ -69,15 +76,14 @@ test("a compaction the API ran during a turn is counted and priced", async () =>
   expect(result.usage.output).toBe(40 + 60 + 700);
 }, 15_000);
 
-test("a turn that fails keeps a record of what it already spent, and can be resumed by id", async () => {
-  const { result, records, run } = await ask("fail midway");
+test("a turn that fails keeps a record of what it already spent, and the session stays findable", async () => {
+  const { result, records, found } = await ask("fail midway");
   expect(result.error).toBeDefined();
   const turn = records(result.session_id).find((record) => record.t === "turn")?.turn;
   expect(turn?.stop).toBe("error");
   expect(turn?.prompt).toBe("fail midway");
   expect(turn?.cost).toBeGreaterThan(0);
-  const again = await run("--resume", result.session_id, "read it");
-  expect(again.session_id).toBe(result.session_id);
+  expect(await found(result.session_id)).toContain(result.session_id);
 }, 15_000);
 
 const turn = (cost: number): TurnRecord =>
