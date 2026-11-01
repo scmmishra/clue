@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { approvalQuestion, commandIsRoutine, Permissions } from "../src/permissions";
 import { parseCommand } from "../src/shell-command";
-import { readFile } from "../src/tools/files";
+import { readFile, writeFile } from "../src/tools/files";
 import { shell } from "../src/tools/shell";
 
 test("a plain command becomes its words", () => {
@@ -443,6 +443,14 @@ test("the approval prompt shows the text typed into a process", () => {
   expect(approvalQuestion(shell, input)).toBe(`Run interact 3 "git push\\n"?`);
   expect(approvalQuestion(shell, { action: "interact", id: "3" })).toBe("Run interact 3?");
 });
+
+test.each([".env", ".ENV", ".Env.local", ".git/config", ".GIT/hooks/pre-commit", ".mcp.json", "sub/.MCP.json"])(
+  "writing %s in auto mode is reviewed as a sensitive file",
+  (path) => {
+    const permissions = new Permissions("auto", {}, "/tmp/project");
+    expect(permissions.decide(writeFile, { path })).toMatchObject({ action: "review", reason: "sensitive file" });
+  },
+);
 
 test("rules for commands don't touch interact and stop", () => {
   const permissions = new Permissions("auto", gitRules, "/tmp/project");

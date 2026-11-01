@@ -90,8 +90,10 @@ const ROUTINE_COMMANDS = new Map<string, UnsafeArgs | null>([
   ...routine("docker ps,docker images,docker logs,docker compose ps,docker compose logs"),
 ]);
 
+// Case doesn't matter: the default macOS disk reads .GIT/config as .git/config.
+// .mcp.json holds commands clue starts for project MCP servers.
 const SENSITIVE_PATH =
-  /(^|\/)(\.env(\..*)?|\.git\/|\.ssh\/|\.aws\/|\.npmrc|\.netrc|\.gnupg\/|id_rsa|\.clue\/settings\.json|credentials)/;
+  /(^|\/)(\.env(\..*)?|\.git\/|\.ssh\/|\.aws\/|\.npmrc|\.netrc|\.gnupg\/|id_rsa|\.clue\/settings\.json|\.mcp\.json|credentials)/i;
 
 // Variables that change how a command prints or which mode it runs in, never what it runs.
 // The value can't hold a path, so LANG or TZ can't point at a file.
