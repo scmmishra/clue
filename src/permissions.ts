@@ -179,12 +179,21 @@ function pathRule(rules: PermissionRules, toolName: string, cwd: string, path: s
   return strictest(values) ?? (values.includes("allow") ? "allow" : null);
 }
 
+// The text a shell interact call types into a running process, or "".
+function typedText(input: unknown) {
+  const typed = fieldOf(input, "action") === "interact" ? fieldOf(input, "input") : undefined;
+  return typeof typed === "string" && typed.trim() !== "" ? typed : "";
+}
+
 // The text rules match against: the command, the file path, or "server.tool".
 export function subjectOf(tool: Tool, input: unknown): string {
   const field = (key: string) => fieldOf(input, key);
   const action = field("action");
-  if (tool.name === "shell")
-    return action && action !== "run" ? `${String(action)} ${String(field("id"))}` : String(field("command") ?? "");
+  if (tool.name === "shell") {
+    if (!action || action === "run") return String(field("command") ?? "");
+    const typed = typedText(input);
+    return `${String(action)} ${String(field("id"))}${typed ? ` ${JSON.stringify(typed)}` : ""}`;
+  }
   if (tool.name === "mcp_call") return `${String(field("server"))}.${String(field("tool"))}`;
   if (field("path")) return String(field("path"));
   if (tool.name === "install_skill") return String(field("source") ?? "");
@@ -314,11 +323,15 @@ export class Permissions {
     const subject = subjectOf(tool, input);
     const action = fieldOf(input, "action");
     const runsCommand = tool.name === "shell" && (action ?? "run") === "run";
+    // Text typed into a running process meets the rules for commands. It isn't reviewed.
+    const typed = tool.name === "shell" ? typedText(input) : "";
     const rule = runsCommand
       ? shellRule(this.rules, subject)
-      : fieldOf(input, "path")
-        ? pathRule(this.rules, tool.name, this.cwd, subject)
-        : ruleFor(this.rules, tool.name, subject);
+      : typed
+        ? shellRule(this.rules, typed.trim())
+        : fieldOf(input, "path")
+          ? pathRule(this.rules, tool.name, this.cwd, subject)
+          : ruleFor(this.rules, tool.name, subject);
     if (rule === "deny") return { action: "deny", subject, reason: "a deny rule in ~/.clue/settings.json" };
     if (tool.readOnly) return { action: "run", subject };
     if (rule === "allow") return { action: "run", subject };

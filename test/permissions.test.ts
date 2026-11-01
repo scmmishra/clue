@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { commandIsRoutine, Permissions } from "../src/permissions";
+import { approvalQuestion, commandIsRoutine, Permissions } from "../src/permissions";
 import { parseCommand } from "../src/shell-command";
 import { readFile } from "../src/tools/files";
 import { shell } from "../src/tools/shell";
@@ -427,6 +427,21 @@ test("a file rule matches the path however the model writes it", () => {
   for (const path of ["src/generated/a.ts", "./src/generated/a.ts", "/tmp/project/src/generated/a.ts"])
     expect(permissions.decide(readFile, { path }).action).toBe("deny");
   expect(permissions.decide(readFile, { path: "/tmp/other/src/generated/a.ts" }).action).toBe("run");
+});
+
+test("text typed into a running process goes through deny and ask rules, not review", () => {
+  const permissions = new Permissions("auto", gitRules, "/tmp/project");
+  const typed = (input: string) => permissions.decide(shell, { action: "interact", id: "3", input }).action;
+  expect(typed("git push origin main\n")).toBe("deny");
+  expect(typed("y\n")).toBe("run");
+  const asking = new Permissions("auto", { shell: { "rm *": "ask" } } as never, "/tmp/project");
+  expect(asking.decide(shell, { action: "interact", id: "3", input: "rm -rf dist\n" }).action).toBe("ask");
+});
+
+test("the approval prompt shows the text typed into a process", () => {
+  const input = { action: "interact", id: "3", input: "git push\n" };
+  expect(approvalQuestion(shell, input)).toBe(`Run interact 3 "git push\\n"?`);
+  expect(approvalQuestion(shell, { action: "interact", id: "3" })).toBe("Run interact 3?");
 });
 
 test("rules for commands don't touch interact and stop", () => {
