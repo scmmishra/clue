@@ -1129,3 +1129,24 @@ test("when the API rejects fast mode, clue turns it off, says so and finishes th
     fastMode.rejected = false;
   }
 }, 25_000);
+
+test("a saved fast setting on a model without it stays off after /model", async () => {
+  const home = mkdtempSync(join(tmpdir(), "clue-composer-home-"));
+  writeFileSync(join(home, "settings.json"), '{ "fast": true }');
+  const clue = await startClue({ home, args: ["--model", "sonnet"] });
+  await clue.type("/model opus");
+  await clue.type(ENTER);
+  await clue.seen("Model is now opus");
+  await clue.type("read it");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(requests.some((request) => request.speed === "fast")).toBe(false);
+  expect(clue.screen()).not.toContain("· fast");
+}, 25_000);
+
+test("a saved fast setting applies on a model that has it", async () => {
+  const home = mkdtempSync(join(tmpdir(), "clue-composer-home-"));
+  writeFileSync(join(home, "settings.json"), '{ "fast": true }');
+  const clue = await startClue({ home });
+  await clue.seen("medium · fast");
+}, 25_000);
