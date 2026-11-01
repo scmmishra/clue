@@ -169,7 +169,7 @@ export function footerLine(turn: Pick<TurnRecord, "ms" | "cost" | "stop" | "usag
 
 // For this long after a permission prompt opens, y, enter and a do nothing. The prompt can
 // open while the user is typing, and one of those keys would approve an action by accident.
-export const CONFIRM_GUARD_MS = 300;
+export const CONFIRM_GUARD_MS = 150;
 
 type Prompt =
   | {
