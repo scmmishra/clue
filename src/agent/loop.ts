@@ -56,6 +56,8 @@ export type AgentOptions = {
   events: AgentEvents;
   interactive: boolean;
   subagent?: boolean;
+  // A subagent can't show a notice, and its settings are a copy, so its parent turns fast mode off.
+  onFastOff?: () => void;
 };
 
 const emptyUsage = (): Usage => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, webSearches: 0 });
@@ -151,6 +153,13 @@ export class Agent {
     if (midTurn) session.appendMessage({ role: "user", content: CONTINUE_PROMPT });
   }
 
+  private turnOffFast() {
+    const { settings, events, onFastOff } = this.options;
+    settings.fast = false;
+    if (onFastOff) return onFastOff();
+    events.notice("Fast mode isn't available now, so clue turned it off. Run /fast to try again.", "warn");
+  }
+
   // Runs one user prompt to completion: model turns and tool calls until Claude stops.
   async runTurn(prompt: string, signal: AbortSignal, images: PromptImage[] = []): Promise<TurnRecord> {
     const { session, events, settings } = this.options;
@@ -223,8 +232,7 @@ export class Agent {
           askedFast &&
           (error instanceof Sdk.RateLimitError || (error instanceof Sdk.BadRequestError && fastRejected(error)))
         ) {
-          settings.fast = false;
-          events.notice("Fast mode isn't available now, so clue turned it off. Run /fast to try again.", "warn");
+          this.turnOffFast();
           continue;
         }
         if (!(error instanceof Sdk.APIError) && error instanceof SyntaxError && jsonRetries < MAX_JSON_RETRIES) {
@@ -542,6 +550,7 @@ export class Agent {
       ...this.options,
       session: child,
       subagent: true,
+      onFastOff: () => this.turnOffFast(),
       settings: { ...this.options.settings },
       events: {
         thinking: () => {},

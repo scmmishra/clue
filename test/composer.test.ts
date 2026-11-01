@@ -1112,7 +1112,7 @@ test("/fast refuses on a model without fast mode, and --fast does too", async ()
 }, 25_000);
 
 test("when the API rejects fast mode, clue turns it off, says so and finishes the turn", async () => {
-  fastMode.rejected = true;
+  fastMode.rejectedFor = "";
   try {
     const clue = await startClue({ args: ["--fast"] });
     await clue.type("read it");
@@ -1126,7 +1126,7 @@ test("when the API rejects fast mode, clue turns it off, says so and finishes th
     await clue.seen("Fast mode is off.");
     expect(clue.screen().split("Fast mode isn't available now").at(-1)).not.toContain("out · fast");
   } finally {
-    fastMode.rejected = false;
+    fastMode.rejectedFor = null;
   }
 }, 25_000);
 
@@ -1149,4 +1149,22 @@ test("a saved fast setting applies on a model that has it", async () => {
   writeFileSync(join(home, "settings.json"), '{ "fast": true }');
   const clue = await startClue({ home });
   await clue.seen("medium · fast");
+}, 25_000);
+
+test("when a subagent loses fast mode, the session does too, and clue says so", async () => {
+  fastMode.rejectedFor = "the child task";
+  try {
+    const clue = await startClue({ args: ["--fast"] });
+    await clue.type("delegate this");
+    await clue.type(ENTER);
+    await clue.turns(1);
+    await clue.seen("Fast mode isn't available now");
+    expect(requests[0].speed).toBe("fast");
+    expect(requests.at(-1)!.speed).toBeUndefined();
+    await clue.type("/fast");
+    await clue.type(ENTER);
+    await clue.seen("Fast mode is on.");
+  } finally {
+    fastMode.rejectedFor = null;
+  }
 }, 25_000);
