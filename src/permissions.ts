@@ -287,9 +287,12 @@ export class Permissions {
   }
 
   // The pattern an "always allow" answer saves: the command's program, or the whole tool.
+  // The program is the one past `time`, `env` and safe variables, never the wrapper.
   static grantPattern(tool: Tool, subject: string) {
     if (tool.name === "shell") {
-      const words = subject.trim().split(/\s+/);
+      const parsed = parseCommand(subject)?.[0];
+      const unwrapped = parsed && unwrap(parsed);
+      const words = unwrapped?.length ? unwrapped : subject.trim().split(/\s+/);
       return words[0] === "git" || words[0] === "npm" || words[0] === "bun"
         ? `${words.slice(0, 2).join(" ")} *`
         : `${words[0]} *`;
@@ -304,7 +307,7 @@ export class Permissions {
     const matches = (text: string) => patterns.some((pattern) => globToRegex(pattern).test(text));
     if (!runsCommand) return matches(subject);
     const commands = parseCommand(subject);
-    return commands !== null && commands.length > 0 && commands.every((words) => matches(words.join(" ")));
+    return commands !== null && commands.length > 0 && commands.every((words) => matches(unwrap(words).join(" ")));
   }
 
   decide(tool: Tool, input: unknown): Decision {
