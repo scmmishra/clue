@@ -110,7 +110,7 @@ export class App {
   }
 
   // Everything that depends on the session's folder. True when MCP servers need starting.
-  // Servers and skills stay as they are in the same folder, so /new doesn't restart them.
+  // Servers keep running in the same folder, so /new doesn't restart them.
   private load(session: Session) {
     const newFolder = !this.mcp || this.session.cwd !== session.cwd;
     this.warmOnKey = false;
@@ -118,9 +118,9 @@ export class App {
     this.session = session;
     if (process.cwd() !== session.cwd) process.chdir(session.cwd);
     this.branch = gitBranch(session.cwd);
+    this.skillCache = null;
     if (newFolder) {
       void this.mcp?.closeAll();
-      this.skillCache = null;
       this.mcp = new McpManager(session.cwd);
     }
     this.permissions = new Permissions(this.settings.permission_mode, this.settings.permission, session.cwd);

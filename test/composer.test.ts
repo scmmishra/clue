@@ -1216,3 +1216,20 @@ test("/new keeps MCP servers running in the same folder", async () => {
   await Bun.sleep(400);
   expect(readFileSync(log, "utf8").trim().split("\n")).toHaveLength(1);
 }, 25_000);
+
+test("/new finds a skill added during the session", async () => {
+  const home = mkdtempSync(join(tmpdir(), "clue-composer-home-"));
+  const clue = await startClue({ home });
+  await Bun.sleep(200);
+  mkdirSync(join(home, "skills", "late-skill"), { recursive: true });
+  writeFileSync(
+    join(home, "skills", "late-skill", "SKILL.md"),
+    "---\nname: late-skill\ndescription: Added late\n---\nBody\n",
+  );
+  await clue.type("/new");
+  await clue.type(ENTER);
+  await clue.type("read it");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(JSON.stringify(requests[0].messages)).toContain("late-skill");
+}, 25_000);
