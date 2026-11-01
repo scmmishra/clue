@@ -253,15 +253,15 @@ export class App {
     const frame = this.editor.frame(
       this.hint
         ? style.muted(this.hint)
-        : statusLine(
-            this.permissions.mode,
-            this.settings.model,
-            this.settings.effort,
-            this.cwd,
-            this.branch,
-            fastEnabled(this.settings),
-            this.session.spent,
-          ),
+        : statusLine({
+            mode: this.permissions.mode,
+            model: this.settings.model,
+            effort: this.settings.effort,
+            cwd: this.cwd,
+            branch: this.branch,
+            fast: fastEnabled(this.settings),
+            spent: this.session.spent,
+          }),
     );
     const preview = (message: Steer) => message.text.replace(/\s+/g, " ").trim();
     const waiting = [

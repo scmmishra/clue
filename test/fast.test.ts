@@ -43,14 +43,14 @@ test("only an error about fast mode counts as a rejection of it", () => {
 });
 
 test("the status line shows fast mode and the session's cost", () => {
-  const line = (fast: boolean, spent: number) =>
-    Bun.stripANSI(statusLine("auto", "claude-opus-5-5", "medium", "/tmp/app", "main", fast, spent));
+  const base = { mode: "auto", model: "claude-opus-5-5", effort: "medium", cwd: "/tmp/app", branch: "main" };
+  const line = (fast: boolean, spent: number) => Bun.stripANSI(statusLine({ ...base, fast, spent }));
   expect(line(false, 0)).toStartWith("auto · opus 5.5 · medium ");
   expect(line(true, 0)).toStartWith("auto · opus 5.5 · medium · fast ");
   expect(line(false, 1.5)).toStartWith("auto · opus 5.5 · medium · $1.50 ");
   expect(line(true, 0.001)).toStartWith("auto · opus 5.5 · medium · fast · $0.00 ");
   expect(line(true, 0.007)).toStartWith("auto · opus 5.5 · medium · fast · $0.01 ");
-  expect(statusLine("auto", "claude-opus-5-5", "medium", "/tmp/app", null, true)).toContain(style.orange("fast"));
+  expect(statusLine({ ...base, fast: true })).toContain(style.orange("fast"));
 });
 
 test("the footer marks a reply that came in fast mode", () => {

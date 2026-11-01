@@ -95,14 +95,26 @@ test("the footer is one grey", () => {
 });
 
 test("the status line is one grey", () => {
-  const line = statusLine("auto", "claude-opus-5-5", "medium", "/tmp/app", "main");
+  const line = statusLine({
+    mode: "auto",
+    model: "claude-opus-5-5",
+    effort: "medium",
+    cwd: "/tmp/app",
+    branch: "main",
+  });
   expect(line.startsWith(`${style.muted("auto")}${style.muted(`${dot}opus 5.5${dot}medium`)}`)).toBe(true);
   expect(line.endsWith(style.muted("/tmp/app (main)"))).toBe(true);
 });
 
 test("full-access still stands out in the status line", () => {
   expect(
-    statusLine("full-access", "claude-opus-5-5", "medium", "/tmp/app", null).startsWith(style.orange("full-access")),
+    statusLine({
+      mode: "full-access",
+      model: "claude-opus-5-5",
+      effort: "medium",
+      cwd: "/tmp/app",
+      branch: null,
+    }).startsWith(style.orange("full-access")),
   ).toBe(true);
 });
 
