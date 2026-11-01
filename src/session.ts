@@ -61,6 +61,10 @@ export type CompactionRecord = {
   at: number;
 };
 
+// Everything a session paid for: its turns, turns dropped by a rewind, and compactions.
+export const totalCost = (turns: TurnRecord[], rewound: TurnRecord[], compactions: CompactionRecord[]) =>
+  [...turns, ...rewound, ...compactions].reduce((sum, { cost }) => sum + (cost ?? 0), 0);
+
 export type SessionRecord =
   | { t: "session"; id: string; cwd: string; created: number; version: string }
   | { t: "message"; message: MessageParam }
@@ -286,9 +290,9 @@ export class Session {
     this.heldName = true;
   }
 
-  // What the session has cost so far, the same total as /usage.
+  // What the session has cost so far. /usage reports the same total.
   get spent() {
-    return [...this.turns, ...this.rewound, ...this.compactions].reduce((sum, { cost }) => sum + (cost ?? 0), 0);
+    return totalCost(this.turns, this.rewound, this.compactions);
   }
 
   get isEmpty() {

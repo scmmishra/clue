@@ -1,5 +1,5 @@
 import { COMPACTION_TRIGGER_TOKENS, modelLabel } from "../agent/models";
-import type { CompactionRecord, TurnRecord } from "../session";
+import { totalCost, type CompactionRecord, type TurnRecord } from "../session";
 import { money, style, tokens } from "./ansi";
 
 const LABEL_WIDTH = 10;
@@ -29,11 +29,9 @@ export function usageReport(turns: TurnRecord[], compactions: CompactionRecord[]
   if (!turns.length) return [row("Context", style.muted("No prompts yet.")), ""];
   const total = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, webSearches: 0 };
   const models = new Map<string, number>();
-  let cost = 0;
   let unpriced = 0;
   for (const { usage, model, cost: turnCost } of [...turns, ...rewound, ...compactions]) {
     for (const key of Object.keys(total) as (keyof typeof total)[]) total[key] += usage[key];
-    cost += turnCost ?? 0;
     if (turnCost === null) unpriced += 1;
     models.set(model, (models.get(model) ?? 0) + (turnCost ?? 0));
   }
@@ -43,7 +41,7 @@ export function usageReport(turns: TurnRecord[], compactions: CompactionRecord[]
     ...contextRows(turns, compactions),
     row(
       "Cost",
-      `${style.accent(money(cost))} ${style.muted(`across ${prompts}`)}${unpriced ? style.orange(`, ${unpriced} with no known price`) : ""}`,
+      `${style.accent(money(totalCost(turns, rewound, compactions)))} ${style.muted(`across ${prompts}`)}${unpriced ? style.orange(`, ${unpriced} with no known price`) : ""}`,
     ),
     row(
       "Tokens",
