@@ -82,7 +82,7 @@ p code {
 .top {
 	display: flex;
 	justify-content: space-between;
-	align-items: baseline;
+	align-items: center;
 	padding-block: 24px;
 }
 
