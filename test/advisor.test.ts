@@ -101,28 +101,41 @@ test("a pair can't review actions", () => {
 });
 
 const models = [
-  { value: "opus", label: "opus 5.5", levels: ["low", "medium", "high", "xhigh", "max"] },
+  { value: "opus", label: "opus 5.5", detail: "claude-opus-5-5", levels: ["low", "medium", "high", "xhigh", "max"] },
   { value: "pair", label: "sonnet 5.5 + opus", levels: ["medium", "high", "xhigh", "max"] },
 ];
 const shown = (picker: OptionPicker) => picker.frame().map((line) => Bun.stripANSI(line));
 
-test("← and → move the effort on the highlighted row, within its levels", () => {
-  const picker = new OptionPicker("Model:", models, "opus", "medium");
-  expect(shown(picker)[1]).toBe("› opus 5.5           ●●○○○  medium");
+test("one effort line under the list follows the highlighted row", () => {
+  const picker = new OptionPicker("Model:", models, "opus", { name: "Effort", level: "medium" });
+  expect(shown(picker)).toEqual([
+    "  Model:",
+    "› opus 5.5           claude-opus-5-5",
+    "  sonnet 5.5 + opus",
+    "",
+    "  Effort    low   [ medium ]   high     xhigh     max  ",
+    "",
+    "  ←→ effort · enter select · esc cancel",
+  ]);
   picker.handle({ name: "right" });
   picker.handle({ name: "right" });
   expect(picker.chosenLevel).toBe("xhigh");
   for (let step = 0; step < 4; step++) picker.handle({ name: "left" });
   expect(picker.chosenLevel).toBe("low");
-  expect(shown(picker).at(-1)).toBe("  ←→ effort · enter select · esc cancel");
 });
 
-test("a row without the dial's level shows its own lowest, and enter returns both", () => {
-  const picker = new OptionPicker("Model:", models, "opus", "low");
+test("on a row that doesn't allow the level, the line shows the row's lowest, and ← stops there", () => {
+  const picker = new OptionPicker("Model:", models, "opus", { name: "Effort", level: "low" });
   picker.handle({ name: "down" });
   expect(picker.chosenLevel).toBe("medium");
-  expect(shown(picker)[2]).toBe("› sonnet 5.5 + opus  ●○○○   medium");
+  expect(shown(picker)[4]).toBe("  Effort    low   [ medium ]   high     xhigh     max  ");
   picker.handle({ name: "left" });
   expect(picker.chosenLevel).toBe("medium");
   expect(picker.handle({ name: "enter" })).toBe("pair");
+});
+
+test("a list without a dial ignores ← and →", () => {
+  const picker = new OptionPicker("Pick", [{ value: "a", label: "a" }], "a");
+  expect(picker.handle({ name: "left" })).toBeNull();
+  expect(shown(picker).at(-1)).toBe("  enter select · esc cancel");
 });

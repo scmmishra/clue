@@ -7,6 +7,7 @@ import { describeError } from "./errors";
 import { gitBranch, prefetchGitStatus } from "./agent/context";
 import {
   advisorOf,
+  apiModel,
   cost,
   FAST_MODELS,
   fastEnabled,
@@ -31,7 +32,7 @@ import type { Question } from "./tools/types";
 import { duration, homePath, style, tokens } from "./ui/ansi";
 import { Editor, type Command } from "./ui/editor";
 import { listPaths, recentPaths } from "./ui/file-mention";
-import { OptionPicker, type Option } from "./ui/option-picker";
+import { OptionPicker, type Dial, type Option } from "./ui/option-picker";
 import { RewindPicker, rewindReport } from "./ui/rewind";
 import { undoReport } from "./ui/undo";
 import { usageReport } from "./ui/usage";
@@ -77,6 +78,12 @@ export type AppOptions = {
   warnings?: string[];
   benchReady?: boolean;
 };
+
+// The model id, or for a pair, such as "claude-sonnet-5-5 with opus advisor".
+function modelDetail(id: string) {
+  const advisor = advisorOf(id);
+  return advisor ? `${apiModel(id)} with ${modelLabel(advisor).split(" ")[0]} advisor` : id;
+}
 
 export class App {
   private screen = new Screen();
@@ -473,10 +480,10 @@ export class App {
     options: Option[],
     current: string,
     onChosen: (value: string, level: string) => void,
-    level = "",
+    dial?: Dial,
   ) {
     this.editor.closePicker();
-    this.optionPicker = new OptionPicker(title, options, current, level);
+    this.optionPicker = new OptionPicker(title, options, current, dial);
     this.onChosen = onChosen;
     this.screen.refresh();
   }
@@ -492,10 +499,8 @@ export class App {
   private setModel(model: string, effort?: Effort) {
     const wasFast = fastEnabled(this.settings);
     this.settings.model = model;
-    const advisor = advisorOf(model);
-    const detail = advisor ? `It asks ${modelLabel(advisor)} on hard steps.` : `(${model}).`;
     this.print([
-      `  Model is now ${style.bold(modelLabel(model))} ${style.faint(`${detail} The next request starts a fresh cache.`)}`,
+      `  Model is now ${style.bold(modelLabel(model))} ${style.faint(`(${modelDetail(model)}). The next request starts a fresh cache.`)}`,
       "",
     ]);
     if (effort && effort !== this.settings.effort) this.setEffort(effort);
@@ -730,7 +735,7 @@ export class App {
           return {
             value: id,
             label: modelLabel(id),
-            detail: advisor ? `works, asks ${modelLabel(advisor)} on hard steps` : id,
+            detail: modelDetail(id),
             levels: advisor ? PAIR_EFFORTS : EFFORTS,
           };
         });
@@ -739,7 +744,7 @@ export class App {
           options,
           this.settings.model,
           (model, effort) => this.setModel(model, effort as Effort),
-          this.settings.effort,
+          { name: "Effort", level: this.settings.effort },
         );
       }
       case "effort": {
