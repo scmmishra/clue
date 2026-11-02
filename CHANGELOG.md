@@ -6,6 +6,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 - Code blocks in replies are colored in more languages: Ruby, Python, Go, Rust, Java, Kotlin, Swift, C and C++, C#, PHP, Zig, shell, SQL, JSON, YAML, TOML, HTML, Vue, ERB, CSS, SCSS, Elixir, Lua, Dockerfile, Makefile and diffs. Before, only JavaScript and TypeScript were colored.
 - A code block sits between two rules as long as its longest line, with the language in the top rule. Code lines have no `│` gutter, so a mouse selection of them copies only the code.
+- clue marks each prompt you send with OSC 133, so a terminal's jump-to-prompt keys move between prompts in a session. In Ghostty on macOS, these are `cmd+↑` and `cmd+↓`. Resumed sessions are marked too.
 
 ## 0.11.0
 
