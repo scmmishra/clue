@@ -2,7 +2,7 @@ import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { CLUE_HOME, ensureDir, paths } from "../config";
 import type { PromptImage } from "../session";
 import { columns, rows, style, width } from "./ansi";
-import { FilePicker, MAX_ROWS, mentionText } from "./file-mention";
+import { FilePicker, MAX_ROWS, mentionText, type RecentPaths } from "./file-mention";
 import type { Key, LiveFrame } from "./screen";
 
 const PROMPT = "┃ ";
@@ -47,8 +47,9 @@ export class Editor {
     private commands: Command[],
     readPaths: () => Promise<string[]> = async () => [],
     onPathsRead: () => void = () => {},
+    readRecent?: () => Promise<RecentPaths>,
   ) {
-    this.picker = new FilePicker(readPaths, onPathsRead);
+    this.picker = new FilePicker(readPaths, onPathsRead, readRecent);
     try {
       if (existsSync(paths.history)) {
         // parseChunk keeps what comes before a damaged line.

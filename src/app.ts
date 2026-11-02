@@ -19,7 +19,7 @@ import { discoverSkills, type Skill } from "./tools/skills";
 import type { Question } from "./tools/types";
 import { duration, homePath, style, tokens } from "./ui/ansi";
 import { Editor, type Command } from "./ui/editor";
-import { listPaths } from "./ui/file-mention";
+import { listPaths, recentPaths } from "./ui/file-mention";
 import { OptionPicker, type Option } from "./ui/option-picker";
 import { RewindPicker, rewindReport } from "./ui/rewind";
 import { undoReport } from "./ui/undo";
@@ -74,6 +74,7 @@ export class App {
     COMMANDS,
     () => listPaths(this.cwd),
     () => this.screen.refresh(),
+    () => recentPaths(this.cwd),
   );
   private session: Session;
   private agent!: Agent;

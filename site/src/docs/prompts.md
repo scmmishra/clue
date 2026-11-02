@@ -4,7 +4,7 @@ title: Prompts
 
 ## Mention a file
 
-Type `@` and search. `↑` and `↓` choose a row, `enter` adds the path to your message, and `tab` opens a folder. The search covers file names and folders. Claude reads the file when it needs it, so the prompt only holds the path.
+Type `@` and search. `↑` and `↓` choose a row, `enter` adds the path to your message, and `tab` opens a folder. Files you're working on come first: your changes, new files, then files from the last 50 commits, skipping commits that touch more than 20 files. A closer match still ranks higher. The search covers file names and folders. Claude reads the file when it needs it, so the prompt only holds the path.
 
 ## Add an image
 

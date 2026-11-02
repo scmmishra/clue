@@ -5,6 +5,11 @@ export type Mention = { start: number; end: number; query: string };
 export const MAX_ROWS = 10;
 export const MAX_MATCHES = 100;
 const MAX_PATHS = 100_000;
+// How far back a file counts as recent. Chatwoot's last 200 commits touch about 3,000 files.
+const RECENT_COMMITS = 50;
+// A larger commit is a sweep, such as a translation sync, and says nothing about current work.
+const MAX_FILES_IN_RECENT_COMMIT = 20;
+const COMMIT_MARK = "\x01";
 const WALK_SKIPS = new Set([".git", "node_modules"]);
 
 // The @ must start a word, so an email address doesn't open the picker.
@@ -57,24 +62,35 @@ function tier(query: string, path: string) {
   return 3;
 }
 
-type Ranked = { path: string; tier: number };
+type Ranked = { path: string; tier: number; recency: number };
+
+// Paths the user is working on, with lower numbers for more recent ones.
+export type RecentPaths = Map<string, number>;
 
 const compare = (a: Ranked, b: Ranked) =>
-  a.tier - b.tier || a.path.length - b.path.length || (a.path < b.path ? -1 : 1);
+  a.tier - b.tier || a.recency - b.recency || a.path.length - b.path.length || (a.path < b.path ? -1 : 1);
+
+// Recent paths first, and the rest in their given order.
+function recentFirst(paths: string[], recent: RecentPaths) {
+  const known = paths.filter((path) => recent.has(path));
+  known.sort((a, b) => recent.get(a)! - recent.get(b)!);
+  return [...known, ...paths.filter((path) => !recent.has(path))].slice(0, MAX_MATCHES);
+}
 
 // The best matches for a query, best first. This runs on a keypress, so it doesn't sort everything.
-export function rankPaths(query: string, paths: string[]) {
+// How well a path matches comes first, so an exact name always beats a recent file.
+export function rankPaths(query: string, paths: string[], recent: RecentPaths = new Map()) {
   const lowered = query.toLowerCase();
-  if (!lowered) return paths.slice(0, MAX_MATCHES);
+  if (!lowered) return recentFirst(paths, recent);
   if (lowered.endsWith("/")) {
     const inside = paths.filter((path) => path.length > lowered.length && path.toLowerCase().startsWith(lowered));
-    if (inside.length) return inside.slice(0, MAX_MATCHES);
+    if (inside.length) return recentFirst(inside, recent);
   }
   const best: Ranked[] = [];
   for (const path of paths) {
     const lower = path.toLowerCase();
     if (!lettersInOrder(lowered, lower)) continue;
-    const candidate = { path, tier: tier(lowered, lower) };
+    const candidate = { path, tier: tier(lowered, lower), recency: recent.get(path) ?? Infinity };
     if (best.length === MAX_MATCHES && compare(candidate, best.at(-1)!) >= 0) continue;
     const index = best.findIndex((entry) => compare(candidate, entry) < 0);
     best.splice(index === -1 ? best.length : index, 0, candidate);
@@ -108,6 +124,34 @@ async function walkPaths(cwd: string) {
   return found;
 }
 
+const nulSeparated = (text: string) => text.split("\0").flatMap((path) => path.trim() || []);
+
+// One git command's output, or nothing when it fails, such as outside a repository.
+async function gitOutput(cwd: string, args: string[]) {
+  try {
+    const git = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "ignore" });
+    const output = await git.stdout.text();
+    return (await git.exited) === 0 ? output : "";
+  } catch {
+    return "";
+  }
+}
+
+// Files the user is working on, relative to `cwd`: changes, new files, then recent commits.
+export async function recentPaths(cwd: string): Promise<RecentPaths> {
+  const [changed, created, log] = await Promise.all([
+    gitOutput(cwd, ["diff", "HEAD", "--name-only", "--relative", "-z"]),
+    gitOutput(cwd, ["ls-files", "--others", "--exclude-standard", "-z"]),
+    gitOutput(cwd, ["log", `-n${RECENT_COMMITS}`, "--format=%x01", "--name-only", "--relative", "-z"]),
+  ]);
+  const commits = log.split(COMMIT_MARK).map(nulSeparated);
+  const committed = commits.filter((files) => files.length <= MAX_FILES_IN_RECENT_COMMIT).flat();
+  const recent: RecentPaths = new Map();
+  for (const path of [...nulSeparated(changed), ...nulSeparated(created), ...committed])
+    if (!recent.has(path)) recent.set(path, recent.size);
+  return recent;
+}
+
 // Files and their folders, relative to `cwd`. Folders end in a slash.
 export async function listPaths(cwd: string) {
   const files = (await gitPaths(cwd)) ?? (await walkPaths(cwd));
@@ -127,6 +171,7 @@ export class FilePicker {
   matches: string[] = [];
   index = 0;
   private paths: string[] = [];
+  private recent: RecentPaths = new Map();
   private text: string | null = null;
   private cursor = 0;
   private readFor = -1;
@@ -136,6 +181,7 @@ export class FilePicker {
   constructor(
     private read: () => Promise<string[]>,
     private onRead: () => void,
+    private readRecent: () => Promise<RecentPaths> = async () => new Map(),
   ) {}
 
   update(text: string, cursor: number) {
@@ -150,7 +196,7 @@ export class FilePicker {
       return;
     }
     if (this.mention.start !== this.readFor) this.load(this.mention.start);
-    this.matches = this.mention.start === this.closedAt ? [] : rankPaths(this.mention.query, this.paths);
+    this.matches = this.mention.start === this.closedAt ? [] : rankPaths(this.mention.query, this.paths, this.recent);
   }
 
   // The old list stays on screen until the new one arrives.
@@ -161,6 +207,16 @@ export class FilePicker {
       (paths) => {
         if (read !== this.reads) return;
         this.paths = paths;
+        this.text = null;
+        this.onRead();
+      },
+      () => {},
+    );
+    // Slower than the list, so the list shows first and reorders when this arrives.
+    this.readRecent().then(
+      (recent) => {
+        if (read !== this.reads || recent.size === 0) return;
+        this.recent = recent;
         this.text = null;
         this.onRead();
       },
