@@ -3,14 +3,18 @@ import type { Effort } from "../config";
 import { resolveAuth } from "../auth";
 import { startsWithSummary, type MessageParam } from "../session";
 import { toolDefinitions } from "../tools";
-import { modelInfo } from "./models";
-import { SYSTEM_PROMPT } from "./prompt";
+import { advisorOf, apiModel, modelInfo, pairEffort } from "./models";
+import { ADVISOR_PROMPT, SYSTEM_PROMPT } from "./prompt";
 
 // Every model call goes through this file. Other providers, such as
 // OpenRouter or Codex, would be a sibling of this module.
 
 const API_ORIGIN = process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com";
 const MAX_OUTPUT_TOKENS = 64_000;
+
+// The advisor's output per call, thinking included, and its calls per request.
+const ADVISOR_MAX_TOKENS = 4096;
+const ADVISOR_MAX_USES = 5;
 
 let clientPromise: Promise<Anthropic> | null = null;
 
@@ -54,22 +58,45 @@ export type RequestOptions = {
   fast?: boolean;
 };
 
+// An advisor's answer in the history. The API accepts one only with the advisor beta.
+const holdsAdvice = (messages: MessageParam[]) =>
+  messages.some(
+    (message) =>
+      Array.isArray(message.content) && message.content.some((block) => block.type === "advisor_tool_result"),
+  );
+
 export function buildRequest(options: RequestOptions) {
-  const info = modelInfo(options.model);
+  const model = apiModel(options.model);
+  const info = modelInfo(model);
   const betas: string[] = [];
+  // Subagents and summaries work without the advisor. A summary can still carry its answers.
+  const advisor = options.subagent || options.summarize ? null : advisorOf(options.model);
   const request: Anthropic.Beta.Messages.MessageCreateParamsStreaming = {
-    model: options.model,
+    model,
     max_tokens: MAX_OUTPUT_TOKENS,
     stream: true,
     // The system prompt and tool list are identical in every session, so the
     // start of every request is already in Claude's cache.
     system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-    tools: toolDefinitions(options.model, { subagent: options.subagent }),
+    tools: toolDefinitions(model, { subagent: options.subagent }),
     messages: options.messages,
     // Caches the conversation tail, so each turn reads the turns before it.
     cache_control: { type: "ephemeral" },
-    output_config: { effort: options.effort },
+    output_config: { effort: pairEffort(options.model, options.effort) },
   };
+  if (advisor) {
+    request.tools!.push({
+      type: "advisor_20260301",
+      name: "advisor",
+      model: advisor,
+      max_tokens: ADVISOR_MAX_TOKENS,
+      max_uses: ADVISOR_MAX_USES,
+      // Each call sends the whole conversation, so its prefix is worth caching.
+      caching: { type: "ephemeral", ttl: "5m" },
+    } as unknown as Anthropic.Beta.Messages.BetaToolUnion);
+    (request.system as Anthropic.Beta.Messages.BetaTextBlockParam[]).push({ type: "text", text: ADVISOR_PROMPT });
+  }
+  if (advisor || holdsAdvice(options.messages)) betas.push("advisor-tool-2026-03-01");
   if (features.progressNotes && info?.progressNotes) {
     request.thinking = { type: "adaptive", display: "updates" };
     betas.push("thinking-display-updates-2026-08-18");

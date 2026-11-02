@@ -4,6 +4,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- New pairs of models in `/model`: `haiku 5.5 + sonnet`, `sonnet 5.5 + opus` and `opus 5.5 + fable`. The first model does the work, and asks the second for advice on hard steps. Start one with `--model sonnet+opus`, for example. Each answer shows as an `Asked <advisor>` row, and the cost of a reply includes it.
+- In `/model`, `←` and `→` change the effort of the highlighted model.
 - The reviewer in `auto` mode also sees your last few messages and the agent's latest tool calls, so it can tell how an action fits the work. Tool output goes only to a Claude reviewer.
 - The reviewer clears reads of your own local files and databases, such as a `sqlite3` query on a history file. It still flags reads of credentials, and reads that send data off the machine.
 - With no `review` setting, Jev reviews actions when `OPENROUTER_API_KEY` is set, and Haiku when it isn't. To keep Haiku, set `"review": { "provider": "anthropic" }`.

@@ -176,8 +176,9 @@ async function main() {
   }
 
   const settings = settingsFrom(flags);
-  const { FAST_MODELS, fastEnabled, resolveModel } = await import("./agent/models");
+  const { FAST_MODELS, fastEnabled, pairEffort, resolveModel } = await import("./agent/models");
   settings.model = resolveModel(settings.model);
+  settings.effort = pairEffort(settings.model, settings.effort);
   if (flags.fast && !fastEnabled(settings)) fail(`--fast only works with ${FAST_MODELS.join(" and ")}.`);
   // A saved `fast` on a model without it stays off, so a later /model never starts double pricing unannounced.
   settings.fast = fastEnabled(settings);

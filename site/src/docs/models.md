@@ -16,9 +16,27 @@ Short names work too:
 clue --model sonnet
 ```
 
-Inside clue, `/model` and `/effort` open a list to choose from. Effort levels are `low`, `medium`, `high`, `xhigh` and `max`. Lower effort means shorter thinking and a sooner first token.
+Inside clue, `/model` and `/effort` open a list to choose from. In `/model`, `←` and `→` change the effort of the highlighted model. Effort levels are `low`, `medium`, `high`, `xhigh` and `max`. Lower effort means shorter thinking and a sooner first token.
 
 Changing the model mid-session starts a fresh cache for the rest of that session.
+
+## Pairs with an advisor
+
+A pair is two models. The first does the work. On hard steps, it asks the second for advice, such as before it plans a change or when it's stuck. The advisor sees the whole conversation and answers in a few seconds. The first model's tokens cost its own price, and each answer costs the advisor's price.
+
+| Pair | Does the work | Advises | Short name |
+| --- | --- | --- | --- |
+| `haiku 5.5 + sonnet` | Haiku 5.5 | Sonnet 5.5 | `haiku+sonnet` |
+| `sonnet 5.5 + opus` | Sonnet 5.5 | Opus 5.5 | `sonnet+opus` |
+| `opus 5.5 + fable` | Opus 5.5 | Fable 5.1 | `opus+fable` |
+
+```bash
+clue --model sonnet+opus
+```
+
+Each answer shows as an `Asked <advisor>` row, such as `Asked opus 5.5`. The advice itself is encrypted, so clue can't show it. The cost of a reply includes the advice.
+
+A pair runs at `medium` effort or above. Below that, the first model rarely asks its advisor, so clue raises `low` to `medium`. Subagents use the first model alone. Fast mode doesn't work with a pair.
 
 ## Fast mode
 

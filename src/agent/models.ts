@@ -14,6 +14,9 @@ type ModelInfo = {
   fallbacks: boolean;
   // speed: "fast", at FAST_PRICE_MULTIPLIER times the token prices.
   fastMode: boolean;
+  // A pair: this model does the work, and the advisor tool asks the stronger one on hard steps.
+  executor?: string;
+  advisor?: string;
 };
 
 const MODELS: Record<string, ModelInfo> = {
@@ -96,7 +99,37 @@ const MODELS: Record<string, ModelInfo> = {
   },
 };
 
+// Pairs take the executor's prices. The advisor's tokens are priced separately, by advisorCost.
+const pair = (executor: string, advisor: string, label: string): ModelInfo => ({
+  ...MODELS[executor],
+  label,
+  fastMode: false,
+  executor,
+  advisor,
+});
+// Each pair is one the advisor tool accepts: the advisor is at least as capable as the executor.
+MODELS["claude-sonnet-5-5+opus-5-5"] = pair("claude-sonnet-5-5", "claude-opus-5-5", "sonnet 5.5 + opus");
+MODELS["claude-opus-5-5+fable-5-1"] = pair("claude-opus-5-5", "claude-fable-5-1", "opus 5.5 + fable");
+MODELS["claude-haiku-5-5+sonnet-5-5"] = pair("claude-haiku-5-5", "claude-sonnet-5-5", "haiku 5.5 + sonnet");
+
+// Short names for pairs, such as --model sonnet+opus.
+const PAIR_ALIASES: Record<string, string> = {
+  "sonnet+opus": "claude-sonnet-5-5+opus-5-5",
+  "opus+fable": "claude-opus-5-5+fable-5-1",
+  "haiku+sonnet": "claude-haiku-5-5+sonnet-5-5",
+};
+
 export const KNOWN_MODELS = Object.keys(MODELS);
+
+// The model id the API takes: the executor of a pair, or the model itself.
+export const apiModel = (id: string) => MODELS[id]?.executor ?? id;
+
+export const advisorOf = (id: string) => MODELS[id]?.advisor ?? null;
+
+// Below medium, the executor of a pair rarely asks its advisor.
+export const PAIR_EFFORTS = ["medium", "high", "xhigh", "max"] as const;
+export const pairEffort = <E extends string>(model: string, effort: E): E | "medium" =>
+  advisorOf(model) && effort === "low" ? "medium" : effort;
 
 export const REVIEW_FALLBACK_MODEL = "claude-haiku-5-5";
 
@@ -122,6 +155,7 @@ export const fastEnabled = ({ model, fast }: { model: string; fast: boolean }) =
 export function resolveModel(name: string) {
   const wanted = name.trim().toLowerCase().replace(/\s+/g, "-").replace(/\./g, "-");
   if (MODELS[wanted]) return wanted;
+  if (PAIR_ALIASES[wanted]) return PAIR_ALIASES[wanted];
   const prefixed = wanted.startsWith("claude-") ? wanted : `claude-${wanted}`;
   if (MODELS[prefixed]) return prefixed;
   const family = KNOWN_MODELS.find((id) => id.startsWith(prefixed));
@@ -166,4 +200,20 @@ export function cost(model: string, usage: UsageCounts, fast = false): number | 
     usage.cacheRead * info.cacheRead +
     usage.cacheWrite * info.cacheWrite;
   return (tokens * (fast ? FAST_PRICE_MULTIPLIER : 1)) / 1_000_000 + usage.webSearches * WEB_SEARCH_COST;
+}
+
+// What the advisor calls in one response cost. The top-level usage counts only the executor's tokens,
+// so these are only in usage.iterations, each with the advisor's own model.
+export function advisorCost(usage: ApiUsage): number | null {
+  let total = 0;
+  for (const entry of usage.iterations ?? []) {
+    if (entry.type !== "advisor_message") continue;
+    const counts = emptyUsage();
+    addUsage(counts, entry);
+    const model = (entry as { model?: unknown }).model;
+    const price = typeof model === "string" ? cost(model, counts) : null;
+    if (price === null) return null;
+    total += price;
+  }
+  return total;
 }

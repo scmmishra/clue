@@ -16,7 +16,17 @@ import type { Skill } from "../tools/skills";
 import { clip, type Question, type ToolContext, type ToolOutput } from "../tools/types";
 import { buildContext } from "./context";
 import { msSince, now } from "../clock";
-import { addUsage, COMPACTION_TRIGGER_TOKENS, cost, emptyUsage, fastEnabled, responseUsage } from "./models";
+import {
+  addUsage,
+  advisorCost,
+  advisorOf,
+  COMPACTION_TRIGGER_TOKENS,
+  cost,
+  emptyUsage,
+  fastEnabled,
+  modelLabel,
+  responseUsage,
+} from "./models";
 import { dropRejectedFeature, fastRejected, stream, summarize } from "./provider";
 import { UndoStack, type UndoResult } from "./undo";
 
@@ -268,7 +278,9 @@ export class Agent {
 
       const servedFast = (message.usage.speed ?? (askedFast ? "fast" : "standard")) === "fast";
       const used = responseUsage(message.usage);
-      tallyUp(tally, used, cost(model, used, servedFast));
+      const executorPrice = cost(model, used, servedFast);
+      const advisorPrice = advisorCost(message.usage);
+      tallyUp(tally, used, executorPrice === null || advisorPrice === null ? null : executorPrice + advisorPrice);
       fast ||= servedFast;
       context = this.lastContext = contextTokens(message.usage);
       session.appendMessage({
@@ -324,6 +336,8 @@ export class Agent {
       signal,
     );
     const blocks = new Map<number, { type: string; id?: string; name?: string; json: string }>();
+    // Advisor calls waiting for their answer, by id. The answer arrives whole, after a pause.
+    const asking = new Map<string, number>();
     let inText = false;
     events.thinking("");
 
@@ -339,10 +353,18 @@ export class Agent {
         if (block.type === "tool_use") {
           const tool = findTool(block.name);
           events.toolStart(block.id, tool ? safeLabel(tool, {}, false) : block.name, tool ? tool.kind : "mcp");
+        } else if (block.type === "server_tool_use" && block.name === "advisor") {
+          asking.set(block.id, Date.now());
+          events.toolStart(block.id, `Asking ${this.advisorLabel()}`, "advisor");
         } else if (block.type === "server_tool_use") {
           events.toolStart(block.id, block.name === "web_fetch" ? "Fetching" : "Searching the web", "web");
         } else if (block.type === "web_search_tool_result" || block.type === "web_fetch_tool_result") {
           events.toolUpdate(block.tool_use_id, "", "done");
+        } else if ((block.type as string) === "advisor_tool_result") {
+          const answer = block as unknown as { tool_use_id: string; content?: { type?: string; error_code?: string } };
+          const record = this.advisorRecord(answer.tool_use_id, asking.get(answer.tool_use_id), answer.content);
+          this.session.append({ t: "tool", tool: record });
+          events.toolEnd(record);
         }
       } else if (event.type === "content_block_delta") {
         onFirstToken();
@@ -372,7 +394,7 @@ export class Agent {
           events.textDone();
           inText = false;
         }
-        if (block?.type === "server_tool_use" && block.id) {
+        if (block?.type === "server_tool_use" && block.id && block.name !== "advisor") {
           const record = serverToolRecord(block.id, block.name ?? "web_search", parseJson(block.json));
           this.session.append({ t: "tool", tool: record });
           events.toolEnd(record);
@@ -382,6 +404,29 @@ export class Agent {
     if (inText) events.textDone();
     events.thinking(null);
     return response.finalMessage();
+  }
+
+  private advisorLabel() {
+    const advisor = advisorOf(this.options.settings.model);
+    return advisor ? modelLabel(advisor) : "the advisor";
+  }
+
+  // The advice itself is encrypted, so the record says only that the call happened.
+  private advisorRecord(id: string, startedAt = Date.now(), content?: { type?: string; error_code?: string }) {
+    const failed = content?.type === "advisor_tool_result_error";
+    const record: ToolRecord = {
+      id,
+      name: "advisor",
+      input: {},
+      label: `Asked ${this.advisorLabel()}`,
+      kind: "advisor",
+      output: "",
+      isError: failed,
+      startedAt,
+      ms: Date.now() - startedAt,
+      note: failed ? `couldn't answer: ${(content?.error_code ?? "error").replaceAll("_", " ")}` : undefined,
+    };
+    return record;
   }
 
   // Runs tool calls: consecutive read-only calls in parallel, everything else in order.

@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { isRuleValue, type PermissionMode, type PermissionRules, type ReviewSetting, type RuleValue } from "./config";
-import { KNOWN_MODELS, modelLabel, resolveModel, REVIEW_FALLBACK_MODEL } from "./agent/models";
+import { advisorOf, KNOWN_MODELS, modelLabel, resolveModel, REVIEW_FALLBACK_MODEL } from "./agent/models";
 import { getClient } from "./agent/provider";
 import { parseCommand } from "./shell-command";
 import { fieldOf, type Tool } from "./tools/types";
@@ -400,7 +400,7 @@ export function chooseReviewer(review: ReviewSetting = {}, openrouterKey?: strin
   }
   if (provider !== "anthropic") throw new Error(`${provider} isn't a review provider`);
   const id = resolveModel(model ?? "haiku");
-  if (!KNOWN_MODELS.includes(id)) throw new Error(`${model} isn't a Claude model`);
+  if (!KNOWN_MODELS.includes(id) || advisorOf(id)) throw new Error(`${model} isn't a Claude model`);
   return { provider, model: id };
 }
 

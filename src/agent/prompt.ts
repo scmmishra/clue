@@ -8,6 +8,10 @@
 // Adapted from fx's system_prompt.md (https://github.com/vercel-labs/fx),
 // licensed under Apache-2.0. See NOTICE.
 
+import advisorPrompt from "../../prompts/advisor.md" with { type: "text" };
 import systemPrompt from "../../prompts/system.md" with { type: "text" };
 
 export const SYSTEM_PROMPT = systemPrompt.trimEnd();
+
+// Added after the system prompt when a pair's executor can ask its advisor.
+export const ADVISOR_PROMPT = advisorPrompt.trimEnd();

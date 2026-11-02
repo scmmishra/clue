@@ -65,6 +65,7 @@ const KIND_NAMES: Record<string, [string, string]> = {
   write: ["write", "writes"],
   command: ["command", "commands"],
   web: ["web search", "web searches"],
+  advisor: ["advisor call", "advisor calls"],
   subagent: ["subagent", "subagents"],
   skill: ["skill", "skills"],
   mcp: ["MCP call", "MCP calls"],

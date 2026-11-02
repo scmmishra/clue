@@ -5,7 +5,18 @@ import { Agent, type AgentEvents, type Steer } from "./agent/loop";
 import { msSince, now, uptimeMs } from "./clock";
 import { describeError } from "./errors";
 import { gitBranch, prefetchGitStatus } from "./agent/context";
-import { cost, FAST_MODELS, fastEnabled, KNOWN_MODELS, modelLabel, resolveModel, responseUsage } from "./agent/models";
+import {
+  advisorOf,
+  cost,
+  FAST_MODELS,
+  fastEnabled,
+  KNOWN_MODELS,
+  modelLabel,
+  PAIR_EFFORTS,
+  pairEffort,
+  resolveModel,
+  responseUsage,
+} from "./agent/models";
 import { getClient, MissingCredentials, preconnect, warmCache } from "./agent/provider";
 import { mcpCommand } from "./commands/mcp";
 import { EFFORTS, PERMISSION_MODES, type Effort, type PermissionMode, type Settings } from "./config";
@@ -87,7 +98,7 @@ export class App {
   private lastEscape = 0;
   private rewindPicker: RewindPicker | null = null;
   private optionPicker: OptionPicker | null = null;
-  private onChosen: (value: string) => void = () => {};
+  private onChosen: (value: string, level: string) => void = () => {};
   private lastInterrupt = 0;
   private hint = "";
   private warming: AbortController | null = null;
@@ -457,27 +468,38 @@ export class App {
     this.screen.refresh();
   }
 
-  private choose(title: string, options: Option[], current: string, onChosen: (value: string) => void) {
+  private choose(
+    title: string,
+    options: Option[],
+    current: string,
+    onChosen: (value: string, level: string) => void,
+    level = "",
+  ) {
     this.editor.closePicker();
-    this.optionPicker = new OptionPicker(title, options, current);
+    this.optionPicker = new OptionPicker(title, options, current, level);
     this.onChosen = onChosen;
     this.screen.refresh();
   }
 
   private optionKey(key: Key) {
-    const value = this.optionPicker!.handle(key);
+    const picker = this.optionPicker!;
+    const value = picker.handle(key);
     if (value !== null) this.optionPicker = null;
-    if (value) this.onChosen(value);
+    if (value) this.onChosen(value, picker.chosenLevel);
     this.screen.refresh();
   }
 
-  private setModel(model: string) {
+  private setModel(model: string, effort?: Effort) {
     const wasFast = fastEnabled(this.settings);
     this.settings.model = model;
+    const advisor = advisorOf(model);
+    const detail = advisor ? `It asks ${modelLabel(advisor)} on hard steps.` : `(${model}).`;
     this.print([
-      `  Model is now ${style.bold(modelLabel(model))} ${style.faint(`(${model}). The next request starts a fresh cache.`)}`,
+      `  Model is now ${style.bold(modelLabel(model))} ${style.faint(`${detail} The next request starts a fresh cache.`)}`,
       "",
     ]);
+    if (effort && effort !== this.settings.effort) this.setEffort(effort);
+    else this.raiseEffortForPair();
     // Coming back to a fast model later must not start charging double without a word.
     if (wasFast && !fastEnabled(this.settings)) {
       this.settings.fast = false;
@@ -488,6 +510,18 @@ export class App {
   private setEffort(effort: Effort) {
     this.settings.effort = effort;
     this.print([`  Effort is now ${style.bold(effort)}.`, ""]);
+    this.raiseEffortForPair();
+  }
+
+  // Below medium, a pair's executor rarely asks its advisor, so a pair runs at medium or above.
+  private raiseEffortForPair() {
+    const effort = pairEffort(this.settings.model, this.settings.effort);
+    if (effort === this.settings.effort) return;
+    this.settings.effort = effort;
+    this.print([
+      `  ${style.muted(`Effort is ${effort}. Below that, ${modelLabel(this.settings.model)} rarely asks its advisor.`)}`,
+      "",
+    ]);
   }
 
   private setFast(fast: boolean) {
@@ -691,8 +725,22 @@ export class App {
         return;
       case "model": {
         if (args[0]) return this.setModel(resolveModel(args.join(" ")));
-        const options = KNOWN_MODELS.map((id) => ({ value: id, label: modelLabel(id), detail: id }));
-        return this.choose("Model:", options, this.settings.model, (model) => this.setModel(model));
+        const options = KNOWN_MODELS.map((id) => {
+          const advisor = advisorOf(id);
+          return {
+            value: id,
+            label: modelLabel(id),
+            detail: advisor ? `works, asks ${modelLabel(advisor)} on hard steps` : id,
+            levels: advisor ? PAIR_EFFORTS : EFFORTS,
+          };
+        });
+        return this.choose(
+          "Model:",
+          options,
+          this.settings.model,
+          (model, effort) => this.setModel(model, effort as Effort),
+          this.settings.effort,
+        );
       }
       case "effort": {
         const effort = args[0] as Effort;
