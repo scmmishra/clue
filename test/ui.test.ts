@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { hostname } from "node:os";
+import { join } from "node:path";
 import { VERSION } from "../src/config";
 import { style, term, tokens } from "../src/ui/ansi";
 import { Editor } from "../src/ui/editor";
@@ -9,6 +11,7 @@ import {
   markPrompt,
   promptLines,
   statusLine,
+  toolFile,
   toolTree,
   wrappedPromptLines,
 } from "../src/ui/turn";
@@ -104,6 +107,31 @@ test("a finished tool run has a blue dot, and grey branches, labels and notes", 
   expect(summary).toContain(style.muted(dot));
   expect(first).toBe(`${style.muted("├ ")}${style.muted("Read a.ts")}  ${style.muted("180 lines")}`);
   expect(last).toBe(`${style.muted("└ ")}${style.muted("Ran bun test")}  ${style.muted("exit 1")}`);
+});
+
+// A read, write or edit links its path to the file, so a terminal can open it.
+const record = (name: string, path: string, label: string) =>
+  row({ name, input: { path }, label, output: "", isError: false, ms: 1 });
+const linkTo = (path: string) =>
+  `\x1b]8;;file://${hostname()}${encodeURI(join(process.cwd(), path)).replaceAll("#", "%23")}\x1b\\`;
+
+test("a file tool's path links to the file, and the row reads the same", () => {
+  const [, read] = toolTree([record("read_file", "src/app.ts", "Read src/app.ts")] as never);
+  expect(read).toContain(`Read ${linkTo("src/app.ts")}src/app.ts\x1b]8;;\x1b\\`);
+  expect(Bun.stripANSI(read)).toBe("└ Read src/app.ts  180 lines");
+  const [, edit] = toolTree([record("edit_file", "docs/a #1.md", "Edited docs/a #1.md")] as never);
+  expect(edit).toContain(linkTo("docs/a #1.md"));
+  expect(edit).toContain("docs/a%20%231.md");
+});
+
+test("a running row gets the link once its tool ends, and other tools get none", () => {
+  const [, live] = toolTree([row({ label: "Wrote notes.txt", path: "notes.txt" })] as never);
+  expect(live).toContain(linkTo("notes.txt"));
+  const [, shell] = toolTree([record("shell", "x", "Ran bun test")] as never);
+  expect(shell).not.toContain("\x1b]8;");
+  expect(toolFile({ name: "shell", input: { path: "x" } })).toBeUndefined();
+  expect(toolFile({ name: "read_file", input: { path: "" } })).toBeUndefined();
+  expect(toolFile({ name: "read_file", input: {} })).toBeUndefined();
 });
 
 test("diff counts keep their green and red", () => {

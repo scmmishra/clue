@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { projectKey } from "../src/session";
 import { statusReport, type ProgramStatus } from "../src/ui/status";
@@ -226,6 +226,20 @@ test("/copy over SSH sends the reply to the terminal's clipboard, and explains i
   for (let wait = 0; count("Copied the last reply") < 2 && wait < 800; wait++) await Bun.sleep(10);
   expect(count("\x1b]52;c;")).toBe(2);
   expect(clue.screen().split("allow clipboard access").length - 1).toBe(1);
+}, 25_000);
+
+test("a read's path links to the file, live and after a resume", async () => {
+  const home = mkdtempSync(join(tmpdir(), "clue-composer-home-"));
+  const link = (cwd: string) => `\x1b]8;;file://${hostname()}${encodeURI(join(cwd, "package.json"))}\x1b\\`;
+  const clue = await startClue({ home });
+  await clue.type("what is this package?");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  expect(clue.raw()).toContain(link(clue.cwd));
+  await stop();
+  const resumed = await startClue({ home, cwd: clue.cwd, args: ["-c"] });
+  await resumed.seen("package.json");
+  expect(resumed.raw()).toContain(link(clue.cwd));
 }, 25_000);
 
 const macOnly = test.if(process.platform === "darwin");
