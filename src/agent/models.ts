@@ -135,8 +135,6 @@ export const PAIR_EFFORTS = ["medium", "high", "xhigh", "max"] as const;
 export const pairEffort = <E extends string>(model: string, effort: E): E | "medium" =>
   advisorOf(model) && effort === "low" ? "medium" : effort;
 
-export const REVIEW_FALLBACK_MODEL = "claude-haiku-5-5";
-
 // The context size where the API compacts a conversation by default.
 export const COMPACTION_TRIGGER_TOKENS = 150_000;
 

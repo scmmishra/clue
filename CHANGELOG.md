@@ -4,6 +4,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- `review.model` accepts any decision model on OpenRouter, such as `perplexity/pplx-decider-v1.2`. `decider` is a new short name next to `jev`. Both point to the latest version clue knows. Other short forms, such as `jev-1.14`, no longer work. Use the full id, such as `typesafe/jev-1.14`.
 - New pairs of models in `/model`: `haiku 5.5 + sonnet`, `sonnet 5.5 + opus` and `opus 5.5 + fable`. The first model does the work, and asks the second for advice on hard steps. Start one with `--model sonnet+opus`, for example. Each answer shows as an `Asked <advisor>` row, and the cost of a reply includes it.
 - In `/model`, `←` and `→` change the effort of the highlighted model.
 - An interrupted reply now counts the tokens the API reported before the interrupt. Its cost shows with a `+`, such as `$0.03+`, because the API bills some output it never reports. `clue ask --json` adds `cost_is_minimum`.

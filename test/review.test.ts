@@ -9,6 +9,8 @@ const KEY = "sk-or-test";
 const HAIKU = { provider: "anthropic", model: "claude-haiku-5-5" } as const;
 const SONNET = { provider: "anthropic", model: "claude-sonnet-5-5" } as const;
 const JEV = { provider: "openrouter", model: "typesafe/jev-1.14" } as const;
+const DECIDER = { provider: "openrouter", model: "perplexity/pplx-decider-v1.2" } as const;
+const JUDGE = { provider: "openrouter", model: "acme/judge-2" } as const;
 
 test.each([
   ["nothing set, no key", undefined, undefined, HAIKU],
@@ -19,7 +21,8 @@ test.each([
   ["a versioned short name", { provider: "anthropic", model: "haiku-5-5" }, undefined, HAIKU],
   ["a full model id", { provider: "anthropic", model: "claude-sonnet-5-5" }, undefined, SONNET],
   ["jev", { provider: "openrouter", model: "jev" }, KEY, JEV],
-  ["typesafe/jev", { provider: "openrouter", model: "typesafe/jev" }, KEY, JEV],
+  ["decider", { provider: "openrouter", model: "decider" }, KEY, DECIDER],
+  ["any OpenRouter model id, as written", { model: "acme/judge-2" }, KEY, JUDGE],
   ["a pinned jev", { provider: "openrouter", model: "typesafe/jev-1.14" }, KEY, JEV],
   ["a model alone picks anthropic", { model: "haiku" }, KEY, HAIKU],
   ["a model alone picks openrouter", { model: "jev" }, KEY, JEV],
@@ -30,6 +33,7 @@ test.each([
 test.each([
   ["openrouter with a Claude model", { provider: "openrouter", model: "haiku" }, KEY],
   ["anthropic with jev", { provider: "anthropic", model: "jev" }, KEY],
+  ["anthropic with an OpenRouter model id", { provider: "anthropic", model: "acme/judge-2" }, KEY],
   ["openrouter with no key", { provider: "openrouter" }, undefined],
   ["an unknown model", { provider: "anthropic", model: "gpt-9" }, undefined],
   ["an unknown provider", { provider: "acme" }, undefined],

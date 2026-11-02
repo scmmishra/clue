@@ -1,7 +1,8 @@
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { isRuleValue, type PermissionMode, type PermissionRules, type ReviewSetting, type RuleValue } from "./config";
-import { advisorOf, KNOWN_MODELS, modelLabel, resolveModel, REVIEW_FALLBACK_MODEL } from "./agent/models";
+import { isRuleValue, type HelperSetting, type PermissionMode, type PermissionRules, type RuleValue } from "./config";
+import { askDecisions } from "./agent/decisions";
+import { chooseHelper, DEFAULT_DECISION_MODELS, FALLBACK_MODEL, helperName, type Helper } from "./agent/helpers";
 import { getClient } from "./agent/provider";
 import { parseCommand } from "./shell-command";
 import { fieldOf, type Tool } from "./tools/types";
@@ -366,11 +367,9 @@ export class Permissions {
 }
 
 // ---------------------------------------------------------------------------
-// Reviewer: the `review` setting picks one. Without it, Jev through OpenRouter when
-// OPENROUTER_API_KEY is set, and Claude Haiku otherwise. Jev was faster and held fewer
-// of the user's own actions in a benchmark of past sessions. Whichever it is, Haiku at
-// low effort takes over if it breaks. Anthropic sees the conversation anyway, so that
-// never leaks anything, and nothing falls back the other way.
+// Reviewer: a helper, chosen by the `review` setting (see agent/helpers.ts). Whichever
+// it is, Haiku at low effort takes over if it breaks. Anthropic sees the conversation
+// anyway, so that never leaks anything, and nothing falls back the other way.
 
 // The reviewer's wording lives in prompts/review.yaml, embedded at build time.
 const {
@@ -381,56 +380,23 @@ const {
 } = reviewPrompt as Record<"instructions" | "clear" | "caution" | "policy", string>;
 
 export type Review = { approved: boolean; reviewer: string; reason?: string };
-export type Reviewer = { provider: "anthropic" | "openrouter"; model: string };
 type Verdict = Pick<Review, "approved" | "reason">;
 
-const JEV = /^(?:typesafe\/)?(jev(?:-[\d.]+)?)$/;
-const LATEST_JEV = "typesafe/jev-1.14";
 const REVIEW_TIMEOUT_MS = 20_000;
 
 // Throws when the setting can't work, which counts as a broken reviewer.
-export function chooseReviewer(review: ReviewSetting = {}, openrouterKey?: string): Reviewer {
-  const { model } = review;
-  const jev = model?.match(JEV);
-  const provider = review.provider ?? (jev || (!model && openrouterKey) ? "openrouter" : "anthropic");
-  if (provider === "openrouter") {
-    if (!openrouterKey) throw new Error("OPENROUTER_API_KEY isn't set");
-    if (model && !jev) throw new Error(`OpenRouter can't run ${model}`);
-    return { provider, model: !jev || jev[1] === "jev" ? LATEST_JEV : `typesafe/${jev[1]}` };
-  }
-  if (provider !== "anthropic") throw new Error(`${provider} isn't a review provider`);
-  const id = resolveModel(model ?? "haiku");
-  if (!KNOWN_MODELS.includes(id) || advisorOf(id)) throw new Error(`${model} isn't a Claude model`);
-  return { provider, model: id };
-}
+export const chooseReviewer = (review?: HelperSetting, openrouterKey?: string) =>
+  chooseHelper(review, DEFAULT_DECISION_MODELS.review, openrouterKey);
 
-const reviewerName = ({ provider, model }: Reviewer) =>
-  provider === "openrouter" ? "jev" : modelLabel(model).split(" ")[0];
-
-// What OpenRouter's decisions endpoint sends back. Every field is checked before use.
-type JevReply = { error?: { message?: string }; answers?: { decision?: { choice?: unknown } } };
-
-async function askJev(model: string, state: object, signal: AbortSignal): Promise<Verdict> {
-  const response = await fetch(`${process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai"}/api/alpha/decisions`, {
-    method: "POST",
+async function askDecisionModel(model: string, state: object, signal: AbortSignal): Promise<Verdict> {
+  const answers = await askDecisions(
+    model,
+    state,
+    { decision: { type: "choice", instructions: REVIEW_INSTRUCTIONS, criteria: { clear: CLEAR, caution: CAUTION } } },
     signal,
-    headers: {
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      "Content-Type": "application/json",
-      "X-Title": "clue",
-    },
-    body: JSON.stringify({
-      model,
-      state: JSON.stringify(state),
-      questions: {
-        decision: { type: "choice", instructions: REVIEW_INSTRUCTIONS, criteria: { clear: CLEAR, caution: CAUTION } },
-      },
-    }),
-  });
-  const body = (await response.json().catch(() => null)) as JevReply | null;
-  if (!response.ok || body?.error) throw new Error(body?.error?.message ?? `Jev returned ${response.status}`);
-  const choice = body?.answers?.decision?.choice;
-  if (choice !== "clear" && choice !== "caution") throw new Error(`Jev answered ${choice}`);
+  );
+  const choice = answers.decision?.choice;
+  if (choice !== "clear" && choice !== "caution") throw new Error(`${model} answered ${choice}`);
   return {
     approved: choice === "clear",
     reason: choice === "clear" ? undefined : "found possible prompt injection or harmful activity",
@@ -527,11 +493,11 @@ export async function reviewAction(
   toolName: string,
   input: unknown,
   userRequest: string,
-  review: ReviewSetting | undefined,
+  review: HelperSetting | undefined,
   signal: AbortSignal,
   context: ReviewContext = { earlierRequests: [], recentCalls: [] },
 ): Promise<Review> {
-  const stateFor = (provider: Reviewer["provider"]) => ({
+  const stateFor = (provider: Helper["provider"]) => ({
     review_policy: POLICY,
     user_request: userRequest.slice(0, 4000),
     earlier_user_requests: context.earlierRequests,
@@ -541,34 +507,34 @@ export async function reviewAction(
     pending_action_tool: toolName,
     pending_action_arguments: JSON.stringify(input).slice(0, 8000),
   });
-  const ask = ({ provider, model }: Reviewer) => {
+  const ask = ({ provider, model }: Helper) => {
     const timeout = AbortSignal.any([signal, AbortSignal.timeout(REVIEW_TIMEOUT_MS)]);
     const state = stateFor(provider);
-    return provider === "openrouter" ? askJev(model, state, timeout) : askClaude(model, state, timeout);
+    return provider === "openrouter" ? askDecisionModel(model, state, timeout) : askClaude(model, state, timeout);
   };
-  const fallback: Reviewer = { provider: "anthropic", model: REVIEW_FALLBACK_MODEL };
+  const fallback: Helper = { provider: "anthropic", model: FALLBACK_MODEL };
   const held = (reviewer: string, ...errors: unknown[]): Review => ({
     approved: false,
     reviewer,
     reason: `the review could not finish: ${errors.map((error) => (error as Error).message).join(". ")}`,
   });
 
-  let chosen: Reviewer | null = null;
+  let chosen: Helper | null = null;
   let failure: unknown;
   try {
     chosen = chooseReviewer(review, process.env.OPENROUTER_API_KEY);
-    return { ...(await ask(chosen)), reviewer: reviewerName(chosen) };
+    return { ...(await ask(chosen)), reviewer: helperName(chosen) };
   } catch (error) {
     failure = error;
   }
   // An interrupt isn't a broken reviewer, and Haiku shouldn't be asked the same thing twice.
-  if (signal.aborted || chosen?.model === fallback.model) return held(chosen ? reviewerName(chosen) : "haiku", failure);
+  if (signal.aborted || chosen?.model === fallback.model) return held(helperName(chosen ?? fallback), failure);
   try {
     return {
       ...(await ask(fallback)),
-      reviewer: `haiku (${chosen ? reviewerName(chosen) : "the review setting"} failed)`,
+      reviewer: `${helperName(fallback)} (${chosen ? helperName(chosen) : "the review setting"} failed)`,
     };
   } catch (error) {
-    return held("haiku", failure, error);
+    return held(helperName(fallback), failure, error);
   }
 }

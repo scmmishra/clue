@@ -43,7 +43,9 @@ clue warns at startup if the file has a problem. If the JSON is broken, clue use
 | `provider` | Default `model` | Other models |
 | --- | --- | --- |
 | `anthropic` | `haiku` | Any Claude model, such as `sonnet` |
-| `openrouter` | `jev` | A pinned Jev, such as `typesafe/jev-1.14` |
+| `openrouter` | `jev` | Any decision model on OpenRouter, such as `decider` or `perplexity/pplx-decider-v1.2` |
+
+`jev` and `decider` are short names. They point to the latest versions clue knows, `typesafe/jev-1.14` and `perplexity/pplx-decider-v1.2`. An OpenRouter model id has a vendor and a slash before the name. If you set only `model`, clue picks the provider from it.
 
 Both keys are optional. With no `review`, clue uses Jev if `OPENROUTER_API_KEY` is set, and Haiku if it isn't. To always use Haiku, set `"provider": "anthropic"`.
 

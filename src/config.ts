@@ -55,8 +55,8 @@ const RULE_TOOLS = [
   "read_tool_result",
 ];
 
-// Who reviews actions in auto mode. Both keys are optional.
-export type ReviewSetting = { provider?: string; model?: string };
+// The model behind a helper, such as the auto-mode reviewer. Both keys are optional.
+export type HelperSetting = { provider?: string; model?: string };
 
 export type Settings = {
   model: string;
@@ -64,7 +64,8 @@ export type Settings = {
   fast: boolean;
   permission_mode: PermissionMode;
   permission: PermissionRules;
-  review?: ReviewSetting;
+  // Who reviews actions in auto mode.
+  review?: HelperSetting;
   bell: boolean;
 };
 
@@ -108,7 +109,8 @@ export async function saveSetting<K extends keyof Settings>(key: K, value: Setti
   await Bun.write(paths.settings, `${JSON.stringify(file, null, 2)}\n`);
 }
 
-const REVIEW_PROVIDERS = ["anthropic", "openrouter"];
+const HELPER_PROVIDERS = ["anthropic", "openrouter"];
+const HELPERS = ["review"];
 // A JSON object, such as settings.json or a group of settings in it.
 export type JsonObject = { [key: string]: unknown };
 export const isObject = (value: unknown): value is JsonObject =>
@@ -127,9 +129,11 @@ const SETTING_CHECKS = new Map<string, (value: unknown) => string | null>([
   ["permission_mode", oneOf(PERMISSION_MODES)],
   ["permission", anObject],
   ["bell", aBoolean],
-  ["review", anObject],
-  ["review.provider", oneOf(REVIEW_PROVIDERS)],
-  ["review.model", aString],
+  ...HELPERS.flatMap((helper): [string, (value: unknown) => string | null][] => [
+    [helper, anObject],
+    [`${helper}.provider`, oneOf(HELPER_PROVIDERS)],
+    [`${helper}.model`, aString],
+  ]),
 ]);
 
 export const isSetting = (key: string) => SETTING_CHECKS.has(key);
@@ -154,10 +158,12 @@ export function settingsProblems(text: string): string[] {
   }
   if (!isObject(settings)) return ["settings.json must be a JSON object"];
   const problems = Object.entries(settings).flatMap(([key, value]) => checkSetting(key, value) ?? []);
-  if (isObject(settings.review)) {
-    problems.push(
-      ...Object.entries(settings.review).flatMap(([key, value]) => checkSetting(`review.${key}`, value) ?? []),
-    );
+  for (const helper of HELPERS) {
+    const setting = settings[helper];
+    if (isObject(setting))
+      problems.push(
+        ...Object.entries(setting).flatMap(([key, value]) => checkSetting(`${helper}.${key}`, value) ?? []),
+      );
   }
   if (isObject(settings.permission)) problems.push(...ruleProblems(settings.permission));
   return problems;
