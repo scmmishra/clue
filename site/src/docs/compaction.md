@@ -17,7 +17,7 @@ After you run `/compact` in a session, clue starts the later compactions itself,
 | After `/compact` | What happens |
 | --- | --- |
 | Images | Gone. Add them again if Claude still needs them. |
-| File contents | Gone. Claude reads files again when it needs them, and it must read a file before it edits it. |
+| File contents | Gone. Claude reads files again when it needs them. |
 | Project instructions | clue sends them again with your next message. |
 | Your screen | Stays as it is. |
 | The session file | Keeps every message, and a resumed session still shows them. |

@@ -240,7 +240,10 @@ await compare("edit_file and write_file", [
       const file = join(repo, "scratch-edit.ts");
       await Bun.write(file, sourceFile(1));
       await readFile.run({ path: "scratch-edit.ts" }, ctx);
-      await editFile.run({ path: "scratch-edit.ts", old_string: "// Module 1", new_string: "// Module one" }, ctx);
+      await editFile.run(
+        { path: "scratch-edit.ts", edits: [{ old_string: "// Module 1", new_string: "// Module one" }] },
+        ctx,
+      );
     },
   ],
   [

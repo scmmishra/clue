@@ -42,7 +42,7 @@ function setup() {
   const read = (name: string) => readFileSync(file(name), "utf8");
   const edit = async (name: string, from: string, to: string) => {
     await readFile.run({ path: name } as never, context);
-    return editFile.run({ path: name, old_string: from, new_string: to }, context);
+    return editFile.run({ path: name, edits: [{ old_string: from, new_string: to }] }, context);
   };
   const write = (name: string, content: string) => writeFile.run({ path: name, content }, context);
   return { dir, undo, context, file, read, edit, write };
@@ -175,9 +175,9 @@ test("after an undo, the edit tools make the agent read the file again", async (
   undo.beginTurn();
   await edit("a.ts", "one", "two");
   undo.undo();
-  const result = await editFile.run({ path: "a.ts", old_string: "two", new_string: "three" }, context);
+  const result = await writeFile.run({ path: "a.ts", content: "three" }, context);
   expect(result.isError).toBe(true);
-  expect(result.content).toBe("Read a.ts before editing it.");
+  expect(result.content).toBe("a.ts already exists. Read it before replacing it.");
 });
 
 test("a turn that ran a shell command says so", async () => {

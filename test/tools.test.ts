@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commandIsRoutine, Permissions, ruleFor } from "../src/permissions";
 import { Session } from "../src/session";
 import { chmodSync, mkdirSync } from "node:fs";
 import { UndoStack } from "../src/agent/undo";
-import { editFile, encodeImage, globFiles, grepFiles, readFile } from "../src/tools/files";
+import { editFile, encodeImage, globFiles, grepFiles, readFile, writeFile } from "../src/tools/files";
 import { shell, stopAllProcesses } from "../src/tools/shell";
 import type { ToolContext } from "../src/tools/types";
 
@@ -50,16 +50,118 @@ test("shell keeps long-running processes and supports interact and stop", async 
   stopAllProcesses();
 });
 
-test("edit_file refuses a file that changed since it was read", async () => {
+test("edit_file works on a file it hasn't read, because old_string shows Claude knows the text", async () => {
+  const file = join(dir, "unread.txt");
+  writeFileSync(file, "one\ntwo\n");
+  const result = await editFile.run({ path: "unread.txt", edits: [{ old_string: "two", new_string: "2" }] }, context());
+  expect(result.isError).toBeFalsy();
+  expect(readFileSync(file, "utf8")).toBe("one\n2\n");
+});
+
+test("edit_file keeps changes made since the last read", async () => {
   const file = join(dir, "a.txt");
   writeFileSync(file, "one\ntwo\n");
   const ctx = context();
   await readFile.run({ path: "a.txt" }, ctx);
   await Bun.sleep(10);
   writeFileSync(file, "one\nTWO\n");
-  const result = await editFile.run({ path: "a.txt", old_string: "one", new_string: "1" }, ctx);
+  const result = await editFile.run({ path: "a.txt", edits: [{ old_string: "one", new_string: "1" }] }, ctx);
+  expect(result.isError).toBeFalsy();
+  expect(readFileSync(file, "utf8")).toBe("1\nTWO\n");
+});
+
+test("an edit without a read doesn't let write_file replace the file", async () => {
+  const file = join(dir, "partial.txt");
+  writeFileSync(file, "one\ntwo\n");
+  const ctx = context();
+  await editFile.run({ path: "partial.txt", edits: [{ old_string: "one", new_string: "1" }] }, ctx);
+  const result = await writeFile.run({ path: "partial.txt", content: "new" }, ctx);
   expect(result.isError).toBe(true);
-  expect(result.content).toContain("changed since you last read it");
+  expect(readFileSync(file, "utf8")).toBe("1\ntwo\n");
+});
+
+test("an edit after a read leaves the read current for write_file", async () => {
+  const file = join(dir, "current.txt");
+  writeFileSync(file, "one\n");
+  const ctx = context();
+  await readFile.run({ path: "current.txt" }, ctx);
+  await Bun.sleep(10);
+  await editFile.run({ path: "current.txt", edits: [{ old_string: "one", new_string: "1" }] }, ctx);
+  expect((await writeFile.run({ path: "current.txt", content: "new" }, ctx)).isError).toBeFalsy();
+});
+
+test("edit_file applies several edits, each matched against the original file", async () => {
+  const file = join(dir, "multi.txt");
+  writeFileSync(file, "alpha\nbeta\ngamma\ndelta\n");
+  const result = await editFile.run(
+    {
+      path: "multi.txt",
+      edits: [
+        { old_string: "gamma", new_string: "GAMMA\ngamma2" },
+        { old_string: "alpha", new_string: "gamma" },
+      ],
+    },
+    context(),
+  );
+  expect(result.isError).toBeFalsy();
+  expect(readFileSync(file, "utf8")).toBe("gamma\nbeta\nGAMMA\ngamma2\ndelta\n");
+  expect(result.added).toBe(3);
+  expect(result.removed).toBe(2);
+  expect(result.diff).toContain("+ 1 gamma");
+  expect(result.diff).toContain("- 3 gamma");
+  expect(result.diff).toContain("+ 3 GAMMA");
+  expect(result.diff).toContain("  5 delta");
+});
+
+test("a bad edit stops the whole call and names the edit", async () => {
+  const file = join(dir, "atomic.txt");
+  writeFileSync(file, "one\ntwo\ntwo\n");
+  const run = (edits: { old_string: string; new_string: string }[]) =>
+    editFile.run({ path: "atomic.txt", edits }, context());
+  const missing = await run([
+    { old_string: "one", new_string: "1" },
+    { old_string: "three", new_string: "3" },
+  ]);
+  expect(missing.isError).toBe(true);
+  expect(missing.content).toStartWith("Edit 2: old_string was not found");
+  const repeated = await run([
+    { old_string: "one", new_string: "1" },
+    { old_string: "two", new_string: "2" },
+  ]);
+  expect(repeated.content).toStartWith("Edit 2: old_string appears 2 times");
+  expect(readFileSync(file, "utf8")).toBe("one\ntwo\ntwo\n");
+});
+
+test("edits that overlap are refused", async () => {
+  const file = join(dir, "overlap.txt");
+  writeFileSync(file, "one two three\n");
+  const result = await editFile.run(
+    {
+      path: "overlap.txt",
+      edits: [
+        { old_string: "one two", new_string: "1 2" },
+        { old_string: "two three", new_string: "2 3" },
+      ],
+    },
+    context(),
+  );
+  expect(result.isError).toBe(true);
+  expect(result.content).toContain("overlap");
+  expect(readFileSync(file, "utf8")).toBe("one two three\n");
+});
+
+test("edit_file refuses an empty old_string", async () => {
+  writeFileSync(join(dir, "empty.txt"), "text");
+  const result = await editFile.run({ path: "empty.txt", edits: [{ old_string: "", new_string: "x" }] }, context());
+  expect(result.isError).toBe(true);
+  expect(result.content).toContain("old_string is empty");
+});
+
+test("edit_file needs a list of well-formed edits", () => {
+  expect(editFile.validate({ path: "a", edits: [] })).toContain("at least one");
+  expect(editFile.validate({ path: "a", old_string: "x", new_string: "y" })).not.toBeNull();
+  expect(editFile.validate({ path: "a", edits: [{ old_string: "x" }] })).toContain("new_string");
+  expect(editFile.validate({ path: "a", edits: [{ old_string: "x", new_string: "y" }] })).toBeNull();
 });
 
 test("edit_file reports a diff with added and removed counts", async () => {
@@ -67,7 +169,7 @@ test("edit_file reports a diff with added and removed counts", async () => {
   writeFileSync(file, "alpha\nbeta\ngamma\n");
   const ctx = context();
   await readFile.run({ path: "b.txt" }, ctx);
-  const result = await editFile.run({ path: "b.txt", old_string: "beta", new_string: "BETA\nbeta2" }, ctx);
+  const result = await editFile.run({ path: "b.txt", edits: [{ old_string: "beta", new_string: "BETA\nbeta2" }] }, ctx);
   expect(result.isError).toBeFalsy();
   expect(result.added).toBe(2);
   expect(result.removed).toBe(1);

@@ -10,7 +10,7 @@ The model chooses these tools itself. [Permissions](/docs/permissions) decide wh
 | `grep_files` | Searches file contents. The pattern is a regular expression. If it is invalid or finds nothing, clue searches for the same text literally. |
 | `read_file` | Reads text files and images. |
 | `write_file` | Creates a file, or replaces one it has read. |
-| `edit_file` | Changes part of a file. It refuses if the file changed since the last read. |
+| `edit_file` | Changes one or more parts of a file. If one change fails, the file stays as it was. |
 | `shell` | Runs commands in your shell. Dev servers keep running across prompts. |
 | `web_search` | Searches the web. |
 | `web_fetch` | Reads a public URL. |

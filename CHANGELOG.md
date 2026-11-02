@@ -2,6 +2,12 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- `edit_file` takes a list of edits for one file, so several changes go in one call. If one edit fails, the file stays unchanged.
+- `edit_file` no longer needs a `read_file` first, or an unchanged file. The exact `old_string` shows that Claude knows the text. `write_file` is unchanged.
+- `edit_file` no longer has `replace_all`. It was unused in session logs. Use several edits, or `sed` through `shell`.
+
 ## 0.9.1
 
 - `↑`, `↓`, `Ctrl+P` and `Ctrl+N` move through the `/` command list, and the list scrolls to show the selected command. Before, these keys browsed history.

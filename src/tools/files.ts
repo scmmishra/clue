@@ -3,7 +3,7 @@ import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { nestedInstructions } from "../agent/context";
 import { snapshotFile } from "../agent/undo";
 import { walk } from "../walk";
-import { checkFields, type Tool, type ToolContext } from "./types";
+import { checkFields, fieldOf, type Tool, type ToolContext } from "./types";
 
 const DEFAULT_READ_LINES = 2000;
 const MAX_LINE_CHARS = 2000;
@@ -362,22 +362,24 @@ async function readLines(stream: ReadableStream<Uint8Array>, max: number, onEnou
 }
 
 // A unified-style diff of one replacement, with a little context.
-function replacementDiff(before: string, after: string, index: number, oldText: string, newText: string) {
-  const startLine = before.slice(0, index).split("\n").length;
-  const oldLines = oldText.split("\n");
-  const newLines = newText.split("\n");
+// One replacement as a hunk. Line numbers come from the text around it in each version.
+function replacementDiff(before: string, after: string, span: Span, afterIndex: number) {
+  const oldStart = before.slice(0, span.start).split("\n").length;
+  const newStart = after.slice(0, afterIndex).split("\n").length;
+  const oldLines = before.slice(span.start, span.end).split("\n");
+  const newLines = span.text.split("\n");
   const beforeLines = before.split("\n");
   const afterLines = after.split("\n");
   const CONTEXT = 2;
   const out: string[] = [];
-  for (let line = Math.max(1, startLine - CONTEXT); line < startLine; line++)
+  for (let line = Math.max(1, oldStart - CONTEXT); line < oldStart; line++)
     out.push(`  ${line} ${beforeLines[line - 1]}`);
-  oldLines.forEach((text, offset) => out.push(`- ${startLine + offset} ${text}`));
-  newLines.forEach((text, offset) => out.push(`+ ${startLine + offset} ${text}`));
-  const resume = startLine + newLines.length;
+  oldLines.forEach((text, offset) => out.push(`- ${oldStart + offset} ${text}`));
+  newLines.forEach((text, offset) => out.push(`+ ${newStart + offset} ${text}`));
+  const resume = newStart + newLines.length;
   for (let line = resume; line < resume + CONTEXT && line <= afterLines.length; line++)
     out.push(`  ${line} ${afterLines[line - 1]}`);
-  return { diff: out.join("\n"), added: newLines.length, removed: oldLines.length };
+  return { lines: out, added: newLines.length, removed: oldLines.length };
 }
 
 export const writeFile: Tool<{ path: string; content: string }> = {
@@ -429,61 +431,98 @@ export const writeFile: Tool<{ path: string; content: string }> = {
   },
 };
 
-export const editFile: Tool<{ path: string; old_string: string; new_string: string; replace_all?: boolean }> = {
+type Edit = { old_string: string; new_string: string };
+// A range of the original file and the text that replaces it.
+type Span = { start: number; end: number; text: string };
+
+// Where one edit applies in the file, or why it can't.
+function locate(before: string, edit: Edit, path: string): Span | string {
+  if (edit.old_string === "") return "old_string is empty.";
+  if (edit.old_string === edit.new_string) return "old_string and new_string are the same.";
+  const start = before.indexOf(edit.old_string);
+  if (start === -1) return `old_string was not found in ${path}. Check whitespace and read the file again.`;
+  const count = before.split(edit.old_string).length - 1;
+  if (count > 1) return `old_string appears ${count} times in ${path}. Add surrounding lines to make it unique.`;
+  return { start, end: start + edit.old_string.length, text: edit.new_string };
+}
+
+export const editFile: Tool<{ path: string; edits: Edit[] }> = {
   name: "edit_file",
   description:
-    "Replace exact text in a file you have read. old_string must match the file exactly, including whitespace, and must be unique unless replace_all is set. Refuses if the file changed since you read it.",
+    "Replace exact text in a file. Put every change to one file in one call. Each old_string must match the file exactly, including whitespace, and must be unique. Each edit matches against the original file, so edits can't overlap or build on each other. If one edit fails, the file stays unchanged.",
   schema: {
     type: "object",
     properties: {
       path: { type: "string" },
-      old_string: { type: "string", description: "Exact text to replace." },
-      new_string: { type: "string", description: "Replacement text." },
-      replace_all: { type: "boolean", description: "Replace every occurrence." },
+      edits: {
+        type: "array",
+        description: "The replacements to make.",
+        minItems: 1,
+        items: {
+          type: "object",
+          properties: {
+            old_string: { type: "string", description: "Exact text to replace." },
+            new_string: { type: "string", description: "Replacement text." },
+          },
+          required: ["old_string", "new_string"],
+        },
+      },
     },
-    required: ["path", "old_string", "new_string"],
+    required: ["path", "edits"],
   },
   kind: "edit",
   label: (input, done) => `${done ? "Edited" : "Editing"} ${input.path}`,
-  validate: (input) =>
-    checkFields(input, { path: "string", old_string: "string", new_string: "string", replace_all: "boolean?" }),
+  validate: (input) => {
+    const problem = checkFields(input, { path: "string", edits: "array" });
+    if (problem) return problem;
+    const edits = fieldOf(input, "edits") as unknown[];
+    if (edits.length === 0) return "edits needs at least one edit.";
+    for (const edit of edits) {
+      const invalid = checkFields(edit, { old_string: "string", new_string: "string" });
+      if (invalid) return invalid;
+    }
+    return null;
+  },
   async run(input, context) {
     const file = absolute(context.cwd, input.path);
     if (!existsSync(file)) return { content: `No file at ${input.path}. Use write_file to create it.`, isError: true };
-    if (!context.readStamps.has(file)) return { content: `Read ${input.path} before editing it.`, isError: true };
-    if (context.readStamps.get(file) !== mtime(file)) {
-      return { content: `${input.path} changed since you last read it. Read it again, then edit.`, isError: true };
-    }
-    if (input.old_string === input.new_string)
-      return { content: "old_string and new_string are the same.", isError: true };
+    // old_string shows Claude knows the text, so a plain edit needs no read. write_file does.
+    const current = context.readStamps.get(file) === mtime(file);
     const before = readFileSync(file, "utf8");
-    const first = before.indexOf(input.old_string);
-    if (first === -1)
-      return {
-        content: `old_string was not found in ${input.path}. Check whitespace and read the file again.`,
-        isError: true,
-      };
-    const count = before.split(input.old_string).length - 1;
-    if (count > 1 && !input.replace_all) {
-      return {
-        content: `old_string appears ${count} times in ${input.path}. Add surrounding lines to make it unique, or set replace_all.`,
-        isError: true,
-      };
+    const spans: Span[] = [];
+    for (const [index, edit] of input.edits.entries()) {
+      const located = locate(before, edit, input.path);
+      if (typeof located === "string") {
+        return { content: input.edits.length > 1 ? `Edit ${index + 1}: ${located}` : located, isError: true };
+      }
+      spans.push(located);
     }
-    const after = input.replace_all
-      ? before.split(input.old_string).join(input.new_string)
-      : before.replace(input.old_string, () => input.new_string);
+    spans.sort((a, b) => a.start - b.start);
+    if (spans.some((span, index) => index > 0 && span.start < spans[index - 1].end)) {
+      return { content: `Edits overlap in ${input.path}. Merge them into one edit.`, isError: true };
+    }
+    let after = "";
+    let position = 0;
+    const starts = spans.map((span) => {
+      after += before.slice(position, span.start);
+      const start = after.length;
+      after += span.text;
+      position = span.end;
+      return start;
+    });
+    after += before.slice(position);
     const previous = snapshotFile(file);
     writeFileSync(file, after);
     context.undo.record(file, previous);
-    context.readStamps.set(file, mtime(file));
-    const { diff, added, removed } = replacementDiff(before, after, first, input.old_string, input.new_string);
-    const times = input.replace_all && count > 1 ? ` (${count} places)` : "";
+    // Without a current read, this edit doesn't show Claude knows the rest of the file.
+    if (current) context.readStamps.set(file, mtime(file));
+    const hunks = spans.map((span, index) => replacementDiff(before, after, span, starts[index]));
+    const places = spans.length > 1 ? ` (${spans.length} places)` : "";
     return {
-      content: withNestedInstructions(context, file, `Edited ${input.path}${times}.`),
-      diff,
-      added: added * (input.replace_all ? count : 1),
-      removed: removed * (input.replace_all ? count : 1),
+      content: withNestedInstructions(context, file, `Edited ${input.path}${places}.`),
+      diff: hunks.flatMap((hunk) => hunk.lines).join("\n"),
+      added: hunks.reduce((sum, hunk) => sum + hunk.added, 0),
+      removed: hunks.reduce((sum, hunk) => sum + hunk.removed, 0),
     };
   },
 };
