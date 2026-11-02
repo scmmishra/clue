@@ -5,6 +5,7 @@ import { startsWithSummary, type MessageParam } from "../session";
 import { toolDefinitions } from "../tools";
 import { advisorOf, apiModel, modelInfo, modelLabel, pairEffort } from "./models";
 import { advisorGuidance, COMPACT_INSTRUCTIONS, SYSTEM_PROMPT } from "./prompt";
+import type { MessageThread } from "./thread";
 
 // Every model call goes through this file. Other providers, such as
 // OpenRouter or Codex, would be a sibling of this module.
@@ -154,9 +155,12 @@ export function dropRejectedFeature(error: unknown) {
 // user chose this one and the status line shows it, so the loop turns the setting off instead.
 export const fastRejected = (error: unknown) => /\bspeed\b|fast.mode/i.test(String((error as Error)?.message ?? ""));
 
-export async function stream(options: RequestOptions, signal: AbortSignal) {
+// One streamed request. With a thread, it sends only what the API doesn't hold yet.
+export async function stream(options: RequestOptions, signal: AbortSignal, thread?: MessageThread | null) {
   const client = await getClient();
-  return client.beta.messages.stream(buildRequest(options), { signal });
+  const request = buildRequest(options);
+  if (thread) return thread.stream(client, request, signal);
+  return client.beta.messages.stream(request, { signal });
 }
 
 // Asks for a summary of the conversation. The response holds a compaction block and no reply.

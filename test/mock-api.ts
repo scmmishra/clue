@@ -9,6 +9,9 @@ type Body = {
   output_config?: { effort?: string };
   speed?: string;
   betas?: string[];
+  system?: unknown;
+  tools?: unknown;
+  thread?: { type: "create" } | { type: "continue"; previous_message_id: string };
 };
 
 export const requests: Body[] = [];
@@ -83,6 +86,83 @@ function streamText(text: string, index: number) {
   ];
 }
 
+// Message threads. `requests` logs each request as the API rebuilds it, with the whole conversation.
+// `threads.sent` logs them as clue sent them.
+export const threads = {
+  // What each response's thread holds, by response id. A response can be continued once.
+  held: new Map<string, { messages: Body["messages"]; system?: unknown; tools?: unknown }>(),
+  sent: [] as Body[],
+  // An `unsupported` value: every thread request gets thread_unsupported_request with it.
+  unsupported: null as string | null,
+};
+
+const apiError = (status: number, type: string, message: string, details?: Record<string, unknown>) =>
+  Response.json({ type: "error", error: { type, message, ...(details ? { details } : {}) } }, { status });
+
+// Rebuilds a thread request's conversation the way the API does. Returns the request in full, or
+// the error the API would send.
+function rebuildThread(body: Body): Body | Response {
+  const thread = body.thread!;
+  threads.sent.push(structuredClone(body));
+  if (!body.betas?.includes("message-threads-2026-08-12"))
+    return apiError(400, "invalid_request_error", "thread requires anthropic-beta: message-threads-2026-08-12");
+  if (threads.unsupported)
+    return apiError(400, "invalid_request_error", `thread: ${threads.unsupported} isn't supported`, {
+      error_code: "thread_unsupported_request",
+      unsupported: [threads.unsupported],
+    });
+  if (thread.type === "create") return body;
+  if (body.system !== undefined || body.tools !== undefined)
+    return apiError(400, "invalid_request_error", "thread: system and tools can't be sent on a continue request");
+  const held = threads.held.get(thread.previous_message_id);
+  if (!held) return apiError(404, "not_found_error", "thread not found", { error_code: "thread_not_found" });
+  threads.held.delete(thread.previous_message_id);
+  return { ...body, system: held.system, tools: held.tools, messages: [...held.messages, ...body.messages] };
+}
+
+// Passes a streamed reply through, and keeps the thread's conversation once it reaches message_stop.
+function keepThread(response: Response, body: Body) {
+  if (!response.body || !response.headers.get("content-type")?.includes("event-stream")) return response;
+  let text = "";
+  const decoder = new TextDecoder();
+  const tee = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      text += decoder.decode(chunk, { stream: true });
+      controller.enqueue(chunk);
+    },
+    flush() {
+      const events = text
+        .split("\n")
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => JSON.parse(line.slice(6)));
+      if (!events.some((event) => event.type === "message_stop")) return;
+      const content: Record<string, unknown>[] = [];
+      let id = "";
+      for (const event of events) {
+        if (event.type === "message_start") id = event.message.id;
+        if (event.type === "content_block_start") content[event.index] = { ...event.content_block };
+        if (event.type === "content_block_delta") {
+          const block = content[event.index];
+          if (event.delta.type === "text_delta") block.text = `${block.text ?? ""}${event.delta.text}`;
+          if (event.delta.type === "thinking_delta") block.thinking = `${block.thinking ?? ""}${event.delta.thinking}`;
+          if (event.delta.type === "signature_delta") block.signature = event.delta.signature;
+          if (event.delta.type === "input_json_delta") block.json = `${block.json ?? ""}${event.delta.partial_json}`;
+        }
+      }
+      for (const block of content) {
+        if (typeof block.json === "string") block.input = JSON.parse(block.json || "{}");
+        delete block.json;
+      }
+      threads.held.set(id, {
+        messages: [...body.messages, { role: "assistant", content }],
+        system: body.system,
+        tools: body.tools,
+      });
+    },
+  });
+  return new Response(response.body.pipeThrough(tee), { status: response.status, headers: response.headers });
+}
+
 export const compactions: unknown[] = [];
 export const compactionStop = { value: "compaction" };
 
@@ -106,7 +186,21 @@ export function startMockApi(port = 0, delay = DELAY) {
           created_at: "2026-01-01T00:00:00Z",
         });
       if (!url.pathname.endsWith("/v1/messages")) return new Response("not found", { status: 404 });
-      const body = (await request.json()) as Body;
+      let body = (await request.json()) as Body;
+      // The SDK sends betas as a header.
+      body.betas = request.headers.get("anthropic-beta")?.split(",") ?? [];
+      if (body.thread) {
+        const rebuilt = rebuildThread(body);
+        if (rebuilt instanceof Response) return rebuilt;
+        body = rebuilt;
+        return keepThread(await answer(body), body);
+      }
+      return answer(body);
+    },
+  });
+
+  async function answer(body: Body): Promise<Response> {
+    {
       if ((body as { compaction?: unknown }).compaction) {
         compactions.push(body);
         return sse(
@@ -148,8 +242,6 @@ export function startMockApi(port = 0, delay = DELAY) {
           ),
         );
       }
-      // The SDK sends betas as a header.
-      body.betas = request.headers.get("anthropic-beta")?.split(",") ?? [];
       requests.push(body);
       if (
         body.speed === "fast" &&
@@ -312,8 +404,8 @@ export function startMockApi(port = 0, delay = DELAY) {
         ],
         delay,
       );
-    },
-  });
+    }
+  }
 }
 
 if (import.meta.main) {

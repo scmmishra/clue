@@ -4,6 +4,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- Requests use message threads: after the first request, clue sends only the messages since the last reply, and the API rebuilds the rest. Claude starts answering sooner in long sessions. Cost doesn't change. After a pause of more than 4.5 minutes, a rewind, a summary or a change of model, clue sends the whole conversation again. `"threads": false` turns them off, such as for zero data retention.
 - clue decides when to compact, instead of the API. Fable, Opus and Sonnet compact at 300k tokens, not 150k, so long sessions lose less to summaries. Haiku 5.5 compacts at 80k, under its higher price for prompts over 100k.
 - Automatic compaction keeps the latest 20k tokens of the conversation word for word after the summary. Before, it summarized everything, including the tool output Claude was working with.
 - Summaries follow clue's own instructions: your requests and constraints, decisions and approaches that failed, files changed, open errors and the next step.

@@ -104,7 +104,7 @@ function set(args: string[]) {
   const [key, text] = args;
   if (EDIT_ONLY.has(key)) stop(`${key} holds nested settings. Use clue config edit.`);
   const value =
-    (key === "bell" || key === "fast") && (text === "true" || text === "false")
+    (key === "bell" || key === "fast" || key === "threads") && (text === "true" || text === "false")
       ? text === "true"
       : key === "compact_at" && /^\d+$/.test(text)
         ? Number(text)

@@ -23,6 +23,7 @@ clue warns at startup if the file has a problem. If the JSON is broken, clue use
 | `permission` | none | Allow, ask and deny rules. See [Permissions](/docs/permissions). |
 | `review` | automatic | Who reviews actions in `auto` mode. See below. |
 | `copy` | automatic | Who picks what `/copy <request>` copies. See below. |
+| `threads` | `true` | Sends each request as a [message thread](#message-threads), with only what the API doesn't hold yet. |
 | `compact_at` | per model | When clue [compacts](/docs/compaction) the conversation: a token count such as `400000`, or a share of the context window such as `"40%"`. |
 | `bell` | `true` | Rings the terminal bell when clue needs you. |
 
@@ -33,6 +34,14 @@ clue warns at startup if the file has a problem. If the JSON is broken, clue use
   "bell": false
 }
 ```
+
+## Message threads
+
+With a message thread, the API keeps the conversation for 5 minutes after each request. clue then sends only the messages since the last reply, instead of the whole conversation, so Claude starts answering sooner in a long session. Claude still reads the whole conversation, so tokens and cost don't change.
+
+clue starts a new thread, with the whole conversation, when the old one can't continue: after a pause of more than 4.5 minutes, a rewind, a summary, a change of model, effort or fast mode, or an MCP server that connects or drops. A request that carries a summary goes without a thread, because threads can't hold one. If the API refuses threads, such as for an organization with HIPAA readiness, clue goes on without them for the session.
+
+The API holds a thread in memory, encrypted, and deletes it no more than an hour after its last use. Threads aren't eligible for zero data retention. To turn them off, set `"threads": false`.
 
 ## Choose the reviewer
 

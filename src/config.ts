@@ -71,6 +71,8 @@ export type Settings = {
   // When clue compacts the conversation: a token count, or a share of the model's context
   // window such as "30%". Each model has its own default.
   compact_at?: number | string;
+  // Message threads: each request sends only what the API doesn't hold yet. On unless false.
+  threads?: boolean;
   bell: boolean;
 };
 
@@ -142,6 +144,7 @@ const SETTING_CHECKS = new Map<string, (value: unknown) => string | null>([
   ["permission_mode", oneOf(PERMISSION_MODES)],
   ["permission", anObject],
   ["compact_at", aCompactionPoint],
+  ["threads", aBoolean],
   ["bell", aBoolean],
   ...HELPERS.flatMap((helper): [string, (value: unknown) => string | null][] => [
     [helper, anObject],
