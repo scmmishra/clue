@@ -42,10 +42,12 @@ test("~ as the home folder stays in the word unexpanded", () => {
   expect(parseCommand("ls ~;ls ~|wc")).toEqual([["ls", "~"], ["ls", "~"], ["wc"]]);
 });
 
-test("in double quotes, a backslash escapes only $, `, \" and \\", () => {
+test('in double quotes, a backslash escapes only $, `, " and \\', () => {
   expect(parseCommand(`grep -n "a\\|b" src`)).toEqual([["grep", "-n", "a\\|b", "src"]]);
   expect(parseCommand(`rg "\\bfoo\\(" src`)).toEqual([["rg", "\\bfoo\\(", "src"]]);
-  expect(parseCommand(`echo "a\\"b" "c\\\\" "\\$HOME" "\\\`id\\\`"`)).toEqual([["echo", 'a"b', "c\\", "$HOME", "`id`"]]);
+  expect(parseCommand(`echo "a\\"b" "c\\\\" "\\$HOME" "\\\`id\\\`"`)).toEqual([
+    ["echo", 'a"b', "c\\", "$HOME", "`id`"],
+  ]);
   expect(parseCommand(`git commit -m "say \\"hi\\" && go"`)).toEqual([["git", "commit", "-m", 'say "hi" && go']]);
 });
 

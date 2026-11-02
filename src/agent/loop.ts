@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { isObject, type Effort, type Settings } from "../config";
 import type { McpManager } from "../mcp/manager";
-import { approvalQuestion, Permissions, reviewAction } from "../permissions";
+import { approvalQuestion, Permissions, reviewAction, reviewContext } from "../permissions";
 import {
   CONTINUE_PROMPT,
   Session,
@@ -471,7 +471,14 @@ export class Agent {
     let note: string | undefined;
     if (decision.action === "review") {
       events.review(use.id, "reviewing");
-      const verdict = await reviewAction(tool.name, input, prompt, this.options.settings.review, signal);
+      const verdict = await reviewAction(
+        tool.name,
+        input,
+        prompt,
+        this.options.settings.review,
+        signal,
+        reviewContext(session.transcript, prompt),
+      );
       if (!verdict.approved) {
         events.review(use.id, "held", `${verdict.reviewer}: ${verdict.reason ?? "held"}`);
         if (!this.options.interactive || signal.aborted) {

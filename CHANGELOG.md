@@ -2,6 +2,11 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- The reviewer in `auto` mode also sees your last few messages and the agent's latest tool calls, so it can tell how an action fits the work. Tool output goes only to a Claude reviewer.
+- The reviewer clears reads of your own local files and databases, such as a `sqlite3` query on a history file. It still flags reads of credentials, and reads that send data off the machine.
+
 ## 0.10.0
 
 - `edit_file` takes a list of edits for one file, so several changes go in one call. If one edit fails, the file stays unchanged.

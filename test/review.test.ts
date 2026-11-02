@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:te
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chooseReviewer, reviewAction } from "../src/permissions";
+import { chooseReviewer, reviewAction, reviewContext } from "../src/permissions";
 import { resetReviewers, reviewers, startMockApi } from "./mock-api";
 
 const KEY = "sk-or-test";
@@ -166,3 +166,68 @@ test("clue reads the review setting from settings.json", async () => {
   expect(reviewers.claudeCalls.map((call) => call.model)).toEqual(["claude-sonnet-5-5"]);
   expect(reviewers.jevCalls).toEqual([]);
 }, 20_000);
+
+const conversation = [
+  {
+    role: "user",
+    content: [
+      { type: "text", text: "<context>\nfolder: /x\n</context>" },
+      { type: "text", text: "Do labels show overstated findings?" },
+    ],
+  },
+  {
+    role: "assistant",
+    content: [
+      { type: "text", text: "Let me look." },
+      { type: "tool_use", id: "t1", name: "shell", input: { command: "clueless label --help" } },
+    ],
+  },
+  { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "usage: clueless label <run>" }] },
+  { role: "assistant", content: [{ type: "tool_use", id: "t2", name: "read_file", input: { path: "a.ts" } }] },
+  {
+    role: "user",
+    content: [{ type: "tool_result", tool_use_id: "t2", content: [{ type: "text", text: "x".repeat(700) }] }],
+  },
+  { role: "user", content: "Is the rebuttal agent worth it?" },
+  {
+    role: "assistant",
+    content: [{ type: "tool_use", id: "t3", name: "shell", input: { command: "sqlite3 db 'select 1'" } }],
+  },
+];
+
+test("the review context holds the user's earlier messages and the finished tool calls", () => {
+  const context = reviewContext(conversation, "Is the rebuttal agent worth it?");
+  expect(context.earlierRequests).toEqual(["Do labels show overstated findings?"]);
+  expect(context.recentCalls).toEqual([
+    { tool: "shell", input: '{"command":"clueless label --help"}', result: "usage: clueless label <run>" },
+    { tool: "read_file", input: '{"path":"a.ts"}', result: `${"x".repeat(600)}…` },
+  ]);
+});
+
+test("the review context keeps only the latest calls and requests", () => {
+  const many = Array.from({ length: 20 }, (_, index) => [
+    { role: "user", content: `request ${index}` },
+    {
+      role: "assistant",
+      content: [{ type: "tool_use", id: `t${index}`, name: "shell", input: { command: `ls ${index}` } }],
+    },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: `t${index}`, content: "ok" }] },
+  ]).flat();
+  const context = reviewContext(many, "request 19");
+  expect(context.earlierRequests).toEqual(["request 16", "request 17", "request 18"]);
+  expect(context.recentCalls.map((call) => call.input)).toEqual(
+    Array.from({ length: 12 }, (_, index) => `{"command":"ls ${index + 8}"}`),
+  );
+});
+
+test("Claude sees tool output, and Jev sees only the calls", async () => {
+  const context = reviewContext(conversation, "Is the rebuttal agent worth it?");
+  const signal = new AbortController().signal;
+  await reviewAction("shell", { command: "deploy" }, "ship it", { provider: "anthropic" }, signal, context);
+  await reviewAction("shell", { command: "deploy" }, "ship it", { provider: "openrouter" }, signal, context);
+  const [claude, jev] = reviewers.states;
+  expect(claude.earlier_user_requests).toEqual(["Do labels show overstated findings?"]);
+  expect(claude.recent_tool_calls).toEqual(context.recentCalls);
+  expect(jev.earlier_user_requests).toEqual(["Do labels show overstated findings?"]);
+  expect(jev.recent_tool_calls).toEqual(context.recentCalls.map(({ tool, input }) => ({ tool, input })));
+});

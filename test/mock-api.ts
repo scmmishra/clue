@@ -26,12 +26,14 @@ export const reviewers = {
   jev: "clear",
   claudeCalls: [] as { model: string; effort?: string }[],
   jevCalls: [] as { model: string }[],
+  // The state each reviewer was sent, parsed, in call order.
+  states: [] as Record<string, unknown>[],
 };
 
 export const resetReviewers = () => {
   reviewers.failing.clear();
   reviewers.decision = reviewers.jev = "clear";
-  reviewers.claudeCalls.length = reviewers.jevCalls.length = 0;
+  reviewers.claudeCalls.length = reviewers.jevCalls.length = reviewers.states.length = 0;
 };
 
 // MOCK_DELAY_MS spaces the events out, so tests can watch the live view.
@@ -90,8 +92,9 @@ export function startMockApi(port = 0, delay = DELAY) {
     async fetch(request) {
       const url = new URL(request.url);
       if (url.pathname.endsWith("/api/alpha/decisions")) {
-        const { model } = (await request.json()) as { model: string };
+        const { model, state } = (await request.json()) as { model: string; state: string };
         reviewers.jevCalls.push({ model });
+        reviewers.states.push(JSON.parse(state));
         if (reviewers.jev === "error") return Response.json({ error: { message: "limit reached" } }, { status: 500 });
         return Response.json({ answers: { decision: { choice: reviewers.jev } } });
       }
@@ -131,6 +134,8 @@ export function startMockApi(port = 0, delay = DELAY) {
       // A review is the one request that doesn't stream and asks for a reply.
       if (!body.stream && body.max_tokens !== 0) {
         reviewers.claudeCalls.push({ model: body.model!, effort: body.output_config?.effort });
+        const sent = (body.messages as { content?: unknown }[] | undefined)?.[0]?.content;
+        if (typeof sent === "string") reviewers.states.push(JSON.parse(sent));
         if (reviewers.failing.has(body.model!))
           return Response.json(
             { type: "error", error: { type: "invalid_request_error", message: "reviewer is down" } },

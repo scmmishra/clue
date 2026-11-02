@@ -465,21 +465,84 @@ async function askClaude(model: string, state: object, signal: AbortSignal): Pro
   return { approved: decision === "clear", reason: decision === "clear" ? undefined : reason };
 }
 
+// What the reviewer sees of the conversation besides the request: the user's earlier
+// messages, and the agent's latest tool calls, so it can tell how an action fits the work.
+const EARLIER_REQUESTS = 3;
+const REQUEST_CHARS = 1000;
+const RECENT_CALLS = 12;
+const CALL_INPUT_CHARS = 400;
+const CALL_RESULT_CHARS = 600;
+
+export type RecentCall = { tool: string; input: string; result?: string };
+export type ReviewContext = { earlierRequests: string[]; recentCalls: RecentCall[] };
+
+type Block = {
+  type: string;
+  text?: string;
+  id?: string;
+  name?: string;
+  input?: unknown;
+  tool_use_id?: string;
+  content?: unknown;
+};
+
+const clipText = (text: string, limit: number) => (text.length > limit ? `${text.slice(0, limit)}…` : text);
+
+function resultText(content: unknown) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return (content as Block[])
+    .map((block) => (block.type === "text" ? (block.text ?? "") : `[${block.type}]`))
+    .join("\n");
+}
+
+// Text blocks that start with < are clue's own, such as the <context> block, not the user's words.
+export function reviewContext(messages: readonly { role: string; content?: unknown }[], prompt: string): ReviewContext {
+  const requests: string[] = [];
+  const calls = new Map<string, RecentCall>();
+  const finished: RecentCall[] = [];
+  for (const message of messages) {
+    const blocks: Block[] =
+      typeof message.content === "string" ? [{ type: "text", text: message.content }] : (message.content as Block[]);
+    for (const block of blocks) {
+      if (message.role === "user" && block.type === "text" && block.text && !block.text.startsWith("<"))
+        requests.push(block.text);
+      if (block.type === "tool_use" && block.id)
+        calls.set(block.id, { tool: block.name ?? "", input: clipText(JSON.stringify(block.input), CALL_INPUT_CHARS) });
+      const call = block.type === "tool_result" && block.tool_use_id ? calls.get(block.tool_use_id) : undefined;
+      if (call) finished.push({ ...call, result: clipText(resultText(block.content), CALL_RESULT_CHARS) });
+    }
+  }
+  return {
+    earlierRequests: requests
+      .filter((text) => text !== prompt)
+      .slice(-EARLIER_REQUESTS)
+      .map((text) => clipText(text, REQUEST_CHARS)),
+    recentCalls: finished.slice(-RECENT_CALLS),
+  };
+}
+
 export async function reviewAction(
   toolName: string,
   input: unknown,
   userRequest: string,
   review: ReviewSetting | undefined,
   signal: AbortSignal,
+  context: ReviewContext = { earlierRequests: [], recentCalls: [] },
 ): Promise<Review> {
-  const state = {
+  const stateFor = (provider: Reviewer["provider"]) => ({
     review_policy: POLICY,
     user_request: userRequest.slice(0, 4000),
+    earlier_user_requests: context.earlierRequests,
+    // Tool output can hold file contents, so it goes only to Anthropic, which sees the conversation anyway.
+    recent_tool_calls:
+      provider === "anthropic" ? context.recentCalls : context.recentCalls.map(({ tool, input }) => ({ tool, input })),
     pending_action_tool: toolName,
     pending_action_arguments: JSON.stringify(input).slice(0, 8000),
-  };
+  });
   const ask = ({ provider, model }: Reviewer) => {
     const timeout = AbortSignal.any([signal, AbortSignal.timeout(REVIEW_TIMEOUT_MS)]);
+    const state = stateFor(provider);
     return provider === "openrouter" ? askJev(model, state, timeout) : askClaude(model, state, timeout);
   };
   const fallback: Reviewer = { provider: "anthropic", model: REVIEW_FALLBACK_MODEL };
