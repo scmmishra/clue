@@ -136,18 +136,22 @@ function ruleWords(words: string[]) {
 }
 
 // `cd` to the project or a folder in it. A relative path can't climb, so this holds
-// after an earlier `cd` in the same line too.
+// after an earlier `cd` in the same line too. A path that starts with ~ is in the home folder.
 function cdStaysInProject(args: string[], cwd?: string) {
   const [path = ""] = args;
-  if (args.length !== 1 || path === "" || /^[-+]|[*?[]/.test(path)) return false;
+  if (args.length !== 1 || path === "" || /^[-+~]|[*?[]/.test(path)) return false;
   if (!path.startsWith("/")) return !path.split("/").includes("..");
   if (!cwd) return false;
   const rel = relative(cwd, path);
   return !rel.startsWith("..") && !isAbsolute(rel);
 }
 
+// A word that names a file with secrets, such as ~/.ssh/id_rsa or --env-file=.env.
+const namesSensitivePath = (word: string) => word.split("=").some((part) => SENSITIVE_PATH.test(part));
+
 function wordsAreRoutine(words: string[], cwd?: string) {
   const command = unwrap(words);
+  if (command.slice(1).some(namesSensitivePath)) return false;
   if (command[0] === "cd") return cdStaysInProject(command.slice(1), cwd);
   for (let length = command.length; length > 0; length--) {
     const prefix = command.slice(0, length).join(" ");

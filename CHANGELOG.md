@@ -7,6 +7,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - `edit_file` takes a list of edits for one file, so several changes go in one call. If one edit fails, the file stays unchanged.
 - `edit_file` no longer needs a `read_file` first, or an unchanged file. The exact `old_string` shows that Claude knows the text. `write_file` is unchanged.
 - `edit_file` no longer has `replace_all`. It was unused in session logs. Use several edits, or `sed` through `shell`.
+- In `auto` mode, more shell commands run without review. A backslash inside double quotes, as in `grep "a\|b"`, and a `~/` path no longer send a command to review. In past sessions, this covers about 110 of 543 commands.
+- In `auto` mode, a shell command that names a file with secrets, such as `cat .env` or `cat ~/.ssh/id_rsa`, goes to review. Before, `cat .env` and absolute paths ran without review.
 
 ## 0.9.1
 

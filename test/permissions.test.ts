@@ -37,6 +37,18 @@ test("~ inside a word is plain text", () => {
   expect(parseCommand("git diff HEAD~1")).toEqual([["git", "diff", "HEAD~1"]]);
 });
 
+test("~ as the home folder stays in the word unexpanded", () => {
+  expect(parseCommand("ls ~/code ~")).toEqual([["ls", "~/code", "~"]]);
+  expect(parseCommand("ls ~;ls ~|wc")).toEqual([["ls", "~"], ["ls", "~"], ["wc"]]);
+});
+
+test("in double quotes, a backslash escapes only $, `, \" and \\", () => {
+  expect(parseCommand(`grep -n "a\\|b" src`)).toEqual([["grep", "-n", "a\\|b", "src"]]);
+  expect(parseCommand(`rg "\\bfoo\\(" src`)).toEqual([["rg", "\\bfoo\\(", "src"]]);
+  expect(parseCommand(`echo "a\\"b" "c\\\\" "\\$HOME" "\\\`id\\\`"`)).toEqual([["echo", 'a"b', "c\\", "$HOME", "`id`"]]);
+  expect(parseCommand(`git commit -m "say \\"hi\\" && go"`)).toEqual([["git", "commit", "-m", 'say "hi" && go']]);
+});
+
 test("$? is the last exit code, a number, so it can be read plainly", () => {
   expect(parseCommand(`false; echo "exit=$?"`)).toEqual([["false"], ["echo", "exit=$?"]]);
   expect(parseCommand("echo $?")).toEqual([["echo", "$?"]]);
@@ -83,7 +95,9 @@ test.each([
   ["a subshell", "(ls)"],
   ["a brace expansion", "{rm,-rf,x}"],
   ["a backslash", "r\\m x"],
-  ["a home path", "cat ~/.ssh/id_rsa"],
+  ["another user's home folder", "cat ~root/x"],
+  ["a zsh folder stack entry", "ls ~1"],
+  ["the previous folder", "ls ~-"],
   ["a comment", "ls # rm"],
   ["a history expansion", "ls !!"],
   ["a zsh glob", "ls ^x"],
@@ -91,7 +105,10 @@ test.each([
   ["a substitution in double quotes", `echo "$(id)"`],
   ["a variable in double quotes", `echo "$HOME"`],
   ["backticks in double quotes", 'echo "`id`"'],
-  ["a backslash in double quotes", `echo "a\\"b"`],
+  ["a backslash before an expansion's end in double quotes", `echo "a\\\\$HOME"`],
+  ["an escaped quote that leaves the string open", `echo "a\\"`],
+  ["a line continuation in double quotes", `echo "a\\\nb"`],
+  ["a history expansion in double quotes", `echo "a!!"`],
   ["an open single quote", "echo 'a"],
   ["an open double quote", `echo "a`],
   ["an empty command at the start", "&& ls"],
@@ -187,6 +204,8 @@ test.each([
   "go version",
   "bun check",
   "bun fmt src",
+  `grep -rn "foo\\|bar" src`,
+  "ls ~/code",
 ])("routine: %s", (command) => {
   expect(commandIsRoutine(command)).toBe(true);
 });
@@ -203,6 +222,12 @@ test.each([
   "sed -n 'w out' a.txt",
   "echo pwned >> ~/.zshrc",
   "cat ~/.ssh/id_rsa",
+  "cat /Users/me/.ssh/id_rsa",
+  "cat .env",
+  "grep -r token ~/.aws/",
+  "docker compose --env-file=.env logs",
+  "cd ~",
+  "cd ~/code",
   'node -e \'require("child_process").execSync("id")\'',
   "python3 -c 'print(1)'",
   "python3 evil.py",
