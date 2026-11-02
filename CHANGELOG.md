@@ -2,7 +2,7 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
-## Unreleased
+## 0.9.1
 
 - `↑`, `↓`, `Ctrl+P` and `Ctrl+N` move through the `/` command list, and the list scrolls to show the selected command. Before, these keys browsed history.
 - The `@` picker lists the files you're working on first: your changes, new files, then files from the last 50 commits, skipping commits that touch more than 20 files. A closer match still ranks higher.
