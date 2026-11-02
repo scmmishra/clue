@@ -65,8 +65,8 @@ export function spread(left: string, right: string, size = columns() - 1) {
 const marks = process.env.TERM !== "dumb";
 
 export const term = {
-  promptStart: marks ? "\x1b]133;A\x07" : "",
-  outputStart: marks ? "\x1b]133;C\x07" : "",
+  promptStart: marks ? "\x1b]133;A\x1b\\" : "",
+  outputStart: marks ? "\x1b]133;C\x1b\\" : "",
   hideCursor: "\x1b[?25l",
   showCursor: "\x1b[?25h",
   clearDown: "\x1b[J",

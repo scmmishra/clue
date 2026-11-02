@@ -65,8 +65,8 @@ test("only the first line of a prompt has the bar, so copied lines stay clean", 
 });
 
 test("a prompt is marked for the terminal's jump-to-prompt keys", () => {
-  expect(term.promptStart).toBe("\x1b]133;A\x07");
-  expect(term.outputStart).toBe("\x1b]133;C\x07");
+  expect(term.promptStart).toBe("\x1b]133;A\x1b\\");
+  expect(term.outputStart).toBe("\x1b]133;C\x1b\\");
   const [line] = markPrompt(["┃ /model"]);
   expect(line.startsWith(term.promptStart)).toBe(true);
   expect(line.endsWith(term.outputStart)).toBe(true);
