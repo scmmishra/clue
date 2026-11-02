@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
-import type { Token } from "../src/ui/highlight/engine";
+import { build, type Patterns, type Token } from "../src/ui/highlight/engine";
 import { highlight } from "../src/ui/highlight";
+import { LANGUAGES } from "../src/ui/highlight/languages";
+import { PRECOMPILED } from "../src/ui/highlight/precompiled";
 
 // Prints tokens as [kind:text], so expectations read without escape codes.
 const tags = (tokens: Token[]) => tokens.map(([kind, text]) => (kind ? `[${kind}:${text}]` : text)).join("");
@@ -87,4 +89,26 @@ test("the default theme only resets the foreground, so outer styles survive", ()
   const [line] = highlight(`"s"`, "js");
   expect(Bun.stripANSI(line)).toBe(`"s"`);
   expect(line).not.toContain("\x1b[0m");
+});
+
+// An AOT build compiles regex literals to machine code, so each language's regexes ship
+// prebuilt in precompiled.ts. These fail when a language changes without
+// `bun scripts/highlight.ts`.
+test("every language has precompiled regexes, keyed by a name no other language starts with", () => {
+  const keys = LANGUAGES.map((language) => language.names[0]);
+  expect(new Set(keys).size).toBe(keys.length);
+  expect(Object.keys(PRECOMPILED).sort()).toEqual([...keys].sort());
+});
+
+test("the precompiled regexes match what the language definitions build", () => {
+  const plain = ({ scanner, closers, pieces }: Patterns) => ({
+    scanner: [scanner.source, scanner.flags],
+    closers: closers.map((closer) => [closer.source, closer.flags]),
+    pieces,
+  });
+  for (const language of LANGUAGES) {
+    expect({ [language.names[0]]: plain(PRECOMPILED[language.names[0]]) }).toEqual({
+      [language.names[0]]: plain(build(language)),
+    });
+  }
 });

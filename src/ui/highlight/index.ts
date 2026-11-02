@@ -1,15 +1,10 @@
 import { compile, lexLine, type Compiled, type Language, type LineResult } from "./engine";
-import { C_LIKE } from "./languages/c-like";
-import { DATA } from "./languages/data";
-import { DIFF } from "./languages/diff";
-import { MARKUP } from "./languages/markup";
-import { SCRIPTING } from "./languages/scripting";
+import { LANGUAGES } from "./languages";
+import { PRECOMPILED } from "./precompiled";
 import { paint as ansi, type Paint } from "./theme";
 
 // Highlights code for the terminal. Each language compiles the first time it appears,
 // so languages a reply never uses cost nothing at startup.
-
-const LANGUAGES: Language[] = [...C_LIKE, ...SCRIPTING, ...DATA, ...MARKUP, ...DIFF];
 
 const byName = new Map<string, Language>();
 for (const language of LANGUAGES) for (const name of language.names) byName.set(name, language);
@@ -23,7 +18,7 @@ function find(name: string): Compiled | undefined {
   if (!language) return undefined;
   let result = compiled.get(language);
   if (!result) {
-    result = compile(language);
+    result = compile(language, PRECOMPILED[language.names[0]]);
     compiled.set(language, result);
   }
   return result;

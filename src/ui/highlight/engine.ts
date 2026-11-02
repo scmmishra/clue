@@ -72,7 +72,15 @@ const CAPITAL = /^[A-Z]/;
 
 const groupCount = (source: string) => new RegExp(`${source}|`).exec("")!.length - 1;
 
-export function compile(language: Language): Compiled {
+// The regexes a language compiles to. precompiled.ts holds them as literals, written by
+// scripts/highlight.ts. An AOT build compiles a literal to machine code, but a regex built
+// with new RegExp() runs in its interpreter, and resume is slower by about 3 ms for a
+// session with 3,600 lines of code.
+export type Patterns = Pick<Compiled, "scanner" | "closers" | "pieces">;
+
+// Builds a language's regexes from its definition. Only the generator, the test that
+// keeps precompiled.ts current and a language missing from it use this.
+export function build(language: Language): Patterns {
   const sources: string[] = [];
   const pieces: Piece[] = [];
   let group = 1;
@@ -86,7 +94,16 @@ export function compile(language: Language): Compiled {
   add(NUMBER.source, { number: true });
   add((language.word ?? DEFAULT_WORD).source, { word: true });
   add(OTHER.source, {});
+  return {
+    scanner: new RegExp(sources.join("|"), language.ignoreCase ? "iy" : "y"),
+    pieces,
+    closers: (language.regions ?? []).map(
+      (region) => new RegExp(`${region.escapes ? "\\\\[\\s\\S]|" : ""}(?:${region.end.source})`, "g"),
+    ),
+  };
+}
 
+export function compile(language: Language, patterns: Patterns = build(language)): Compiled {
   const words = new Map<string, TokenKind>();
   const fold = (word: string) => (language.ignoreCase ? word.toLowerCase() : word);
   for (const word of language.types ?? []) words.set(fold(word), "type");
@@ -95,11 +112,7 @@ export function compile(language: Language): Compiled {
 
   return {
     language,
-    scanner: new RegExp(sources.join("|"), language.ignoreCase ? "iy" : "y"),
-    pieces,
-    closers: (language.regions ?? []).map(
-      (region) => new RegExp(`${region.escapes ? "\\\\[\\s\\S]|" : ""}(?:${region.end.source})`, "g"),
-    ),
+    ...patterns,
     lines: language.lines ?? [],
     linesOnly: Boolean(language.lines) && !language.regions && !language.rules && words.size === 0,
     words,
