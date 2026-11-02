@@ -411,3 +411,74 @@ test("the selection marker moves with the arrow keys", async () => {
   editor.handle({ name: "down" });
   expect(rowsOf(editor).slice(0, 2)).toEqual(["  README.md", "› src/"]);
 });
+
+const COMMANDS = ["compact", "cost", "effort", "exit", "fast", "help", "mcp", "model", "new", "paste", "resume"].map(
+  (name) => ({ name, description: `about ${name}` }),
+);
+const editorWith = (text: string, history: string[] = []) => {
+  const editor = new Editor(COMMANDS);
+  for (const entry of history) editor.remember(entry);
+  typed(editor, text);
+  return editor;
+};
+const shown = (editor: Editor) => editor.frame("").lines.map((line) => Bun.stripANSI(line));
+
+test("up and down move through the command list, not history", () => {
+  const editor = editorWith("/", ["an older prompt"]);
+  editor.handle({ name: "down" });
+  expect(editor.text).toBe("/");
+  expect(editor.handle({ name: "enter" })).toBe("submit");
+  expect(editor.text).toBe("/cost");
+});
+
+test("the command list wraps at both ends", () => {
+  const editor = editorWith("/co");
+  editor.handle({ name: "up" });
+  editor.handle({ name: "enter" });
+  expect(editor.text).toBe("/cost");
+});
+
+test("ctrl+n and ctrl+p move through the command list too", () => {
+  const editor = editorWith("/");
+  editor.handle({ name: "n", ctrl: true });
+  editor.handle({ name: "n", ctrl: true });
+  editor.handle({ name: "p", ctrl: true });
+  editor.handle({ name: "enter" });
+  expect(editor.text).toBe("/cost");
+});
+
+test("the list scrolls so the selection stays visible", () => {
+  const editor = editorWith("/");
+  for (let press = 0; press < 10; press++) editor.handle({ name: "down" });
+  const lines = shown(editor);
+  expect(lines.some((line) => line.startsWith("/resume"))).toBe(true);
+  expect(lines.some((line) => line.startsWith("/compact"))).toBe(false);
+});
+
+test("enter takes the selected command even when the text is another full name", () => {
+  const commands = [
+    { name: "re", description: "" },
+    { name: "resume", description: "" },
+  ];
+  const editor = new Editor(commands);
+  typed(editor, "/re");
+  editor.handle({ name: "down" });
+  editor.handle({ name: "enter" });
+  expect(editor.text).toBe("/resume");
+});
+
+test("typing after moving starts the selection over", () => {
+  const editor = editorWith("/");
+  editor.handle({ name: "down" });
+  editor.handle({ name: "char", text: "m" });
+  editor.handle({ name: "enter" });
+  expect(editor.text).toBe("/mcp");
+});
+
+test("a recalled command doesn't stop history at that entry", () => {
+  const editor = editorWith("", ["an older prompt", "/model"]);
+  editor.handle({ name: "up" });
+  expect(editor.text).toBe("/model");
+  editor.handle({ name: "up" });
+  expect(editor.text).toBe("an older prompt");
+});

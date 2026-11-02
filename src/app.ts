@@ -650,7 +650,7 @@ export class App {
     }
     this.hint = "";
     if (this.cycleKey(key) || this.pasteKey(key)) return;
-    if (key.name === "up" && (this.queued || this.steering) && !this.editor.pickerOpen) return this.takeBack();
+    if (key.name === "up" && (this.queued || this.steering) && !this.editor.hasCompletions) return this.takeBack();
     if (key.name === "tab" && !this.editor.hasCompletions) return this.queueDraft();
     if (this.editor.handle(key) === "submit") return this.steerDraft();
     this.screen.refresh();

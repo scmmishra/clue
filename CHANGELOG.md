@@ -4,6 +4,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- `↑`, `↓`, `Ctrl+P` and `Ctrl+N` move through the `/` command list, and the list scrolls to show the selected command. Before, these keys browsed history.
 - The `@` picker lists the files you're working on first: your changes, new files, then files from the last 50 commits, skipping commits that touch more than 20 files. A closer match still ranks higher.
 - `grep_files` reads a pattern as a regular expression, then as literal text if that is invalid or finds nothing. Before, a pattern like `a|b` without the `regex` flag searched for those exact characters, which caused most empty searches in real sessions.
 

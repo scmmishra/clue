@@ -10,6 +10,7 @@ const HISTORY_LIMIT = 500;
 const PASTE_FOLD_LINES = 12;
 const IMAGE_PLACEHOLDER = /\[Image #(\d+)\]/g;
 const PICKER_MIN_ROWS = 3;
+const COMMAND_ROWS = 8;
 
 // Splits a line into rows of at most `room` columns. An escape code in pasted text can make
 // the native slice differ from the source, and then one character moves on instead.
@@ -226,11 +227,8 @@ export class Editor {
           return "handled";
         }
         const matches = this.matches();
-        if (
-          matches.length &&
-          this.text.slice(1) !== matches[0].name &&
-          !this.commands.some((command) => command.name === this.text.slice(1))
-        ) {
+        const exact = this.commands.some((command) => command.name === this.text.slice(1));
+        if (matches.length && (!exact || this.completionIndex > 0)) {
           this.text = `/${matches[this.completionIndex % matches.length].name}`;
           this.cursor = this.text.length;
         }
@@ -314,8 +312,15 @@ export class Editor {
     return "ignored";
   }
 
-  // Up and down move between lines, and through history from the first or last line.
+  // Up and down move through the command list when it is open. A command recalled from
+  // history also opens the list, so history keeps those keys until it is left. Otherwise
+  // they move between lines, and through history from the first or last line.
   private moveVertical(direction: -1 | 1): "handled" {
+    const matches = this.historyIndex === -1 ? this.matches() : [];
+    if (matches.length) {
+      this.completionIndex = (this.completionIndex + direction + matches.length) % matches.length;
+      return "handled";
+    }
     const { start, end } = this.lineBounds();
     const onFirst = start === 0;
     const onLast = end === this.text.length;
@@ -410,8 +415,10 @@ export class Editor {
       });
     } else if (matches.length) {
       const size = Math.max(...matches.map((command) => command.name.length)) + 3;
-      for (const [index, command] of matches.slice(0, 8).entries()) {
-        const active = index === this.completionIndex % matches.length;
+      const selected = this.completionIndex % matches.length;
+      const top = Math.max(0, selected - COMMAND_ROWS + 1);
+      for (const [offset, command] of matches.slice(top, top + COMMAND_ROWS).entries()) {
+        const active = offset + top === selected;
         const name = `/${command.name}`.padEnd(size);
         lines.push(`${active ? style.accent(name) : style.muted(name)}${style.faint(command.description)}`);
       }
