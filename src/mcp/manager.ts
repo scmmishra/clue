@@ -15,18 +15,40 @@ import { approvalOf, loadServers, transportOf, type ServerEntry } from "./config
 // mcp_call, so connecting a server doesn't change what Claude has cached.
 
 const MAX_FAILURES = 8;
+// A connection that drops sooner than this counts as a failure, so a server that accepts and
+// then dies stops being retried instead of looping forever.
+const STABLE_MS = 30_000;
 const CALLBACK_PORT = 33418;
 const CALLBACK_PATH = "/mcp/callback";
 
 export type McpTool = { server: string; name: string; description: string; inputSchema: unknown };
 
+export type ServerStatus =
+  "starting" | "ready" | "failed" | "needs-approval" | "rejected" | "disabled" | "needs-login" | "closed";
+
+// The moves a server can make. Anything else is a late event from a connection that no
+// longer counts, such as a retry timer firing after the manager closed, and is ignored.
+// "closed" is final: a closed server never reconnects.
+const MOVES: Record<ServerStatus, readonly ServerStatus[]> = {
+  starting: ["starting", "ready", "failed", "needs-login", "closed"],
+  ready: ["starting", "failed", "closed"],
+  failed: ["starting", "closed"],
+  "needs-login": ["starting", "closed"],
+  "needs-approval": ["closed"],
+  rejected: ["closed"],
+  disabled: ["closed"],
+  closed: [],
+};
+
 export type ServerState = {
   entry: ServerEntry;
-  status: "starting" | "ready" | "failed" | "needs-approval" | "rejected" | "disabled" | "needs-login";
+  status: ServerStatus;
   error?: string;
   tools: McpTool[];
   client?: Client;
   failures: number;
+  // Counts connection attempts. Callbacks from an older attempt see a newer number and stop.
+  generation: number;
 };
 
 const authFile = (name: string) => join(paths.mcpAuth, `${name.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
@@ -109,17 +131,16 @@ async function openBrowser(url: string) {
 
 export class McpManager {
   servers = new Map<string, ServerState>();
-  private listeners = new Set<() => void>();
+  // The first retry's delay. Each failure doubles it, up to 30 seconds.
+  retryMs = 500;
 
   constructor(private cwd: string) {}
 
-  onChange(listener: () => void) {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
-
-  private changed() {
-    for (const listener of this.listeners) listener();
+  // Moves a server to `to` when the table allows it. False means the move was refused.
+  private transition(state: ServerState, to: ServerStatus) {
+    if (!MOVES[state.status].includes(to)) return false;
+    state.status = to;
+    return true;
   }
 
   configuredNames() {
@@ -134,14 +155,21 @@ export class McpManager {
   // Starts every enabled, approved server. Returns at once; connections finish in the background.
   startAll() {
     for (const entry of loadServers(this.cwd)) {
-      const state: ServerState = { entry, status: "starting", tools: [], failures: 0 };
+      const old = this.servers.get(entry.name);
+      if (old) void this.close(old);
+      const approval = entry.scope === "project" ? approvalOf(this.cwd, entry) : "approved";
+      const status: ServerStatus =
+        entry.config.enabled === false
+          ? "disabled"
+          : approval === "rejected"
+            ? "rejected"
+            : approval !== "approved"
+              ? "needs-approval"
+              : "starting";
+      const state: ServerState = { entry, status, tools: [], failures: 0, generation: 0 };
       this.servers.set(entry.name, state);
-      if (entry.config.enabled === false) state.status = "disabled";
-      else if (entry.scope === "project" && approvalOf(this.cwd, entry) === "rejected") state.status = "rejected";
-      else if (entry.scope === "project" && approvalOf(this.cwd, entry) !== "approved") state.status = "needs-approval";
-      else void this.connect(state);
+      if (status === "starting") void this.connect(state);
     }
-    this.changed();
   }
 
   async reload() {
@@ -150,51 +178,89 @@ export class McpManager {
     this.startAll();
   }
 
+  // One attempt per server at a time: a new attempt closes the old client and bumps the
+  // generation, so anything the old attempt does later is ignored.
   private async connect(state: ServerState, interactiveLogin = false): Promise<void> {
-    state.status = "starting";
+    if (!this.transition(state, "starting")) return;
+    const generation = ++state.generation;
+    this.dropClient(state);
     state.error = undefined;
-    this.changed();
+    const current = () => state.generation === generation && state.status === "starting";
     try {
       const [{ Client }, transport] = await Promise.all([
         import("@modelcontextprotocol/sdk/client/index.js"),
         this.transport(state, interactiveLogin),
       ]);
+      if (!current()) return;
       const client = new Client({ name: "clue", version: VERSION });
+      // Set before connecting, so closeAll can stop a server that is still starting.
+      state.client = client;
       await client.connect(transport);
       const listed = await client.listTools();
-      state.client = client;
+      if (!current()) return void client.close().catch(() => {});
       state.tools = listed.tools.map((tool) => ({
         server: state.entry.name,
         name: tool.name,
         description: tool.description ?? "",
         inputSchema: tool.inputSchema,
       }));
-      state.status = "ready";
-      state.failures = 0;
+      this.transition(state, "ready");
+      const connectedAt = Date.now();
       client.onclose = () => {
-        if (state.status !== "ready") return;
-        state.status = "starting";
-        void this.retry(state);
+        if (state.generation !== generation || state.status !== "ready") return;
+        state.client = undefined;
+        state.tools = [];
+        // Only a connection that stayed up clears the count, so quick drops add up to MAX_FAILURES.
+        state.failures = Date.now() - connectedAt < STABLE_MS ? state.failures + 1 : 0;
+        if (state.failures >= MAX_FAILURES) {
+          this.transition(state, "failed");
+          state.error = "The server keeps disconnecting.";
+          return;
+        }
+        this.transition(state, "starting");
+        void this.retry(state, generation);
       };
     } catch (error) {
+      if (!current()) return;
+      this.dropClient(state);
       const { UnauthorizedError } = await import("@modelcontextprotocol/sdk/client/auth.js");
+      if (!current()) return;
       if (error instanceof UnauthorizedError) {
-        state.status = "needs-login";
+        this.transition(state, "needs-login");
         state.error = `Sign in with /mcp login ${state.entry.name}`;
       } else {
         state.failures += 1;
-        state.status = "failed";
+        this.transition(state, "failed");
         state.error = (error as Error).message;
-        if (state.failures < MAX_FAILURES) void this.retry(state);
+        if (state.failures < MAX_FAILURES) void this.retry(state, generation);
       }
     }
-    this.changed();
   }
 
-  private async retry(state: ServerState) {
-    const delay = Math.min(30_000, 500 * 2 ** state.failures);
+  // Reconnects after a failure or a drop, unless something else moved the server on meanwhile:
+  // a newer attempt, a sign-in, or closeAll.
+  private async retry(state: ServerState, generation: number) {
+    const delay = Math.min(30_000, this.retryMs * 2 ** state.failures);
     await Bun.sleep(delay);
-    if (this.servers.get(state.entry.name) === state) await this.connect(state);
+    if (state.generation !== generation || this.servers.get(state.entry.name) !== state) return;
+    if (state.status !== "failed" && state.status !== "starting") return;
+    await this.connect(state);
+  }
+
+  // Closes a client without letting its onclose start a reconnect.
+  private dropClient(state: ServerState) {
+    const client = state.client;
+    state.client = undefined;
+    state.tools = [];
+    if (!client) return;
+    client.onclose = undefined;
+    return client.close().catch(() => {});
+  }
+
+  private close(state: ServerState) {
+    this.transition(state, "closed");
+    state.generation += 1;
+    return this.dropClient(state);
   }
 
   private async transport(state: ServerState, interactiveLogin: boolean) {
@@ -269,11 +335,6 @@ export class McpManager {
     await this.connect(state);
   }
 
-  approved(name: string) {
-    const state = this.servers.get(name);
-    if (state) void this.connect(state);
-  }
-
   tools(): McpTool[] {
     return [...this.servers.values()].flatMap((state) => (state.status === "ready" ? state.tools : []));
   }
@@ -297,7 +358,8 @@ export class McpManager {
     return state.client.callTool({ name: tool, arguments: args }, undefined, { signal });
   }
 
+  // Every server is marked closed before its client closes, so the close can't trigger a reconnect.
   async closeAll() {
-    await Promise.allSettled([...this.servers.values()].map((state) => state.client?.close()));
+    await Promise.allSettled([...this.servers.values()].map((state) => this.close(state)));
   }
 }
