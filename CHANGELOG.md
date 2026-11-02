@@ -4,6 +4,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- `/copy` works on Linux and over SSH. clue asks the terminal to set the clipboard with an OSC 52 code, so the copy lands on the computer in front of you, not on the server. On a local Mac it still uses `pbcopy`. The first copy in a session says how to allow clipboard access if nothing arrived.
 - A quick `esc esc` always rewinds, or interrupts a running turn. When both presses reached clue together, such as over SSH or while clue was busy, they read as one alt+esc and did nothing.
 
 ## 0.12.0
