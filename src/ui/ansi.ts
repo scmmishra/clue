@@ -87,9 +87,10 @@ export function duration(ms: number) {
   return `${minutes}m${Math.round(seconds % 60)}s`;
 }
 
-export function money(usd: number | null) {
+// "$0.12", or "$0.12+" when the real cost is at least that.
+export function money(usd: number | null, minimum = false) {
   if (usd === null) return "–";
-  return `$${usd.toFixed(2)}`;
+  return `$${usd.toFixed(2)}${minimum ? "+" : ""}`;
 }
 
 export function tokens(count: number) {

@@ -8,7 +8,6 @@ import { gitBranch, prefetchGitStatus } from "./agent/context";
 import {
   advisorOf,
   apiModel,
-  cost,
   FAST_MODELS,
   fastEnabled,
   KNOWN_MODELS,
@@ -16,6 +15,7 @@ import {
   PAIR_EFFORTS,
   pairEffort,
   resolveModel,
+  responseCost,
   responseUsage,
 } from "./agent/models";
 import { getClient, MissingCredentials, preconnect, warmCache } from "./agent/provider";
@@ -245,22 +245,17 @@ export class App {
     const session = this.session;
     this.warming = new AbortController();
     const started = now();
+    // Read before the request, so a /model or /fast during the warm-up can't misprice it.
+    const model = this.settings.model;
+    const fast = fastEnabled(this.settings);
     try {
       const usage = await warmCache(
-        {
-          model: this.settings.model,
-          effort: this.settings.effort,
-          fast: fastEnabled(this.settings),
-          messages: this.session.messages,
-        },
+        { model, effort: this.settings.effort, fast, messages: this.session.messages },
         this.warming.signal,
       );
       if (usage) {
         const used = responseUsage(usage);
-        // Known gap: these settings are read after the request. Changing the model or fast mode
-        // during a warm-up misprices this one record. The window is short, so it stays for now.
-        const model = this.settings.model;
-        const price = cost(model, used, fastEnabled(this.settings));
+        const price = responseCost(model, usage, fast);
         session.append({ t: "spend", usage: used, cost: price, model, at: Date.now() });
         this.print([`  ${style.faint(`history cached in ${duration(msSince(started))}`)}`, ""]);
       }

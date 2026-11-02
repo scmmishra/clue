@@ -18,13 +18,13 @@ import { buildContext } from "./context";
 import { msSince, now } from "../clock";
 import {
   addUsage,
-  advisorCost,
   advisorOf,
   COMPACTION_TRIGGER_TOKENS,
   cost,
   emptyUsage,
   fastEnabled,
   modelLabel,
+  responseCost,
   responseUsage,
 } from "./models";
 import { dropRejectedFeature, fastRejected, stream, summarize } from "./provider";
@@ -71,11 +71,20 @@ export type AgentOptions = {
 };
 
 // A turn's spend so far. Requests are priced as they arrive, because speed can differ between them.
-type Tally = { usage: Usage; cost: number | null };
+// `minimum` means a request ended early, so the API never reported all of what it billed.
+type Tally = { usage: Usage; cost: number | null; minimum: boolean };
 
 function tallyUp(tally: Tally, usage: Usage, price: number | null) {
   for (const key of Object.keys(usage) as (keyof Usage)[]) tally.usage[key] += usage[key];
   tally.cost = tally.cost === null || price === null ? null : tally.cost + price;
+}
+
+type StreamUsage = Anthropic.Beta.Messages.BetaUsage;
+
+// The usage a stream reported so far: message_start's, then each message_delta's fields on top.
+function mergeUsage(usage: StreamUsage, delta: Anthropic.Beta.Messages.BetaMessageDeltaUsage) {
+  for (const [key, value] of Object.entries(delta))
+    if (value !== null && value !== undefined) Object.assign(usage, { [key]: value });
 }
 
 const MAX_JSON_RETRIES = 2;
@@ -87,6 +96,8 @@ export class Agent {
   seenInstructions = new Set<string>();
   undo = new UndoStack(this.readStamps);
   private lastContext = 0;
+  // The usage the current request's stream has reported. Billed even if the request never finishes.
+  private streamed: StreamUsage | null = null;
 
   constructor(private options: AgentOptions) {
     this.undo.startAt(options.session.transcript.length);
@@ -177,7 +188,7 @@ export class Agent {
     const startedAt = Date.now();
     const clock = now();
     let firstTokenMs: number | null = null;
-    const tally: Tally = { usage: emptyUsage(), cost: 0 };
+    const tally: Tally = { usage: emptyUsage(), cost: 0, minimum: false };
     let context: number | undefined;
     let toolCount = 0;
     let stop = "end_turn";
@@ -221,6 +232,7 @@ export class Agent {
         context,
         fast: fast || undefined,
         transcript: promptAt,
+        costIsMinimum: tally.minimum || undefined,
       };
       session.append({ t: "turn", turn });
       return turn;
@@ -244,6 +256,7 @@ export class Agent {
         });
         jsonRetries = 0;
       } catch (error) {
+        this.tallyStreamed(tally, model, askedFast);
         // The SDK is loaded by now: the request needed it. Importing it here keeps it off the startup path.
         const { default: Sdk } = await import("@anthropic-ai/sdk");
         if (signal.aborted || error instanceof Sdk.APIUserAbortError) {
@@ -278,9 +291,7 @@ export class Agent {
 
       const servedFast = (message.usage.speed ?? (askedFast ? "fast" : "standard")) === "fast";
       const used = responseUsage(message.usage);
-      const executorPrice = cost(model, used, servedFast);
-      const advisorPrice = advisorCost(message.usage);
-      tallyUp(tally, used, executorPrice === null || advisorPrice === null ? null : executorPrice + advisorPrice);
+      tallyUp(tally, used, responseCost(model, message.usage, servedFast));
       fast ||= servedFast;
       context = this.lastContext = contextTokens(message.usage);
       session.appendMessage({
@@ -328,9 +339,22 @@ export class Agent {
     return finish(stop);
   }
 
+  // A request that ended early still bills what it processed: its prompt, and any output or
+  // advisor call the stream reported. Output after the last report goes uncounted, so the cost
+  // is a minimum.
+  private tallyStreamed(tally: Tally, model: string, askedFast: boolean) {
+    const usage = this.streamed;
+    this.streamed = null;
+    if (!usage) return;
+    const fast = (usage.speed ?? (askedFast ? "fast" : "standard")) === "fast";
+    tallyUp(tally, responseUsage(usage), responseCost(model, usage, fast));
+    tally.minimum = true;
+  }
+
   // One streamed model request. Forwards text, progress notes and tool activity as they arrive.
   private async request(model: string, effort: Effort, fast: boolean, signal: AbortSignal, onFirstToken: () => void) {
     const { events } = this.options;
+    this.streamed = null;
     const response = await stream(
       { model, effort, fast, messages: this.session.messages, subagent: this.options.subagent },
       signal,
@@ -342,6 +366,8 @@ export class Agent {
     events.thinking("");
 
     for await (const event of response) {
+      if (event.type === "message_start") this.streamed = structuredClone(event.message.usage);
+      else if (event.type === "message_delta" && this.streamed) mergeUsage(this.streamed, event.usage);
       if (event.type === "content_block_start") {
         const block = event.content_block as ContentBlock;
         blocks.set(event.index, {
@@ -403,7 +429,10 @@ export class Agent {
     }
     if (inText) events.textDone();
     events.thinking(null);
-    return response.finalMessage();
+    const message = await response.finalMessage();
+    // The full usage is on the message now, so nothing is left to count from the stream.
+    this.streamed = null;
+    return message;
   }
 
   private advisorLabel() {
@@ -635,6 +664,7 @@ export class Agent {
     } finally {
       const spent = child.turns.at(-1);
       if (spent) tallyUp(tally, spent.usage, spent.cost);
+      if (spent?.costIsMinimum) tally.minimum = true;
     }
     const last = child.messages.at(-1);
     const finalText =

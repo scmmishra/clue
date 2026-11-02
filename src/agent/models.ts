@@ -14,6 +14,8 @@ type ModelInfo = {
   fallbacks: boolean;
   // speed: "fast", at FAST_PRICE_MULTIPLIER times the token prices.
   fastMode: boolean;
+  // A prompt over `over` tokens bills every token at `multiplier` times the rates above.
+  longPrompt?: { over: number; multiplier: number };
   // A pair: this model does the work, and the advisor tool asks the stronger one on hard steps.
   executor?: string;
   advisor?: string;
@@ -92,6 +94,8 @@ const MODELS: Record<string, ModelInfo> = {
     output: 0.5,
     cacheRead: 0.01,
     cacheWrite: 0.125,
+    // $0.50 / $2.50 for a prompt over 100K tokens.
+    longPrompt: { over: 100_000, multiplier: 5 },
     progressNotes: false,
     dynamicWebTools: false,
     fallbacks: false,
@@ -99,7 +103,7 @@ const MODELS: Record<string, ModelInfo> = {
   },
 };
 
-// Pairs take the executor's prices. The advisor's tokens are priced separately, by advisorCost.
+// Pairs take the executor's prices. responseCost prices the advisor's tokens at its own.
 const pair = (executor: string, advisor: string, label: string): ModelInfo => ({
   ...MODELS[executor],
   label,
@@ -191,27 +195,40 @@ export function responseUsage(usage: ApiUsage) {
   return total;
 }
 
+// The price of one request's tokens. A long prompt, counted with its cache tokens, takes the
+// higher rate card on models that have one.
 export function cost(model: string, usage: UsageCounts, fast = false): number | null {
   const info = MODELS[model];
   if (!info) return null;
+  const prompt = usage.input + usage.cacheRead + usage.cacheWrite;
+  const card = info.longPrompt && prompt > info.longPrompt.over ? info.longPrompt.multiplier : 1;
   const tokens =
     usage.input * info.input +
     usage.output * info.output +
     usage.cacheRead * info.cacheRead +
     usage.cacheWrite * info.cacheWrite;
-  return (tokens * (fast ? FAST_PRICE_MULTIPLIER : 1)) / 1_000_000 + usage.webSearches * WEB_SEARCH_COST;
+  return (tokens * card * (fast ? FAST_PRICE_MULTIPLIER : 1)) / 1_000_000 + usage.webSearches * WEB_SEARCH_COST;
 }
 
-// What the advisor calls in one response cost. The top-level usage counts only the executor's tokens,
-// so these are only in usage.iterations, each with the advisor's own model.
-export function advisorCost(usage: ApiUsage): number | null {
-  let total = 0;
-  for (const entry of usage.iterations ?? []) {
-    if (entry.type !== "advisor_message") continue;
+// What one response cost. Each request in it is priced on its own rate card, at its own model's
+// rates. The top-level usage is the sum of the executor's requests. When the iterations list
+// those, each is priced alone, since a long-prompt card applies per request. Compactions and
+// advisor calls are only in the iterations, never in the top-level usage.
+export function responseCost(model: string, usage: ApiUsage, fast = false): number | null {
+  const iterations = usage.iterations ?? [];
+  const requests = iterations.some((entry) => entry.type === "message")
+    ? iterations.filter((entry) => entry.type === "message")
+    : [usage];
+  const extra = iterations.filter((entry) => entry.type === "compaction" || entry.type === "advisor_message");
+  let total = (usage.server_tool_use?.web_search_requests ?? 0) * WEB_SEARCH_COST;
+  for (const entry of [...requests, ...extra]) {
     const counts = emptyUsage();
     addUsage(counts, entry);
-    const model = (entry as { model?: unknown }).model;
-    const price = typeof model === "string" ? cost(model, counts) : null;
+    // Web searches are counted once, from the top level.
+    counts.webSearches = 0;
+    const own = (entry as { model?: unknown }).model;
+    // Fast mode belongs to the executor's requests, which name no model.
+    const price = typeof own === "string" ? cost(own, counts) : cost(model, counts, fast);
     if (price === null) return null;
     total += price;
   }

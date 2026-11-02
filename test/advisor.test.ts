@@ -1,8 +1,13 @@
-import { expect, test } from "bun:test";
-import { advisorCost, apiModel, cost, fastEnabled, modelLabel, pairEffort, resolveModel } from "../src/agent/models";
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { mkdtempSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { apiModel, cost, fastEnabled, modelLabel, pairEffort, resolveModel, responseCost } from "../src/agent/models";
 import { buildRequest } from "../src/agent/provider";
 import { chooseReviewer } from "../src/permissions";
+import type { TurnRecord } from "../src/session";
 import { OptionPicker } from "../src/ui/option-picker";
+import { startMockApi } from "./mock-api";
 
 const PAIR = "claude-sonnet-5-5+opus-5-5";
 const pairRequest = (extra: object = {}) =>
@@ -81,19 +86,80 @@ test("after switching away from the pair, its answers in the history still get t
   expect(request.betas).toContain("advisor-tool-2026-03-01");
 });
 
-test("advisor calls are priced at the advisor's rates, from usage.iterations", () => {
+// Usage from a live sonnet+opus response with one advisor call.
+const live = {
+  input_tokens: 6,
+  output_tokens: 60,
+  cache_read_input_tokens: 11233,
+  cache_creation_input_tokens: 11428,
+  server_tool_use: { web_search_requests: 0 },
+  iterations: [
+    {
+      type: "message",
+      model: null,
+      input_tokens: 4,
+      output_tokens: 26,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 11233,
+    },
+    {
+      type: "advisor_message",
+      model: "claude-opus-5-5",
+      input_tokens: 177,
+      output_tokens: 195,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 12635,
+    },
+    {
+      type: "message",
+      model: null,
+      input_tokens: 2,
+      output_tokens: 34,
+      cache_read_input_tokens: 11233,
+      cache_creation_input_tokens: 195,
+    },
+  ],
+};
+
+test("each iteration is priced at its own model's rates, the advisor's included", () => {
+  // Sonnet: 6 in, 60 out, 11,233 read, 11,428 written. Opus: 177 in, 195 out, 12,635 written.
+  const sonnet = 6 * 2 + 60 * 10 + 11233 * 0.2 + 11428 * 2.5;
+  const opus = 177 * 4 + 195 * 20 + 12635 * 5;
+  expect(responseCost(PAIR, live)).toBeCloseTo((sonnet + opus) / 1_000_000, 10);
+});
+
+test("without iterations, the top-level usage is the whole response", () => {
+  const usage = { input_tokens: 1_000_000, output_tokens: 0, server_tool_use: { web_search_requests: 2 } };
+  expect(responseCost("claude-opus-5-5", usage)).toBeCloseTo(4.02);
+});
+
+test("web searches count once, from the top level", () => {
   const usage = {
-    input_tokens: 100,
-    output_tokens: 10,
+    input_tokens: 0,
+    server_tool_use: { web_search_requests: 1 },
+    iterations: [{ type: "message", input_tokens: 0, server_tool_use: { web_search_requests: 1 } }],
+  };
+  expect(responseCost("claude-opus-5-5", usage)).toBeCloseTo(0.01);
+});
+
+test("an iteration whose model clue doesn't know leaves the cost unknown", () => {
+  const unknown = { iterations: [{ type: "advisor_message", model: "claude-unknown", input_tokens: 1 }] };
+  expect(responseCost(PAIR, unknown)).toBeNull();
+});
+
+test("Haiku bills a prompt over 100K tokens on its higher rate card, per request", () => {
+  const short = { input_tokens: 0, output_tokens: 1_000_000, cache_read_input_tokens: 100_000 };
+  const long = { input_tokens: 1, output_tokens: 1_000_000, cache_read_input_tokens: 100_000 };
+  expect(responseCost("claude-haiku-5-5", short)).toBeCloseTo(0.5 + 0.001);
+  expect(responseCost("claude-haiku-5-5", long)).toBeCloseTo((0.5 + 0.001) * 5, 5);
+  // Two requests of 60K each stay on the lower card, though together they pass 100K.
+  const split = {
     iterations: [
-      { type: "message", input_tokens: 100, output_tokens: 10 },
-      { type: "advisor_message", model: "claude-opus-5-5", input_tokens: 1_000_000, output_tokens: 100_000 },
+      { type: "message", cache_read_input_tokens: 60_000 },
+      { type: "message", cache_read_input_tokens: 60_000 },
     ],
   };
-  expect(advisorCost(usage)).toBeCloseTo(4 + 2);
-  expect(advisorCost({ input_tokens: 5 })).toBe(0);
-  const unknown = { iterations: [{ type: "advisor_message", model: "claude-unknown" }] };
-  expect(advisorCost(unknown)).toBeNull();
+  expect(responseCost("claude-haiku-5-5+sonnet-5-5", split)).toBeCloseTo((120_000 * 0.01) / 1_000_000, 10);
 });
 
 test("a pair can't review actions", () => {
@@ -138,4 +204,45 @@ test("a list without a dial ignores ← and →", () => {
   const picker = new OptionPicker("Pick", [{ value: "a", label: "a" }], "a");
   expect(picker.handle({ name: "left" })).toBeNull();
   expect(shown(picker).at(-1)).toBe("  enter select · esc cancel");
+});
+
+let server: ReturnType<typeof startMockApi>;
+beforeAll(() => {
+  server = startMockApi();
+});
+afterAll(() => server.stop(true));
+
+async function advisorTurn(prompt: string, mode = "") {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), "clue-advisor-")));
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "agent-advisor.ts"), cwd, prompt, mode], {
+    env: { ...process.env, ANTHROPIC_BASE_URL: server.url.origin, ANTHROPIC_API_KEY: "sk-ant-test" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+  await proc.exited;
+  if (!stdout.trim()) throw new Error(stderr);
+  return JSON.parse(stdout) as { turn: TurnRecord; rows: { label: string; kind: string; isError: boolean }[] };
+}
+
+// The mock's base usage: 120 in, 40 out, 2,000 cache read, 300 cache write.
+const sonnetBase = 120 * 2 + 2000 * 0.2 + 300 * 2.5;
+
+test("an advisor call shows as a row, and its tokens are in the turn's cost", async () => {
+  const { turn, rows } = await advisorTurn("consult the advisor please");
+  expect(rows).toEqual([{ label: "Asked opus 5.5", kind: "advisor", isError: false }]);
+  // Sonnet's two requests: the base prompt with 10 out, then 30 out. Opus: 1,000 in, 500 out.
+  const sonnet = sonnetBase + 40 * 10;
+  const opus = 1000 * 4 + 500 * 20;
+  expect(turn.cost).toBeCloseTo((sonnet + opus) / 1_000_000, 10);
+  expect(turn.costIsMinimum).toBeUndefined();
+});
+
+test("an interrupt during the advisor's pause still counts what the stream reported, as a minimum", async () => {
+  const { turn } = await advisorTurn("consult the advisor and stall", "interrupt");
+  expect(turn.stop).toBe("interrupted");
+  // message_start reported the prompt and 40 out. The advisor's tokens never arrived.
+  expect(turn.cost).toBeCloseTo((sonnetBase + 40 * 10) / 1_000_000, 10);
+  expect(turn.costIsMinimum).toBe(true);
+  expect(turn.usage.input).toBe(120);
 });

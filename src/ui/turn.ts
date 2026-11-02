@@ -161,10 +161,10 @@ export function toolTree(rows: Row[] | ToolRecord[], clock?: string) {
   return lines;
 }
 
-export function footerLine(turn: Pick<TurnRecord, "ms" | "cost" | "stop" | "usage" | "fast">) {
+export function footerLine(turn: Pick<TurnRecord, "ms" | "cost" | "stop" | "usage" | "fast" | "costIsMinimum">) {
   // Most input is read from or written to the cache, so "in" counts all three.
   const input = turn.usage.input + turn.usage.cacheRead + turn.usage.cacheWrite;
-  const left = `  ${style.muted(`${duration(turn.ms)} · ${money(turn.cost)} · ${tokens(input)} in · ${tokens(turn.usage.output)} out`)}${turn.fast ? FAST_LABEL : ""}`;
+  const left = `  ${style.muted(`${duration(turn.ms)} · ${money(turn.cost, turn.costIsMinimum)} · ${tokens(input)} in · ${tokens(turn.usage.output)} out`)}${turn.fast ? FAST_LABEL : ""}`;
   return turn.stop === "interrupted" ? `${left}${style.muted(" · ")}${style.orange("interrupted")}` : left;
 }
 

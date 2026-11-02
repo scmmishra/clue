@@ -52,6 +52,8 @@ export type TurnRecord = {
   fast?: boolean;
   // Where the turn's prompt sits in the transcript. Older sessions don't have it.
   transcript?: number;
+  // A request ended early, so the API billed more than it reported. The cost is at least this.
+  costIsMinimum?: boolean;
 };
 
 // One /compact: the summary that replaces the messages, and what the summary cost.

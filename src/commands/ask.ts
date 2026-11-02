@@ -57,7 +57,7 @@ export async function runAsk(prompt: string, settings: Settings, session: Sessio
     const final = (answer || current).trim();
     if (json) {
       process.stdout.write(
-        `${JSON.stringify({ final_output: final, session_id: session.id, stop_reason: turn.stop, tools: turn.tools, duration_ms: turn.ms, first_token_ms: turn.firstTokenMs, usage: turn.usage, cost_usd: turn.cost })}\n`,
+        `${JSON.stringify({ final_output: final, session_id: session.id, stop_reason: turn.stop, tools: turn.tools, duration_ms: turn.ms, first_token_ms: turn.firstTokenMs, usage: turn.usage, cost_usd: turn.cost, cost_is_minimum: turn.costIsMinimum === true })}\n`,
       );
     } else process.stdout.write(`${final}\n`);
     if (turn.stop === "interrupted" || turn.stop === "refusal") code = 1;

@@ -168,6 +168,72 @@ export function startMockApi(port = 0, delay = DELAY) {
         return Response.json(message([], "max_tokens"));
       }
       const promptText = JSON.stringify(body.messages.filter((item) => item.role === "user").at(-1)?.content ?? "");
+      // An advisor call: the executor asks, the advice arrives whole, and usage then reports the
+      // advisor's tokens in iterations. "stall" stops the stream during the advisor's pause.
+      if (promptText.includes("consult the advisor")) {
+        const asked = [
+          { type: "message_start", message: message([], "") },
+          {
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "server_tool_use", id: "srvtoolu_advice", name: "advisor", input: {} },
+          },
+          { type: "content_block_stop", index: 0 },
+        ];
+        if (promptText.includes("stall")) {
+          const encode = (event: Record<string, unknown>) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+          const open = new ReadableStream({
+            start(controller) {
+              for (const event of asked) controller.enqueue(new TextEncoder().encode(encode(event)));
+            },
+          });
+          return new Response(open, { headers: { "content-type": "text/event-stream" } });
+        }
+        return sse(
+          [
+            ...asked,
+            {
+              type: "content_block_start",
+              index: 1,
+              content_block: {
+                type: "advisor_tool_result",
+                tool_use_id: "srvtoolu_advice",
+                content: { type: "advisor_redacted_result", encrypted_content: "sealed" },
+              },
+            },
+            { type: "content_block_stop", index: 1 },
+            ...streamText("Done, with advice.", 2),
+            {
+              type: "message_delta",
+              delta: { stop_reason: "end_turn", stop_sequence: null },
+              usage: {
+                ...usage,
+                iterations: [
+                  { type: "message", model: null, ...usage, output_tokens: 10 },
+                  {
+                    type: "advisor_message",
+                    model: "claude-opus-5-5",
+                    input_tokens: 1000,
+                    output_tokens: 500,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                  },
+                  {
+                    type: "message",
+                    model: null,
+                    input_tokens: 0,
+                    output_tokens: 30,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                  },
+                ],
+              },
+            },
+            { type: "message_stop" },
+          ],
+          delay,
+        );
+      }
       if (!hasToolResult && !JSON.stringify(body.messages).includes("Continue with the task.")) {
         const wantsPush = promptText.includes("push");
         const wantsWrite = promptText.includes("create the note");

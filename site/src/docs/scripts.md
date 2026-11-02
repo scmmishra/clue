@@ -26,6 +26,7 @@ The answer goes to stdout, and progress goes to stderr. clue exits with a nonzer
 | `first_token_ms` | The time to the first token. |
 | `usage` | Tokens in and out. |
 | `cost_usd` | The cost in dollars. |
+| `cost_is_minimum` | `true` when the run was interrupted. The API bills some output it never reports, so the real cost is at least `cost_usd`. |
 
 If the request fails, the object has `error` and `session_id` instead.
 

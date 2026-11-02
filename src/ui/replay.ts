@@ -164,7 +164,7 @@ export function detailLines(session: Session): string[] {
             `cache write ${usage.cacheWrite}`,
             `out ${usage.output}`,
             usage.webSearches ? `${usage.webSearches} searches` : "",
-            money(turn.cost),
+            money(turn.cost, turn.costIsMinimum),
           ]
             .filter(Boolean)
             .join("   "),
