@@ -209,6 +209,25 @@ function fakeClipboard(image: boolean, text = "") {
   return { PATH: `${bin}:${process.env.PATH}`, CLUE_TEST_CLIPBOARD_IMAGE: png };
 }
 
+// Over SSH, or off macOS, /copy asks the terminal to set the clipboard with OSC 52.
+test("/copy over SSH sends the reply to the terminal's clipboard, and explains it once", async () => {
+  const clue = await startClue({ env: { SSH_CONNECTION: "10.0.0.2 51000 10.0.0.1 22" } });
+  await clue.type("what is this package?");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  await clue.type(`/copy${ENTER}`);
+  await clue.seen("Copied the last reply");
+  const copied = clue.raw().match(/\x1b\]52;c;([A-Za-z0-9+/=]*)\x1b\\/);
+  expect(copied).not.toBeNull();
+  expect(Buffer.from(copied![1], "base64").toString()).toContain("The package is called **clue**");
+  expect(clue.screen().split("allow clipboard access").length - 1).toBe(1);
+  await clue.type(`/copy${ENTER}`);
+  const count = (text: string) => clue.raw().split(text).length - 1;
+  for (let wait = 0; count("Copied the last reply") < 2 && wait < 800; wait++) await Bun.sleep(10);
+  expect(count("\x1b]52;c;")).toBe(2);
+  expect(clue.screen().split("allow clipboard access").length - 1).toBe(1);
+}, 25_000);
+
 const macOnly = test.if(process.platform === "darwin");
 
 macOnly.each([
