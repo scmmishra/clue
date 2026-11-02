@@ -146,7 +146,7 @@ const live = {
 
 test("each iteration is priced at its own model's rates, the advisor's included", () => {
   // Sonnet: 6 in, 60 out, 11,233 read, 11,428 written. Opus: 177 in, 195 out, 12,635 written.
-  const sonnet = 6 * 2 + 60 * 10 + 11233 * 0.2 + 11428 * 2.5;
+  const sonnet = 6 * 2 + 60 * 10 + 11233 * 0.1 + 11428 * 2.5;
   const opus = 177 * 4 + 195 * 20 + 12635 * 5;
   expect(responseCost(PAIR, live)).toBeCloseTo((sonnet + opus) / 1_000_000, 10);
 });
@@ -249,7 +249,7 @@ async function advisorTurn(prompt: string, mode = "") {
 }
 
 // The mock's base usage: 120 in, 40 out, 2,000 cache read, 300 cache write.
-const sonnetBase = 120 * 2 + 2000 * 0.2 + 300 * 2.5;
+const sonnetBase = 120 * 2 + 2000 * 0.1 + 300 * 2.5;
 
 test("an advisor call shows as a row, and its tokens are in the turn's cost", async () => {
   const { turn, rows } = await advisorTurn("consult the advisor please");

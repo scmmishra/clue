@@ -23,6 +23,7 @@ clue warns at startup if the file has a problem. If the JSON is broken, clue use
 | `permission` | none | Allow, ask and deny rules. See [Permissions](/docs/permissions). |
 | `review` | automatic | Who reviews actions in `auto` mode. See below. |
 | `copy` | automatic | Who picks what `/copy <request>` copies. See below. |
+| `compact_at` | per model | When clue [compacts](/docs/compaction) the conversation: a token count such as `400000`, or a share of the context window such as `"40%"`. |
 | `bell` | `true` | Rings the terminal bell when clue needs you. |
 
 ```json

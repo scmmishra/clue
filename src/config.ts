@@ -68,6 +68,9 @@ export type Settings = {
   review?: HelperSetting;
   // Who picks the parts of a reply that /copy <request> copies.
   copy?: HelperSetting;
+  // When clue compacts the conversation: a token count, or a share of the model's context
+  // window such as "30%". Each model has its own default.
+  compact_at?: number | string;
   bell: boolean;
 };
 
@@ -124,12 +127,21 @@ const anObject = (value: unknown) => (isObject(value) ? null : "must be an objec
 
 const aBoolean = (value: unknown) => (typeof value === "boolean" ? null : "must be true or false");
 
+// A token count, or a share of the context window from 5% to 85%. models.ts reads the same forms.
+const aCompactionPoint = (value: unknown) => {
+  if (typeof value === "number") return Number.isInteger(value) && value >= 50_000 ? null : "must be at least 50000";
+  const share = typeof value === "string" ? /^(\d{1,2}(?:\.\d+)?)%$/.exec(value.trim()) : null;
+  if (share && Number(share[1]) >= 5 && Number(share[1]) <= 85) return null;
+  return 'must be a token count such as 300000, or a share of the context window from "5%" to "85%"';
+};
+
 const SETTING_CHECKS = new Map<string, (value: unknown) => string | null>([
   ["model", aString],
   ["effort", oneOf(EFFORTS)],
   ["fast", aBoolean],
   ["permission_mode", oneOf(PERMISSION_MODES)],
   ["permission", anObject],
+  ["compact_at", aCompactionPoint],
   ["bell", aBoolean],
   ...HELPERS.flatMap((helper): [string, (value: unknown) => string | null][] => [
     [helper, anObject],

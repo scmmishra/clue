@@ -176,6 +176,14 @@ test("config set keeps the other settings", async () => {
   expect(saved()).toEqual({ model: "sonnet", permission: { "*": "ask" }, bell: false });
 });
 
+test("config set takes compact_at as a token count or a share of the window", async () => {
+  const { run, saved } = setup();
+  await run(["config", "set", "compact_at", "400000"]);
+  expect(saved()).toEqual({ compact_at: 400_000 });
+  await run(["config", "set", "compact_at", "40%"]);
+  expect(saved()).toEqual({ compact_at: "40%" });
+});
+
 test("config set reaches nested settings", async () => {
   const { run, saved } = setup({ review: { model: "haiku" } });
   await run(["config", "set", "review.provider", "anthropic"]);
@@ -185,6 +193,7 @@ test("config set reaches nested settings", async () => {
 test.each([
   [["config", "set", "effort", "hihg"], "effort must be one of"],
   [["config", "set", "bell", "maybe"], "bell must be true or false"],
+  [["config", "set", "compact_at", "1000"], "compact_at must be at least 50000"],
   [["config", "set", "review.provider", "acme"], "review.provider must be one of"],
   [["config", "set", "modle", "x"], "modle isn't a setting"],
   [["config", "set", "permission", "x"], "Use clue config edit"],

@@ -4,6 +4,13 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- clue decides when to compact, instead of the API. Fable, Opus and Sonnet compact at 300k tokens, not 150k, so long sessions lose less to summaries. Haiku 5.5 compacts at 80k, under its higher price for prompts over 100k.
+- Automatic compaction keeps the latest 20k tokens of the conversation word for word after the summary. Before, it summarized everything, including the tool output Claude was working with.
+- Summaries follow clue's own instructions: your requests and constraints, decisions and approaches that failed, files changed, open errors and the next step.
+- The `compact_at` setting moves the compaction point, as a token count or a share of the context window, such as `clue config set compact_at 40%`.
+- `/usage` measures the context against the current model's compaction point.
+- Claude Sonnet 5.5 cache reads are priced at $0.10 per million tokens, not $0.20. Costs shown for Sonnet 5.5 sessions were too high.
+
 - A quick `esc esc` always rewinds, or interrupts a running turn. When both presses reached clue together, such as over SSH or while clue was busy, they read as one alt+esc and did nothing.
 
 ## 0.12.0

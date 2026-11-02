@@ -1,4 +1,4 @@
-import { COMPACTION_TRIGGER_TOKENS, modelLabel } from "../agent/models";
+import { DEFAULT_COMPACT_AT, modelLabel } from "../agent/models";
 import { lastContextSize, totalCost, type CompactionRecord, type SpendRecord, type TurnRecord } from "../session";
 import { money, style, tokens } from "./ansi";
 
@@ -7,27 +7,29 @@ const BAR_WIDTH = 24;
 
 const row = (label: string, value: string) => `  ${style.muted(label.padEnd(LABEL_WIDTH))}${value}`;
 
-function contextRows(turns: TurnRecord[], compactions: CompactionRecord[]) {
+function contextRows(turns: TurnRecord[], compactions: CompactionRecord[], compactAt: number) {
   const used = lastContextSize(turns, compactions);
   if (used === undefined) return [row("Context", style.muted("Shows after the next reply."))];
-  const share = used / COMPACTION_TRIGGER_TOKENS;
+  const share = used / compactAt;
   const filled = Math.min(BAR_WIDTH, Math.round(share * BAR_WIDTH));
   const bar = style.brand("█".repeat(filled)) + style.faint("░".repeat(BAR_WIDTH - filled));
   return [
     row(
       "Context",
-      `${style.accent(tokens(used))} ${style.muted(`of ${tokens(COMPACTION_TRIGGER_TOKENS)} before compaction (${Math.round(share * 100)}%)`)}`,
+      `${style.accent(tokens(used))} ${style.muted(`of ${tokens(compactAt)} before compaction (${Math.round(share * 100)}%)`)}`,
     ),
     row("", bar),
   ];
 }
 
 // Lines for /usage: how full the context is, what the session cost, and where the tokens went.
+// `compactAt` is where the current model compacts.
 export function usageReport(
   turns: TurnRecord[],
   compactions: CompactionRecord[] = [],
   rewound: TurnRecord[] = [],
   spends: SpendRecord[] = [],
+  compactAt = DEFAULT_COMPACT_AT,
 ) {
   const paidFor = [...turns, ...rewound, ...compactions, ...spends];
   if (!paidFor.length) return [row("Context", style.muted("No prompts yet.")), ""];
@@ -42,7 +44,7 @@ export function usageReport(
   const prompts = `${turns.length} ${turns.length === 1 ? "prompt" : "prompts"}`;
   const allInput = total.input + total.cacheRead + total.cacheWrite;
   return [
-    ...contextRows(turns, compactions),
+    ...contextRows(turns, compactions, compactAt),
     row(
       "Cost",
       `${style.accent(money(totalCost(turns, rewound, compactions, spends)))} ${style.muted(`across ${prompts}`)}${unpriced ? style.orange(`, ${unpriced} with no known price`) : ""}`,

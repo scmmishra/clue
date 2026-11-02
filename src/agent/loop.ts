@@ -19,7 +19,7 @@ import { msSince, now } from "../clock";
 import {
   addUsage,
   advisorOf,
-  COMPACTION_TRIGGER_TOKENS,
+  compactAt,
   cost,
   emptyUsage,
   fastEnabled,
@@ -27,6 +27,7 @@ import {
   responseCost,
   responseUsage,
 } from "./models";
+import { keepFrom } from "./compaction";
 import { dropRejectedFeature, fastRejected, stream, summarize } from "./provider";
 import { UndoStack, type UndoResult } from "./undo";
 
@@ -59,7 +60,7 @@ export type Steer = { text: string; images: PromptImage[] };
 export type AgentOptions = {
   cwd: string;
   session: Session;
-  settings: Pick<Settings, "model" | "effort" | "fast" | "review">;
+  settings: Pick<Settings, "model" | "effort" | "fast" | "review" | "compact_at">;
   permissions: Permissions;
   mcp: McpManager;
   skills: () => Skill[];
@@ -96,6 +97,8 @@ export class Agent {
   seenInstructions = new Set<string>();
   undo = new UndoStack(this.readStamps);
   private lastContext = 0;
+  // The last reply's output. The next request sends it too.
+  private lastOutput = 0;
   // The usage the current request's stream has reported. Billed even if the request never finishes.
   private streamed: StreamUsage | null = null;
 
@@ -107,13 +110,24 @@ export class Agent {
     return this.options.session;
   }
 
-  // Replaces the conversation with a summary. Returns its size in tokens, or why there is none.
-  async compact(signal: AbortSignal): Promise<{ summaryTokens: number } | { problem: string }> {
+  // Replaces the conversation with a summary. With `keepRecent`, the latest messages stay word for
+  // word after it. Returns the summary's size in tokens and how many messages were kept, or why
+  // there is no summary.
+  async compact(
+    signal: AbortSignal,
+    { keepRecent = false } = {},
+  ): Promise<{ summaryTokens: number; kept: number } | { problem: string }> {
     const { session, settings } = this.options;
     session.closeUnfinishedTools();
     const model = settings.model;
     const fast = fastEnabled(settings);
-    const message = await summarize({ model, effort: settings.effort, fast, messages: session.messages }, signal);
+    const messages = session.messages;
+    const cut = keepRecent ? keepFrom(messages) : messages.length;
+    // The same tools as the requests it summarizes, so the kept turns' thinking stays valid.
+    const message = await summarize(
+      { model, effort: settings.effort, fast, messages: messages.slice(0, cut), subagent: this.options.subagent },
+      signal,
+    );
     const iterations = message.usage.iterations ?? [];
     const usage = emptyUsage();
     for (const iteration of iterations) addUsage(usage, iteration);
@@ -122,9 +136,11 @@ export class Agent {
     if (message.stop_reason !== "compaction" || !message.content.some((block) => block.type === "compaction")) {
       return { problem: `The summary didn't finish (${message.stop_reason ?? "no reason given"}).` };
     }
+    const kept = messages.length - cut;
     session.append({
       t: "compacted",
       message: { role: "assistant", content: message.content as Anthropic.Beta.Messages.BetaContentBlockParam[] },
+      kept: kept || undefined,
       usage,
       cost: cost(model, usage, fast),
       model,
@@ -134,7 +150,8 @@ export class Agent {
     this.readStamps.clear();
     this.seenInstructions.clear();
     this.lastContext = 0;
-    return { summaryTokens: usage.output };
+    this.lastOutput = 0;
+    return { summaryTokens: usage.output, kept };
   }
 
   // Goes back to before a prompt. Returns the file result, or null when files stay as they are.
@@ -154,25 +171,36 @@ export class Agent {
     return files;
   }
 
-  // Automatic compaction can't run on a session with a /compact summary, so clue triggers it here.
+  // Where this agent compacts, in tokens of context.
+  get compactAt() {
+    const { settings } = this.options;
+    return compactAt(settings.model, settings.compact_at);
+  }
+
+  // Compacts before the next request when it would reach the compaction point. The next request
+  // sends the last request's context and its reply. The latest messages stay word for word.
   private async compactIfFull(signal: AbortSignal, midTurn: boolean) {
     const { session, events } = this.options;
-    if (!session.carriesSummary || this.lastContext < COMPACTION_TRIGGER_TOKENS) return;
+    if (this.lastContext + this.lastOutput < this.compactAt) return;
     let problem: string | null = null;
+    let kept = 0;
     try {
-      const result = await this.compact(signal);
+      const result = await this.compact(signal, { keepRecent: true });
       if ("problem" in result) problem = result.problem;
+      else kept = result.kept;
     } catch (error) {
       problem = (error as Error).message;
     }
     if (problem) {
       // Trying again before the next request would only repeat the failure.
       this.lastContext = 0;
+      this.lastOutput = 0;
       return events.notice(`Compaction failed. ${problem}`, "warn");
     }
     events.notice("Compacted the conversation.", "info");
-    // A request can't end on the summary, which is an assistant message.
-    if (midTurn) session.appendMessage({ role: "user", content: CONTINUE_PROMPT });
+    // A request can't end on the summary, which is an assistant message. Kept tool results
+    // already end it.
+    if (midTurn && !kept) session.appendMessage({ role: "user", content: CONTINUE_PROMPT });
   }
 
   private turnOffFast() {
@@ -294,6 +322,7 @@ export class Agent {
       tallyUp(tally, used, responseCost(model, message.usage, servedFast));
       fast ||= servedFast;
       context = this.lastContext = contextTokens(message.usage);
+      this.lastOutput = message.usage.output_tokens ?? 0;
       session.appendMessage({
         role: "assistant",
         content: message.content as Anthropic.Beta.Messages.BetaContentBlockParam[],

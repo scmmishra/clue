@@ -839,7 +839,13 @@ export class App {
       case "cost":
       case "usage":
         return this.print(
-          usageReport(this.session.turns, this.session.compactions, this.session.rewound, this.session.spends),
+          usageReport(
+            this.session.turns,
+            this.session.compactions,
+            this.session.rewound,
+            this.session.spends,
+            this.agent.compactAt,
+          ),
         );
       case "exit":
       case "quit":

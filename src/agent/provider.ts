@@ -4,7 +4,7 @@ import { resolveAuth } from "../auth";
 import { startsWithSummary, type MessageParam } from "../session";
 import { toolDefinitions } from "../tools";
 import { advisorOf, apiModel, modelInfo, modelLabel, pairEffort } from "./models";
-import { advisorGuidance, SYSTEM_PROMPT } from "./prompt";
+import { advisorGuidance, COMPACT_INSTRUCTIONS, SYSTEM_PROMPT } from "./prompt";
 
 // Every model call goes through this file. Other providers, such as
 // OpenRouter or Codex, would be a sibling of this module.
@@ -48,7 +48,6 @@ export function getClient(): Promise<Anthropic> {
 // Optional features that some accounts, models or proxies reject. When the API
 // refuses one, clue drops it for the rest of the process and retries.
 const features = {
-  compaction: true,
   progressNotes: true,
   fallbacks: true,
 };
@@ -69,6 +68,15 @@ const holdsAdvice = (messages: MessageParam[]) =>
   messages.some(
     (message) =>
       Array.isArray(message.content) && message.content.some((block) => block.type === "advisor_tool_result"),
+  );
+
+// A compaction block the API added inside a reply, in a session from before clue chose when to
+// compact. The API reads such a block only with automatic compaction on.
+const holdsServerCompaction = (messages: MessageParam[]) =>
+  messages.some(
+    (message, index) =>
+      Array.isArray(message.content) &&
+      message.content.some((block, position) => block.type === "compaction" && (index > 0 || position > 0)),
   );
 
 export function buildRequest(options: RequestOptions) {
@@ -112,10 +120,11 @@ export function buildRequest(options: RequestOptions) {
   } else {
     request.thinking = { type: "adaptive", display: "summarized" };
   }
-  // Automatic compaction can't run on a request that carries a /compact summary.
-  if (options.summarize) request.compaction = { type: "summarize" };
+  // clue decides when to compact, between requests (see Agent.compactIfFull), so a request never
+  // asks the API to compact on its own.
+  if (options.summarize) request.compaction = { type: "summarize", instructions: COMPACT_INSTRUCTIONS };
   if (options.summarize || startsWithSummary(options.messages)) betas.push("compact-2026-09-04");
-  else if (features.compaction) {
+  else if (holdsServerCompaction(options.messages)) {
     request.context_management = { edits: [{ type: "compact_20260112" }] };
     betas.push("compact-2026-01-12");
   }
@@ -132,14 +141,12 @@ export function buildRequest(options: RequestOptions) {
 }
 
 // Drops the optional feature a 400 names. Returns false when it names none: most 400s
-// are about the request itself, and dropping compaction for those would cost the session.
+// are about the request itself.
 export function dropRejectedFeature(error: unknown) {
   const message = String((error as Error)?.message ?? "").toLowerCase();
   if (features.fallbacks && message.includes("fallback")) return !(features.fallbacks = false);
   if (features.progressNotes && (message.includes("display") || message.includes("updates")))
     return !(features.progressNotes = false);
-  if (features.compaction && (message.includes("context_management") || message.includes("compact")))
-    return !(features.compaction = false);
   return false;
 }
 

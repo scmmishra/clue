@@ -16,10 +16,18 @@ type ModelInfo = {
   fastMode: boolean;
   // A prompt over `over` tokens bills every token at `multiplier` times the rates above.
   longPrompt?: { over: number; multiplier: number };
+  // The context window, in tokens.
+  context: number;
+  // Where clue compacts the conversation when the settings don't say, in tokens.
+  compactAt: number;
   // A pair: this model does the work, and the advisor tool asks the stronger one on hard steps.
   executor?: string;
   advisor?: string;
 };
+
+// Where a model with a 1M window compacts by default. Each request reads the whole context, so a
+// later point costs more per request, and long, noisy contexts lose accuracy.
+const LONG_CONTEXT_COMPACT_AT = 300_000;
 
 const MODELS: Record<string, ModelInfo> = {
   "claude-fable-5-1": {
@@ -28,6 +36,8 @@ const MODELS: Record<string, ModelInfo> = {
     output: 50,
     cacheRead: 0.25,
     cacheWrite: 12.5,
+    context: 1_000_000,
+    compactAt: LONG_CONTEXT_COMPACT_AT,
     progressNotes: true,
     dynamicWebTools: true,
     fallbacks: true,
@@ -39,6 +49,8 @@ const MODELS: Record<string, ModelInfo> = {
     output: 50,
     cacheRead: 1,
     cacheWrite: 12.5,
+    context: 1_000_000,
+    compactAt: LONG_CONTEXT_COMPACT_AT,
     progressNotes: true,
     dynamicWebTools: true,
     fallbacks: false,
@@ -50,6 +62,8 @@ const MODELS: Record<string, ModelInfo> = {
     output: 20,
     cacheRead: 0.2,
     cacheWrite: 5,
+    context: 1_000_000,
+    compactAt: LONG_CONTEXT_COMPACT_AT,
     progressNotes: true,
     dynamicWebTools: true,
     fallbacks: true,
@@ -61,6 +75,8 @@ const MODELS: Record<string, ModelInfo> = {
     output: 25,
     cacheRead: 0.5,
     cacheWrite: 6.25,
+    context: 1_000_000,
+    compactAt: LONG_CONTEXT_COMPACT_AT,
     progressNotes: false,
     dynamicWebTools: true,
     fallbacks: true,
@@ -70,8 +86,10 @@ const MODELS: Record<string, ModelInfo> = {
     label: "sonnet 5.5",
     input: 2,
     output: 10,
-    cacheRead: 0.2,
+    cacheRead: 0.1,
     cacheWrite: 2.5,
+    context: 1_000_000,
+    compactAt: LONG_CONTEXT_COMPACT_AT,
     progressNotes: true,
     dynamicWebTools: true,
     fallbacks: true,
@@ -83,6 +101,8 @@ const MODELS: Record<string, ModelInfo> = {
     output: 10,
     cacheRead: 0.2,
     cacheWrite: 2.5,
+    context: 1_000_000,
+    compactAt: LONG_CONTEXT_COMPACT_AT,
     progressNotes: false,
     dynamicWebTools: true,
     fallbacks: false,
@@ -96,6 +116,9 @@ const MODELS: Record<string, ModelInfo> = {
     cacheWrite: 0.125,
     // $0.50 / $2.50 for a prompt over 100K tokens.
     longPrompt: { over: 100_000, multiplier: 5 },
+    context: 1_000_000,
+    // Under the long-prompt price, with room for one step past it.
+    compactAt: 80_000,
     progressNotes: false,
     dynamicWebTools: false,
     fallbacks: false,
@@ -135,8 +158,31 @@ export const PAIR_EFFORTS = ["medium", "high", "xhigh", "max"] as const;
 export const pairEffort = <E extends string>(model: string, effort: E): E | "medium" =>
   advisorOf(model) && effort === "low" ? "medium" : effort;
 
-// The context size where the API compacts a conversation by default.
-export const COMPACTION_TRIGGER_TOKENS = 150_000;
+// For a model clue doesn't know: the window it assumes, and where it compacts, which is the
+// API's own default.
+const UNKNOWN_CONTEXT = 200_000;
+export const DEFAULT_COMPACT_AT = 150_000;
+// The least a compaction setting can ask for. Below it, summaries would follow each other.
+export const MIN_COMPACT_AT = 50_000;
+// Room kept free under the window, for the reply and for one step past the trigger.
+const reserveFor = (context: number) => Math.max(Math.floor(context * 0.15), 16_000);
+
+// A `compact_at` setting: a token count, or a share of the context window such as "30%".
+export type CompactAt = number | string;
+
+const COMPACT_AT_PERCENT = /^(\d{1,2}(?:\.\d+)?)%$/;
+
+// Where clue compacts a conversation on this model: the setting if it has one, or the model's
+// default. Never under MIN_COMPACT_AT, and always with room left in the window.
+export function compactAt(id: string, setting?: CompactAt | null) {
+  const info = MODELS[id] ?? MODELS[apiModel(id)];
+  const context = info?.context ?? UNKNOWN_CONTEXT;
+  let tokens = info?.compactAt ?? DEFAULT_COMPACT_AT;
+  if (typeof setting === "number" && Number.isFinite(setting)) tokens = setting;
+  else if (typeof setting === "string" && COMPACT_AT_PERCENT.test(setting.trim()))
+    tokens = (context * Number.parseFloat(setting)) / 100;
+  return Math.round(Math.min(Math.max(tokens, MIN_COMPACT_AT), context - reserveFor(context)));
+}
 
 // Cost of one web search, in dollars.
 const WEB_SEARCH_COST = 0.01;

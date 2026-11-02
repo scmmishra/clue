@@ -103,7 +103,12 @@ function set(args: string[]) {
   if (args.length !== 2) stop(`Usage: clue config set <key> <value>`);
   const [key, text] = args;
   if (EDIT_ONLY.has(key)) stop(`${key} holds nested settings. Use clue config edit.`);
-  const value = (key === "bell" || key === "fast") && (text === "true" || text === "false") ? text === "true" : text;
+  const value =
+    (key === "bell" || key === "fast") && (text === "true" || text === "false")
+      ? text === "true"
+      : key === "compact_at" && /^\d+$/.test(text)
+        ? Number(text)
+        : text;
   const problem = checkSetting(key, value);
   if (problem) stop(problem);
   const settings = readForWriting();

@@ -59,6 +59,8 @@ export type TurnRecord = {
 // One /compact: the summary that replaces the messages, and what the summary cost.
 export type CompactionRecord = {
   message: MessageParam;
+  // How many of the latest messages follow the summary unchanged. Older sessions have none.
+  kept?: number;
   usage: Usage;
   cost: number | null;
   model: string;
@@ -104,6 +106,12 @@ export function promptText(message: MessageParam) {
     .flatMap((block) => (block.type === "text" && !block.text.startsWith("<context>") ? [block.text] : []))
     .join("\n");
 }
+
+// The first message of a session, and the first after a compaction, opens with this context.
+export const holdsContext = (message: MessageParam) =>
+  message.role === "user" &&
+  Array.isArray(message.content) &&
+  message.content.some((block) => block.type === "text" && block.text.startsWith("<context>"));
 
 // A message the user sent mid-turn, after tool results, to steer the turn. It is part of the
 // turn, not a prompt, so rewind doesn't list it.
@@ -232,7 +240,8 @@ export class Session {
     if (record.t === "spend") this.spends.push(record);
     if (record.t === "compacted") {
       this.compactions.push(record);
-      this.messages = [record.message];
+      const kept = Math.min(record.kept ?? 0, this.messages.length);
+      this.messages = [record.message, ...this.messages.slice(this.messages.length - kept)];
     }
     if (record.t === "message") {
       this.messages.push(record.message);
@@ -358,9 +367,10 @@ export class Session {
     return startsWithSummary(this.messages);
   }
 
-  // Compaction summarizes the opening context, so the next prompt brings it again.
+  // Compaction summarizes the opening context, so the next prompt brings it again, unless a
+  // message kept after the summary still holds it.
   get needsContext() {
-    return this.isEmpty || (this.messages.length === 1 && this.carriesSummary);
+    return this.isEmpty || (this.carriesSummary && !this.messages.some(holdsContext));
   }
 
   // A crash mid-tool leaves tool calls without results, and the API refuses a new

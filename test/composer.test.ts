@@ -899,7 +899,7 @@ const compactedSession = async () => {
 
 test("after /compact, clue compacts a full conversation itself before the next prompt", async () => {
   const clue = await compactedSession();
-  usage.cache_read_input_tokens = 200_000;
+  usage.cache_read_input_tokens = 400_000;
   await clue.type("zebra-two");
   await clue.type(ENTER);
   await clue.turns(2);
@@ -910,14 +910,41 @@ test("after /compact, clue compacts a full conversation itself before the next p
   await clue.turns(3);
   expect(compactions.length).toBe(before + 1);
   await clue.seen("Compacted the conversation.");
-  const last = JSON.stringify((requests.at(-1) as { messages: unknown }).messages);
-  expect(last).not.toContain("zebra-two");
-  expect(last).toContain("third");
+  // A summary covers the prompt. The latest reply is recent enough to stay word for word.
+  expect(
+    compactions.some((body) => JSON.stringify((body as { messages: unknown }).messages).includes("zebra-two")),
+  ).toBe(true);
+  // The request that sent the prompt: the summary, the kept reply, then the prompt and the context.
+  const sent = requests
+    .map((request) => (request as { messages: { role: string; content: any }[] }).messages)
+    .find((messages) => JSON.stringify(messages.at(-1)).includes("third"))!;
+  expect(sent[0].content[0].type).toBe("compaction");
+  expect(sent[1].role).toBe("assistant");
+  expect(JSON.stringify(sent)).not.toContain("zebra-two");
+  expect(JSON.stringify(sent.at(-1))).toContain("<context>");
 }, 25_000);
 
-test("a compaction during a turn lets the turn continue", async () => {
+test("clue compacts a full conversation without a /compact first", async () => {
+  const clue = await startClue();
+  usage.cache_read_input_tokens = 400_000;
+  await clue.type("zebra-one");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  usage.cache_read_input_tokens = 2000;
+  const before = compactions.length;
+  await clue.type("second");
+  await clue.type(ENTER);
+  await clue.turns(2);
+  expect(compactions.length).toBe(before + 1);
+  const request = requests.at(-1) as { messages: { role: string; content: any }[]; context_management?: unknown };
+  expect(request.context_management).toBeUndefined();
+  expect(request.messages[0].content[0].type).toBe("compaction");
+  expect(JSON.stringify(request.messages)).not.toContain("zebra-one");
+}, 25_000);
+
+test("a compaction during a turn keeps the tool call and its result, and the turn goes on", async () => {
   const clue = await compactedSession();
-  usage.cache_read_input_tokens = 200_000;
+  usage.cache_read_input_tokens = 400_000;
   const before = compactions.length;
   await clue.type("read the package");
   await clue.type(ENTER);
@@ -926,7 +953,9 @@ test("a compaction during a turn lets the turn continue", async () => {
   expect(compactions.length).toBe(before + 1);
   const last = (requests.at(-1) as { messages: { role: string; content: any }[] }).messages;
   expect(last[0].content[0].type).toBe("compaction");
-  expect(last.at(-1)).toEqual({ role: "user", content: "Continue with the task." });
+  expect(last[1].content.some((block: { type: string }) => block.type === "tool_use")).toBe(true);
+  expect(last.at(-1)!.content.some((block: { type: string }) => block.type === "tool_result")).toBe(true);
+  expect(JSON.stringify(last)).not.toContain("Continue with the task.");
 }, 25_000);
 
 const ESC = "\x1b";

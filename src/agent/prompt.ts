@@ -9,6 +9,7 @@
 // licensed under Apache-2.0. See NOTICE.
 
 import advisorPrompt from "../../prompts/advisor.md" with { type: "text" };
+import compactPrompt from "../../prompts/compact.md" with { type: "text" };
 import systemPrompt from "../../prompts/system.md" with { type: "text" };
 
 export const SYSTEM_PROMPT = systemPrompt.trimEnd();
@@ -16,3 +17,6 @@ export const SYSTEM_PROMPT = systemPrompt.trimEnd();
 // Added after the system prompt when a pair's executor can ask its advisor, such as "Opus 5.5".
 // The text is fixed for each pair, so a pair's requests keep the same cached prefix.
 export const advisorGuidance = (advisor: string) => advisorPrompt.trimEnd().replaceAll("{{advisor}}", advisor);
+
+// What a summary must keep. It replaces the API's own summarization prompt.
+export const COMPACT_INSTRUCTIONS = compactPrompt.trimEnd();
