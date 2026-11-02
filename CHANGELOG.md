@@ -2,7 +2,7 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
-## Unreleased
+## 0.10.0
 
 - `edit_file` takes a list of edits for one file, so several changes go in one call. If one edit fails, the file stays unchanged.
 - `edit_file` no longer needs a `read_file` first, or an unchanged file. The exact `old_string` shows that Claude knows the text. `write_file` is unchanged.
