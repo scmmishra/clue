@@ -317,7 +317,9 @@ export type KeyHandler = (key: Key) => void;
 export class Keyboard {
   private handler: KeyHandler = () => {};
   private started = false;
-  private held: Key[] | null = null;
+  private held: Key[] = [];
+  // Holds still running. Keys wait until the last one settles, not the first.
+  private holds = 0;
   private pending = "";
   private pendingTimer: ReturnType<typeof setTimeout> | undefined;
   private modes = keyModes(Boolean(process.env.TMUX));
@@ -355,10 +357,11 @@ export class Keyboard {
 
   // Keys that arrive during `work` wait for it, so Enter can't overtake a paste.
   hold(work: Promise<unknown>) {
-    this.held ??= [];
+    this.holds += 1;
     void work.finally(() => {
-      const keys = this.held ?? [];
-      this.held = null;
+      if (--this.holds > 0) return;
+      const keys = this.held;
+      this.held = [];
       for (const key of keys) this.deliver(key);
     });
   }
@@ -369,8 +372,9 @@ export class Keyboard {
     for (const key of parseKeys(data)) this.deliver(key);
   }
 
-  private deliver(key: Key) {
-    if (this.held) this.held.push(key);
+  // Hands a key to the current handler, as if typed now.
+  deliver(key: Key) {
+    if (this.holds) this.held.push(key);
     else this.handler(key);
   }
 }
