@@ -237,6 +237,8 @@ export class TurnView implements AgentEvents {
   finish(turn: TurnRecord) {
     this.status = "done";
     this.markdown.end();
+    // A row still open can't fold, and the tree would be lost with the live area.
+    this.stopTools();
     this.foldTools();
     this.screen.animate(false);
     this.screen.setRenderer(() => ({ lines: [] }));
@@ -451,6 +453,17 @@ export class TurnView implements AgentEvents {
       removed: record.removed,
     });
     this.screen.refresh();
+  }
+
+  // Closes the rows of calls that will never end, such as those of a failed request.
+  toolsStopped() {
+    this.stopTools();
+    this.screen.refresh();
+  }
+
+  private stopTools() {
+    for (const row of this.rows.filter((item) => !item.done))
+      Object.assign(row, { done: true, isError: true, reviewing: false, note: "didn't run" });
   }
 
   review(id: string, state: "reviewing" | "approved" | "held", detail?: string) {

@@ -184,6 +184,7 @@ export class App {
         view()?.confirm(label, subject, pattern, note) ?? Promise.resolve("no"),
       question: (question: Question) => view()?.question(question) ?? Promise.resolve(null),
       notice: (text, tone) => view()?.notice(text, tone),
+      toolsStopped: () => view()?.toolsStopped(),
       steer: () => {
         const steer = this.steering;
         if (!steer) return null;
