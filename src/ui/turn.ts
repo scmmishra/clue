@@ -3,7 +3,7 @@ import { modelLabel } from "../agent/models";
 import type { ToolRecord, TurnRecord } from "../session";
 import type { Question } from "../tools/types";
 import { VERSION } from "../config";
-import { columns, duration, homePath, money, spinnerFrame, spread, style, tokens, width, wrapLine } from "./ansi";
+import { columns, duration, homePath, money, spinnerFrame, spread, style, term, tokens, width, wrapLine } from "./ansi";
 import { MarkdownStream } from "./markdown";
 import { msSince, now } from "../clock";
 import type { Key, LiveFrame, Screen } from "./screen";
@@ -49,7 +49,18 @@ export const BAR = "┃ ";
 // the bar, so selecting it copies the text as typed, and it reflows when the window resizes.
 export function promptLines(prompt: string) {
   const [first, ...rest] = prompt.split("\n");
-  return [`${style.brand(BAR)}${first}`, ...rest];
+  return markPrompt([`${style.brand(BAR)}${first}`, ...rest]);
+}
+
+// Marks a prompt for the terminal's jump-to-prompt keys (OSC 133): A where it starts, C where
+// the reply starts. Only prompts printed once into the scrollback get marks. The live input
+// is redrawn, so a mark there would point at erased rows.
+export function markPrompt(lines: string[]) {
+  if (lines.length === 0) return lines;
+  const marked = [...lines];
+  marked[0] = term.promptStart + marked[0];
+  marked[marked.length - 1] += term.outputStart;
+  return marked;
 }
 
 // A prompt for the pager, which draws its own rows and can't leave wrapping to the terminal.

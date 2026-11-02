@@ -13,3 +13,14 @@ title: Keys
 | `ctrl+o` | Opens the full detail of the session. |
 | `esc esc`, `ctrl+c` | Interrupt a run. When idle, `esc esc` opens [rewind](/docs/sessions#rewind). |
 | `ctrl+d` | Exits. |
+
+## Jump between prompts
+
+clue marks each prompt you send, so your terminal's jump-to-prompt keys move between them in a session. This works in terminals that read OSC 133 prompt marks, such as Ghostty, iTerm2, kitty and WezTerm.
+
+| Terminal | Keys |
+| --- | --- |
+| Ghostty on macOS | `cmd+↑` `cmd+↓` |
+| Ghostty on Linux | `ctrl+shift+↑` `ctrl+shift+↓` |
+
+Other terminals have their own keys. Look for "jump to prompt" or "marks" in their docs.

@@ -43,7 +43,7 @@ import { pickSession } from "./ui/picker";
 import { detailLines, Pager, replay, RESUME_SCROLLBACK_BYTES } from "./ui/replay";
 import { Keyboard, Screen, type Key, type LiveFrame } from "./ui/screen";
 import { turnStatus } from "./ui/status";
-import { BAR, header, promptLines, statusLine, TurnView } from "./ui/turn";
+import { BAR, header, markPrompt, promptLines, statusLine, TurnView } from "./ui/turn";
 
 const COMMANDS: Command[] = [
   { name: "help", description: "commands and keys" },
@@ -628,7 +628,7 @@ export class App {
     const trimmed = text.trim();
     if (SLASH_COMMAND.test(trimmed) && !trimmed.includes("\n")) {
       this.screen.setRenderer(() => ({ lines: [] }));
-      this.print([`${style.brand(BAR)}${style.muted(trimmed)}`, ""]);
+      this.print([...markPrompt([`${style.brand(BAR)}${style.muted(trimmed)}`]), ""]);
       await this.command(trimmed);
       this.idle();
       return;

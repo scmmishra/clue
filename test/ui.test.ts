@@ -1,8 +1,17 @@
 import { expect, test } from "bun:test";
 import { VERSION } from "../src/config";
-import { style, tokens } from "../src/ui/ansi";
+import { style, term, tokens } from "../src/ui/ansi";
 import { Editor } from "../src/ui/editor";
-import { BAR, footerLine, header, promptLines, statusLine, toolTree, wrappedPromptLines } from "../src/ui/turn";
+import {
+  BAR,
+  footerLine,
+  header,
+  markPrompt,
+  promptLines,
+  statusLine,
+  toolTree,
+  wrappedPromptLines,
+} from "../src/ui/turn";
 
 const usage = { input: 100, output: 52, cacheRead: 3000, cacheWrite: 200, webSearches: 0 };
 const footer = (turn: Parameters<typeof footerLine>[0]) => Bun.stripANSI(footerLine(turn));
@@ -38,16 +47,35 @@ test("colors are on, so the theme tests below compare real colors", () => {
 });
 
 test("the prompt has a blue bar and regular text", () => {
-  expect(promptLines("fix it")).toEqual([`${style.brand(BAR)}fix it`]);
+  expect(promptLines("fix it")).toEqual([`${term.promptStart}${style.brand(BAR)}fix it${term.outputStart}`]);
 });
 
 test("a long prompt stays one line, so the terminal wraps it and copying gives the original text", () => {
   const long = "word ".repeat(200).trim();
-  expect(promptLines(long)).toEqual([`${style.brand(BAR)}${long}`]);
+  expect(promptLines(long)).toEqual([`${term.promptStart}${style.brand(BAR)}${long}${term.outputStart}`]);
 });
 
 test("only the first line of a prompt has the bar, so copied lines stay clean", () => {
-  expect(promptLines("one\ntwo\n\nthree")).toEqual([`${style.brand(BAR)}one`, "two", "", "three"]);
+  expect(promptLines("one\ntwo\n\nthree")).toEqual([
+    `${term.promptStart}${style.brand(BAR)}one`,
+    "two",
+    "",
+    `three${term.outputStart}`,
+  ]);
+});
+
+test("a prompt is marked for the terminal's jump-to-prompt keys", () => {
+  expect(term.promptStart).toBe("\x1b]133;A\x1b\\");
+  expect(term.outputStart).toBe("\x1b]133;C\x1b\\");
+  const [line] = markPrompt(["┃ /model"]);
+  expect(line.startsWith(term.promptStart)).toBe(true);
+  expect(line.endsWith(term.outputStart)).toBe(true);
+  expect(Bun.stringWidth(line)).toBe(Bun.stringWidth("┃ /model"));
+  expect(markPrompt([])).toEqual([]);
+});
+
+test("the pager's prompt lines carry no marks, since it draws its own rows", () => {
+  expect(wrappedPromptLines("fix it").join("")).not.toContain("\x1b]133;");
 });
 
 test("the pager wraps a long prompt itself, so nothing is cut off", () => {

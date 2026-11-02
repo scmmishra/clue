@@ -60,7 +60,13 @@ export function spread(left: string, right: string, size = columns() - 1) {
   return gap >= 2 ? left + " ".repeat(gap) + right : left;
 }
 
+// OSC 133 prompt marks. A terminal uses them to jump between prompts. NO_COLOR keeps them,
+// since they draw nothing. A dumb terminal gets none.
+const marks = process.env.TERM !== "dumb";
+
 export const term = {
+  promptStart: marks ? "\x1b]133;A\x1b\\" : "",
+  outputStart: marks ? "\x1b]133;C\x1b\\" : "",
   hideCursor: "\x1b[?25l",
   showCursor: "\x1b[?25h",
   clearDown: "\x1b[J",
