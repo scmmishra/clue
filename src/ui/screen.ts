@@ -262,6 +262,14 @@ export function parseKeys(data: string): Key[] {
     }
     if (matched) continue;
     const char = data[index];
+    // Two escs in one read are two presses, not alt+esc. A busy process or an SSH link can
+    // deliver a quick esc esc together, and it must still rewind or interrupt. Terminals that
+    // report keys send alt+esc as its own sequence.
+    if (char === "\x1b" && data[index + 1] === "\x1b") {
+      keys.push({ name: "escape" });
+      index += 1;
+      continue;
+    }
     if (char === "\x1b" && index + 1 < data.length) {
       // Unknown escape sequence: skip it whole.
       const rest = data.slice(index).match(/^\x1b\[[0-9;?]*[ -/]*[@-~]/);

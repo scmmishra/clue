@@ -41,6 +41,16 @@ test("ctrl+j and ctrl+h keep their old meanings", () => {
   expect(one(kitty(104, CTRL))).toEqual({ name: "backspace" });
 });
 
+test("two escs that arrive in one read are two presses", () => {
+  expect(parseKeys("\x1b\x1b")).toEqual([{ name: "escape" }, { name: "escape" }]);
+  expect(parseKeys("\x1b\x1b\x1b")).toEqual([{ name: "escape" }, { name: "escape" }, { name: "escape" }]);
+  // An esc before a key sequence stays a press of its own.
+  expect(parseKeys("\x1b\x1b[A")).toEqual([{ name: "escape" }, { name: "up" }]);
+  expect(parseKeys(`\x1b${kitty(27)}`)).toEqual([{ name: "escape" }, { name: "escape" }]);
+  // Alt+a, from a terminal that doesn't report keys, is unchanged.
+  expect(parseKeys("\x1ba")).toEqual([{ name: "a", meta: true }]);
+});
+
 test("escape, tab and backspace arrive as they always have", () => {
   expect(one(kitty(27))).toEqual({ name: "escape" });
   expect(one(kitty(9))).toEqual({ name: "tab" });
