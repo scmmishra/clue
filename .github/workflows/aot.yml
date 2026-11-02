@@ -1,0 +1,60 @@
+name: AOT
+
+# Checks that clue still builds and runs with Bun's ahead-of-time compiler, which is
+# only in Bun canary. Canary changes daily and can't be pinned, so this is a separate
+# workflow from CI: a bad canary fails here without blocking a merge. It also runs
+# weekly to catch a canary that breaks clue between changes.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aot:
+    strategy:
+      fail-fast: false
+      matrix:
+        # bun compile doesn't cross-compile, so each platform builds its own.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: canary
+
+      - run: bun install --frozen-lockfile
+
+      # Fails on code the AOT compiler can't compile. Its warnings are listed in the summary.
+      - name: Check for AOT errors
+        run: |
+          status=0
+          bun check --aot src/main.ts > "$RUNNER_TEMP/aot-check.txt" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/aot-check.txt"
+          {
+            echo "### AOT on $(bun --revision), ${{ runner.os }}"
+            echo
+            echo "Regular expressions in src that run in the interpreter:"
+            echo
+            grep -A3 "runs in the interpreter" "$RUNNER_TEMP/aot-check.txt" | grep -oE "src/[^ ]+:[0-9]+:[0-9]+" | sed 's/^/- /' || echo "- none"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - run: bun scripts/build.ts --aot
+
+      - name: Run the build
+        run: |
+          test "$(dist/clue --version)" = "$(jq -r .version package.json)"
+          echo "Binary size: $(du -h dist/clue | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+
+      # Starts, resumes a 120-prompt session and runs `clue ask` against a local stand-in API.
+      # It fails if the resumed session doesn't appear or `ask` doesn't return JSON.
+      - name: Benchmark the build
+        run: bun benchmarks/run.ts --runs 10 >> "$GITHUB_STEP_SUMMARY"

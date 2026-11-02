@@ -7,12 +7,19 @@ bun test             # tests, against a local stand-in for the API
 bun run fmt          # format src, test, scripts and benchmarks
 bun run build        # dist/clue for this machine; --all for every platform
 bun run build:watch  # rebuild dist/clue when src or prompts change
+bun run build:aot    # dist/clue compiled to machine code; needs Bun canary
 bun run bench        # start, resume and first-token benchmarks
 bun run bench:check  # build, then fail if start or resume is over budget
 bun run bench:tools  # each tool on its own, outside the agent loop
 ```
 
 CI runs the type check, the tests and a build on macOS and Linux for every push and pull request. It also installs that build with `install.sh`.
+
+The AOT workflow builds clue with Bun's ahead-of-time compiler, which is only in Bun canary, on macOS and Linux. It runs `bun check --aot`, then the benchmarks against the build, and lists the regular expressions that can't be compiled ahead of time in the run's summary. Canary changes daily, so this workflow is separate from CI and also runs weekly.
+
+## Syntax highlighting
+
+Each language in `src/ui/highlight/languages/` compiles to a few regular expressions. `src/ui/highlight/precompiled.ts` holds them as literals, because an AOT build compiles a regex literal to machine code but runs a regex built at run time in an interpreter. After changing a language, run `bun scripts/highlight.ts`. `test/highlight.test.ts` fails while the file is out of date.
 
 ## Benchmarks
 

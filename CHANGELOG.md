@@ -2,6 +2,10 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- A quick `esc esc` always rewinds, or interrupts a running turn. When both presses reached clue together, such as over SSH or while clue was busy, they read as one alt+esc and did nothing.
+
 ## 0.12.0
 
 - Code blocks in replies are colored in more languages: Ruby, Python, Go, Rust, Java, Kotlin, Swift, C and C++, C#, PHP, Zig, shell, SQL, JSON, YAML, TOML, HTML, Vue, ERB, CSS, SCSS, Elixir, Lua, Dockerfile, Makefile and diffs. Before, only JavaScript and TypeScript were colored.
