@@ -2,6 +2,11 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- Code blocks in replies are colored in more languages: Ruby, Python, Go, Rust, Java, Kotlin, Swift, C and C++, C#, PHP, Zig, shell, SQL, JSON, YAML, TOML, HTML, Vue, ERB, CSS, SCSS, Elixir, Lua, Dockerfile, Makefile and diffs. Before, only JavaScript and TypeScript were colored.
+- A code block sits between two rules as long as its longest line, with the language in the top rule. Code lines have no `│` gutter, so a mouse selection of them copies only the code.
+
 ## 0.11.0
 
 - `/copy` puts the last reply on the clipboard as Markdown, without the gutters and line wraps on screen. `/copy <request>` copies only the parts you describe, such as `/copy the sql`. Perplexity's Decider picks them when `OPENROUTER_API_KEY` is set, and Haiku when it isn't. The `copy` setting chooses another model.

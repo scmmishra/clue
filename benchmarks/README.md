@@ -38,11 +38,11 @@ With the real API, the model's own time to first token is added on top.
 
 ## Hot paths
 
-|                                               | median | p90    |
-| --------------------------------------------- | ------ | ------ |
-| Render a Markdown reply (`Bun.markdown.ansi`) | 4.3 µs | 5.0 µs |
-| Load a 120-prompt session file (`Bun.JSONL`)  | 39 µs  | 49 µs  |
-| Render all of it for resume                   | 52 µs  | 65 µs  |
+|                                                 | median | p90     |
+| ----------------------------------------------- | ------ | ------- |
+| Render a Markdown reply (`Bun.markdown.render`) | 9.3 µs | 13.8 µs |
+| Load a 120-prompt session file (`Bun.JSONL`)    | 39 µs  | 49 µs   |
+| Render all of it for resume                     | 52 µs  | 65 µs   |
 
 A larger session, 610 KB and 120 prompts with long tool results, loads in about 0.65 ms.
 
