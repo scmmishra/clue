@@ -3,8 +3,8 @@ import type { Effort } from "../config";
 import { resolveAuth } from "../auth";
 import { startsWithSummary, type MessageParam } from "../session";
 import { toolDefinitions } from "../tools";
-import { advisorOf, apiModel, modelInfo, pairEffort } from "./models";
-import { ADVISOR_PROMPT, SYSTEM_PROMPT } from "./prompt";
+import { advisorOf, apiModel, modelInfo, modelLabel, pairEffort } from "./models";
+import { advisorGuidance, SYSTEM_PROMPT } from "./prompt";
 
 // Every model call goes through this file. Other providers, such as
 // OpenRouter or Codex, would be a sibling of this module.
@@ -58,6 +58,8 @@ export type RequestOptions = {
   fast?: boolean;
 };
 
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
 // An advisor's answer in the history. The API accepts one only with the advisor beta.
 const holdsAdvice = (messages: MessageParam[]) =>
   messages.some(
@@ -69,15 +71,19 @@ export function buildRequest(options: RequestOptions) {
   const model = apiModel(options.model);
   const info = modelInfo(model);
   const betas: string[] = [];
-  // Subagents and summaries work without the advisor. A summary can still carry its answers.
-  const advisor = options.subagent || options.summarize ? null : advisorOf(options.model);
+  // Subagents work without the advisor. A summary keeps it, so its tools and system prompt match
+  // the turns it summarizes and it reads their cache.
+  const advisor = options.subagent ? null : advisorOf(options.model);
+  // The system prompt and tool list are identical in every session on a model, so the start of
+  // every request is already in Claude's cache. The breakpoint goes on the last system block.
+  const system: Anthropic.Beta.Messages.BetaTextBlockParam[] = [{ type: "text", text: SYSTEM_PROMPT }];
+  if (advisor) system.push({ type: "text", text: advisorGuidance(capitalize(modelLabel(advisor))) });
+  system.at(-1)!.cache_control = { type: "ephemeral" };
   const request: Anthropic.Beta.Messages.MessageCreateParamsStreaming = {
     model,
     max_tokens: MAX_OUTPUT_TOKENS,
     stream: true,
-    // The system prompt and tool list are identical in every session, so the
-    // start of every request is already in Claude's cache.
-    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+    system,
     tools: toolDefinitions(model, { subagent: options.subagent }),
     messages: options.messages,
     // Caches the conversation tail, so each turn reads the turns before it.
@@ -94,7 +100,6 @@ export function buildRequest(options: RequestOptions) {
       // Each call sends the whole conversation, so its prefix is worth caching.
       caching: { type: "ephemeral", ttl: "5m" },
     } as unknown as Anthropic.Beta.Messages.BetaToolUnion);
-    (request.system as Anthropic.Beta.Messages.BetaTextBlockParam[]).push({ type: "text", text: ADVISOR_PROMPT });
   }
   if (advisor || holdsAdvice(options.messages)) betas.push("advisor-tool-2026-03-01");
   if (features.progressNotes && info?.progressNotes) {

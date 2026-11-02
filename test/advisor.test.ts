@@ -62,7 +62,6 @@ test("a pair's request sends the executor, the advisor tool, its guidance and it
     caching: { type: "ephemeral", ttl: "5m" },
   });
   expect(request.system).toHaveLength(2);
-  expect(request.system[1].text).toContain("advisor");
   expect(request.betas).toContain("advisor-tool-2026-03-01");
 });
 
@@ -73,11 +72,35 @@ test("a single model's request has no advisor", () => {
   expect(request.betas).not.toContain("advisor-tool-2026-03-01");
 });
 
-test("subagents and summaries go without the advisor, but keep its beta for its answers", () => {
-  expect(advisorTool(pairRequest({ subagent: true }))).toBeUndefined();
+test("subagents go without the advisor", () => {
+  const request = pairRequest({ subagent: true });
+  expect(advisorTool(request)).toBeUndefined();
+  expect(request.system).toHaveLength(1);
+});
+
+test("a summary starts with the same tools and system prompt as the turns, so it reads their cache", () => {
+  const turn = pairRequest({ messages: advice });
   const summary = pairRequest({ summarize: true, messages: advice });
-  expect(advisorTool(summary)).toBeUndefined();
+  expect(JSON.stringify(summary.tools)).toBe(JSON.stringify(turn.tools));
+  expect(JSON.stringify(summary.system)).toBe(JSON.stringify(turn.system));
   expect(summary.betas).toContain("advisor-tool-2026-03-01");
+});
+
+test("the guidance names each pair's advisor, and the cache breakpoint sits after it", () => {
+  for (const [model, advisor] of [
+    [PAIR, "Opus 5.5"],
+    ["claude-opus-5-5+fable-5-1", "Fable 5.1"],
+    ["claude-haiku-5-5+sonnet-5-5", "Sonnet 5.5"],
+  ]) {
+    const system = pairRequest({ model }).system;
+    expect(system[1].text).toContain(`It asks ${advisor}, a stronger model than you`);
+    expect(system[1].text).toContain(`When the user asks you to consult ${advisor}`);
+    expect(system[1].text).not.toContain("{{");
+    expect(system[0].cache_control).toBeUndefined();
+    expect(system[1].cache_control).toEqual({ type: "ephemeral" });
+  }
+  // The same pair always sends the same text, so its prefix stays cached across sessions.
+  expect(JSON.stringify(pairRequest().system)).toBe(JSON.stringify(pairRequest({ effort: "high" }).system));
 });
 
 test("after switching away from the pair, its answers in the history still get the beta", () => {

@@ -13,5 +13,6 @@ import systemPrompt from "../../prompts/system.md" with { type: "text" };
 
 export const SYSTEM_PROMPT = systemPrompt.trimEnd();
 
-// Added after the system prompt when a pair's executor can ask its advisor.
-export const ADVISOR_PROMPT = advisorPrompt.trimEnd();
+// Added after the system prompt when a pair's executor can ask its advisor, such as "Opus 5.5".
+// The text is fixed for each pair, so a pair's requests keep the same cached prefix.
+export const advisorGuidance = (advisor: string) => advisorPrompt.trimEnd().replaceAll("{{advisor}}", advisor);
