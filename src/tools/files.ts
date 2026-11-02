@@ -250,14 +250,14 @@ export const grepFiles: Tool<{
 }> = {
   name: "grep_files",
   description:
-    "Search file contents. Matches literal text by default; set regex for a regular expression. Returns file:line:text. Respects .gitignore.",
+    "Search file contents. The pattern is a regular expression. If it is invalid or finds nothing, clue searches for the same text literally. Set regex to true or false to use only that mode. Returns file:line:text. Respects .gitignore.",
   schema: {
     type: "object",
     properties: {
-      pattern: { type: "string", description: "Text or regular expression to find." },
+      pattern: { type: "string", description: "Regular expression or text to find." },
       path: { type: "string", description: "File or folder to search. Defaults to the project folder." },
       glob: { type: "string", description: 'Only search files matching this glob, such as "*.ts".' },
-      regex: { type: "boolean", description: "Treat pattern as a regular expression." },
+      regex: { type: "boolean", description: "true: only a regular expression. false: only literal text." },
       ignore_case: { type: "boolean" },
       context: { type: "number", description: "Lines of context around each match." },
     },
@@ -276,44 +276,12 @@ export const grepFiles: Tool<{
       context: "number?",
     }),
   async run(input, context) {
-    const rg = Bun.which("rg");
-    const target = input.path ? absolute(context.cwd, input.path) : ".";
-    let args: string[];
-    if (rg) {
-      args = [
-        rg,
-        "--no-config",
-        "--line-number",
-        "--no-heading",
-        "--color",
-        "never",
-        "--max-columns",
-        "400",
-        "--max-count",
-        "50",
-      ];
-      if (!input.regex) args.push("--fixed-strings");
-      if (input.ignore_case) args.push("--ignore-case");
-      if (input.context) args.push("--context", String(Math.min(input.context, 10)));
-      if (input.glob) args.push("--glob", input.glob);
-      args.push("--", input.pattern, target);
-    } else {
-      args = [
-        "grep",
-        "-rn",
-        input.regex ? "-E" : "-F",
-        ...(input.ignore_case ? ["-i"] : []),
-        "--",
-        input.pattern,
-        target,
-      ];
-    }
-    const proc = Bun.spawn(args, { cwd: context.cwd, stdout: "pipe", stderr: "pipe", signal: context.signal });
-    const { lines, truncated } = await readLines(proc.stdout, MAX_GREP_LINES, () => proc.kill());
-    const code = truncated ? 0 : await proc.exited;
-    // ripgrep exits 2 when it hit an unreadable file, even if it found matches. Only no output is a failure.
-    if (code === 2 && lines.length === 0)
-      return { content: (await new Response(proc.stderr).text()).trim() || "Search failed.", isError: true };
+    const first = await search(input, context, input.regex === false);
+    // Claude writes both `a|b` and `call(x)`, and only the regex field says which, so an
+    // unset field tries the expression first and then the same text literally.
+    const retry = input.regex === undefined && first.lines.length === 0 && REGEX_CHARS.test(input.pattern);
+    const { lines, truncated, failure } = retry ? await search(input, context, true) : first;
+    if (failure) return { content: failure, isError: true };
     const files = new Set(lines.map((line) => line.split(":")[0]));
     const body = lines.join("\n");
     const more = truncated ? `\n[More matches than ${MAX_GREP_LINES} lines. Narrow the search.]` : "";
@@ -325,6 +293,44 @@ export const grepFiles: Tool<{
     };
   },
 };
+
+type GrepInput = { pattern: string; path?: string; glob?: string; ignore_case?: boolean; context?: number };
+
+const REGEX_CHARS = /[\\^$.|?*+()[\]{}]/;
+
+async function search(input: GrepInput, context: ToolContext, literal: boolean) {
+  const rg = Bun.which("rg");
+  const target = input.path ? absolute(context.cwd, input.path) : ".";
+  let args: string[];
+  if (rg) {
+    args = [
+      rg,
+      "--no-config",
+      "--line-number",
+      "--no-heading",
+      "--color",
+      "never",
+      "--max-columns",
+      "400",
+      "--max-count",
+      "50",
+    ];
+    if (literal) args.push("--fixed-strings");
+    if (input.ignore_case) args.push("--ignore-case");
+    if (input.context) args.push("--context", String(Math.min(input.context, 10)));
+    if (input.glob) args.push("--glob", input.glob);
+    args.push("--", input.pattern, target);
+  } else {
+    args = ["grep", "-rn", literal ? "-F" : "-E", ...(input.ignore_case ? ["-i"] : []), "--", input.pattern, target];
+  }
+  const proc = Bun.spawn(args, { cwd: context.cwd, stdout: "pipe", stderr: "pipe", signal: context.signal });
+  const { lines, truncated } = await readLines(proc.stdout, MAX_GREP_LINES, () => proc.kill());
+  const code = truncated ? 0 : await proc.exited;
+  // ripgrep exits 2 when it hit an unreadable file, even if it found matches. Only no output is a failure.
+  const failed = code === 2 && lines.length === 0;
+  const failure = failed ? (await new Response(proc.stderr).text()).trim() || "Search failed." : null;
+  return { lines, truncated, failure };
+}
 
 // Reads a process's output until `max` complete lines are in, then stops the process.
 // A common word can match hundreds of thousands of lines, and reading them all

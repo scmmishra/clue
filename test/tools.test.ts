@@ -286,3 +286,41 @@ test("an image's type comes from its bytes, not its extension", async () => {
   const { block } = await encodeImage(file, 70);
   expect(block.source.media_type).toBe("image/png");
 });
+
+function grepProject() {
+  const dir = mkdtempSync(join(tmpdir(), "clue-grep-"));
+  writeFileSync(join(dir, "a.ts"), "const alpha = 1;\nconst beta = 2;\nopen(file);\ncall(one)\nfoo|bar\n");
+  const run = (input: Parameters<typeof grepFiles.run>[0]) => grepFiles.run(input, { ...context(), cwd: dir });
+  return { run };
+}
+
+test("grep_files reads a pattern as a regular expression by default", async () => {
+  const { content } = await grepProject().run({ pattern: "alpha|beta" });
+  expect(content).toContain("const alpha");
+  expect(content).toContain("const beta");
+});
+
+test("grep_files falls back to literal text when the pattern isn't a valid expression", async () => {
+  const result = await grepProject().run({ pattern: "open(" });
+  expect(result.isError).toBeFalsy();
+  expect(result.content).toContain("open(file);");
+});
+
+test("grep_files falls back to literal text when the expression finds nothing", async () => {
+  const { content } = await grepProject().run({ pattern: "call(one)" });
+  expect(content).toContain("call(one)");
+});
+
+test("grep_files keeps an explicit choice", async () => {
+  const { run } = grepProject();
+  const literal = await run({ pattern: "foo|bar", regex: false });
+  expect(literal.content).toContain("foo|bar");
+  expect(literal.content).not.toContain("alpha");
+  expect((await run({ pattern: "alpha|beta", regex: false })).content).toBe("No matches.");
+  expect((await run({ pattern: "call(one)", regex: true })).content).toBe("No matches.");
+  expect((await run({ pattern: "open(", regex: true })).isError).toBe(true);
+});
+
+test("grep_files reports no matches for text that isn't there", async () => {
+  expect((await grepProject().run({ pattern: "missing|absent" })).content).toBe("No matches.");
+});

@@ -2,6 +2,10 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- `grep_files` reads a pattern as a regular expression, then as literal text if that is invalid or finds nothing. Before, a pattern like `a|b` without the `regex` flag searched for those exact characters, which caused most empty searches in real sessions.
+
 ## 0.9.0
 
 - `/fast` and `--fast` turn on fast mode for Opus 5.5 and Opus 5: faster replies at twice the token price. The line under the input and the footer of each reply show `fast`. Set `"fast": true` in `settings.json` to start with it on.

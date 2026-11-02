@@ -7,7 +7,7 @@ The model chooses these tools itself. [Permissions](/docs/permissions) decide wh
 | Tool | What it does |
 | --- | --- |
 | `glob_files` | Finds file paths that match a pattern. |
-| `grep_files` | Searches file contents. |
+| `grep_files` | Searches file contents. The pattern is a regular expression. If it is invalid or finds nothing, clue searches for the same text literally. |
 | `read_file` | Reads text files and images. |
 | `write_file` | Creates a file, or replaces one it has read. |
 | `edit_file` | Changes part of a file. It refuses if the file changed since the last read. |
