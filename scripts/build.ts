@@ -1,8 +1,10 @@
 // Builds clue as one native executable per platform.
 //   bun scripts/build.ts            this machine only
 //   bun scripts/build.ts --all      macOS and Linux, arm64 and x64
+//   bun scripts/build.ts --aot      this machine only, compiled to machine code (Bun canary)
 // Startup flags: bytecode (no parsing at launch), a profile of which functions
-// a launch uses (read first), and a lazy JIT until the first paint.
+// a launch uses (read first), and a lazy JIT until the first paint. An AOT build
+// needs none of them, because nothing is parsed or compiled at launch.
 
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -17,6 +19,36 @@ const targets = process.argv.includes("--all") ? ALL : [native];
 const channel = process.argv.includes("--all") ? "release" : "local";
 
 mkdirSync(DIST, { recursive: true });
+
+// `bun compile` is only in Bun canary for now. The AOT workflow runs this on each platform.
+if (process.argv.includes("--aot")) {
+  if (process.argv.includes("--all")) {
+    console.error("--aot builds for this machine only.");
+    process.exit(1);
+  }
+  const outfile = join(DIST, "clue");
+  const proc = Bun.spawnSync(
+    [
+      process.execPath,
+      "compile",
+      join(ROOT, "src/main.ts"),
+      "--minify",
+      `--define=BUILD_CHANNEL=${JSON.stringify(channel)}`,
+      // A project's .env or bunfig.toml must never configure clue itself.
+      "--no-compile-autoload-dotenv",
+      "--no-compile-autoload-bunfig",
+      "--outfile",
+      outfile,
+    ],
+    { stdout: "inherit", stderr: "inherit" },
+  );
+  if (proc.exitCode !== 0) {
+    console.error(`bun compile failed. AOT builds need Bun canary (this is ${Bun.version}).`);
+    process.exit(proc.exitCode ?? 1);
+  }
+  console.log(`built ${outfile} (AOT)`);
+  process.exit(0);
+}
 
 async function build(target: string, outfile: string, bytecodeOrder: string | false) {
   const result = await Bun.build({
