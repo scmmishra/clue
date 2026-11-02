@@ -17,6 +17,7 @@ const ADVISOR_MAX_TOKENS = 4096;
 const ADVISOR_MAX_USES = 5;
 
 let clientPromise: Promise<Anthropic> | null = null;
+let clientOrigin: string | undefined;
 
 // Opens the TLS connection while the user types, so the first request skips the handshake.
 export function preconnect() {
@@ -32,6 +33,9 @@ export class MissingCredentials extends Error {
 }
 
 export function getClient(): Promise<Anthropic> {
+  // Test files each point ANTHROPIC_BASE_URL at their own mock server, so a new one gets a new client.
+  if (clientOrigin !== process.env.ANTHROPIC_BASE_URL) clientPromise = null;
+  clientOrigin = process.env.ANTHROPIC_BASE_URL;
   clientPromise ??= (async () => {
     const [{ default: AnthropicClient }, auth] = await Promise.all([import("@anthropic-ai/sdk"), resolveAuth()]);
     if (auth.source === "none") throw new MissingCredentials();
