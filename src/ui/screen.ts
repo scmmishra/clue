@@ -44,7 +44,12 @@ export class Screen {
       this.held.push(...lines);
       return;
     }
-    this.out.write(this.erase() + lines.map((line) => `${line}\x1b[0m`).join("\n") + "\n" + this.draw());
+    this.frame(this.erase() + lines.map((line) => `${line}\x1b[0m`).join("\n") + "\n" + this.draw());
+  }
+
+  // Writes an erase and a redraw as one synchronized update.
+  private frame(text: string) {
+    this.out.write(term.syncStart + text + term.syncEnd);
   }
 
   refresh() {
@@ -57,7 +62,7 @@ export class Screen {
 
   flush() {
     if (this.suspended) return;
-    this.out.write(this.erase() + this.draw());
+    this.frame(this.erase() + this.draw());
   }
 
   // Stops drawing while a full-screen view owns the terminal.

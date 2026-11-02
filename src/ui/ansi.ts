@@ -67,6 +67,10 @@ const marks = process.env.TERM !== "dumb";
 export const term = {
   promptStart: marks ? "\x1b]133;A\x1b\\" : "",
   outputStart: marks ? "\x1b]133;C\x1b\\" : "",
+  // Synchronized output (mode 2026): the terminal shows a redraw only once it's whole, so
+  // erasing and drawing the live area never flickers. Terminals without it ignore both.
+  syncStart: marks ? "\x1b[?2026h" : "",
+  syncEnd: marks ? "\x1b[?2026l" : "",
   hideCursor: "\x1b[?25l",
   showCursor: "\x1b[?25h",
   clearDown: "\x1b[J",
