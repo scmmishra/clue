@@ -268,6 +268,17 @@ section {
 	vertical-align: top;
 }
 
+/* A command or key such as `/undo force` stays on one line. */
+.prose td code {
+	white-space: nowrap;
+}
+
+/* Tables under one page line up, whatever their first column holds. */
+.prose td:first-child,
+.prose th:first-child {
+	min-width: 16ch;
+}
+
 .prose ul {
 	margin: 8px 0 0;
 	padding-inline-start: 2ch;
