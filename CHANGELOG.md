@@ -2,7 +2,7 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
-## Unreleased
+## 0.11.0
 
 - `/copy` puts the last reply on the clipboard as Markdown, without the gutters and line wraps on screen. `/copy <request>` copies only the parts you describe, such as `/copy the sql`. Perplexity's Decider picks them when `OPENROUTER_API_KEY` is set, and Haiku when it isn't. The `copy` setting chooses another model.
 - `review.model` accepts any decision model on OpenRouter, such as `perplexity/pplx-decider-v1.2`. `decider` is a new short name next to `jev`. Both point to the latest version clue knows. Other short forms, such as `jev-1.14`, no longer work. Use the full id, such as `typesafe/jev-1.14`.
