@@ -22,6 +22,7 @@ clue warns at startup if the file has a problem. If the JSON is broken, clue use
 | `permission_mode` | `auto` | `ask`, `auto` or `full-access`. |
 | `permission` | none | Allow, ask and deny rules. See [Permissions](/docs/permissions). |
 | `review` | automatic | Who reviews actions in `auto` mode. See below. |
+| `copy` | automatic | Who picks what `/copy <request>` copies. See below. |
 | `bell` | `true` | Rings the terminal bell when clue needs you. |
 
 ```json
@@ -50,5 +51,19 @@ clue warns at startup if the file has a problem. If the JSON is broken, clue use
 Both keys are optional. With no `review`, clue uses Jev if `OPENROUTER_API_KEY` is set, and Haiku if it isn't. To always use Haiku, set `"provider": "anthropic"`.
 
 If the reviewer fails or the setting can't work, Claude Haiku at low effort reviews instead. If that fails too, clue asks you, or holds the action in `clue ask`.
+
+## Choose the copy model
+
+`copy` picks the model that chooses what `/copy <request>` copies. It takes the same keys and models as `review`.
+
+```json
+{
+  "copy": { "provider": "anthropic", "model": "sonnet" }
+}
+```
+
+With no `copy`, clue uses Decider if `OPENROUTER_API_KEY` is set, and Haiku if it isn't. If the model fails or the setting can't work, Haiku picks instead.
+
+A decision model picks a code block when its probability is at least 0.6, and any other block at 0.85. clue set those cutoffs from benchmarks of Jev and Decider, so another decision model may pick more or fewer blocks.
 
 `CLUE_MODEL`, `CLUE_EFFORT` and `CLUE_PERMISSION_MODE` override the file for one process. Command-line flags override both.

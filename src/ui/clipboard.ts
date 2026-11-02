@@ -6,7 +6,7 @@ import { isLargeImage, MAX_IMAGE_BYTES, shrinkImage } from "../tools/files";
 // clipboard directly. macOS only, since text comes from pbpaste.
 export const clipboardSupported = process.platform === "darwin";
 
-// The keyboard waits for this read, so it can't be allowed to hang.
+// The keyboard waits for these reads and writes, so they can't be allowed to hang.
 const READ_TIMEOUT_MS = 5000;
 
 // The clipboard's text, for ctrl+v and /paste when it holds no image. Empty when there's none.
@@ -17,6 +17,29 @@ export async function clipboardText(): Promise<string> {
     return (await proc.exited) === 0 ? text : "";
   } catch {
     return "";
+  }
+}
+
+// Puts text on the clipboard. False when that didn't work. pbcopy reads its input in
+// the locale's encoding, so LANG is set for anything outside ASCII.
+// Tests set CLUE_TEST_CLIPBOARD_OUT to a file, which gets the text in its place.
+export async function writeClipboard(text: string): Promise<boolean> {
+  const fake = process.env.CLUE_TEST_CLIPBOARD_OUT;
+  if (fake !== undefined) {
+    await Bun.write(fake, text);
+    return true;
+  }
+  try {
+    const proc = Bun.spawn(["pbcopy"], {
+      stdin: Buffer.from(text),
+      stdout: "ignore",
+      stderr: "ignore",
+      env: { ...process.env, LANG: "en_US.UTF-8" },
+      timeout: READ_TIMEOUT_MS,
+    });
+    return (await proc.exited) === 0;
+  } catch {
+    return false;
   }
 }
 

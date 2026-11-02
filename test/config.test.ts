@@ -76,6 +76,8 @@ test.each([
   ["a bad review", '{"review":"haiku"}', "review must be an object"],
   ["a bad provider", '{"review":{"provider":"acme"}}', "review.provider must be one of anthropic, openrouter"],
   ["an unknown review key", '{"review":{"effort":"low"}}', "review.effort isn't a setting"],
+  ["a bad copy provider", '{"copy":{"provider":"acme"}}', "copy.provider must be one of anthropic, openrouter"],
+  ["a bad copy model", '{"copy":{"model":3}}', "copy.model must be a string"],
   [
     "a rule value in the wrong case",
     '{"permission":{"shell":{"git push *":"Deny"}}}',
@@ -132,6 +134,7 @@ test("config show says where each value comes from", async () => {
   expect(row("permission_mode")).toEqual(["permission_mode", "auto", "default"]);
   expect(row("bell")).toEqual(["bell", "true", "default"]);
   expect(row("review.provider")).toEqual(["review.provider", "automatic", "default"]);
+  expect(row("copy.model")).toEqual(["copy.model", "automatic", "default"]);
 });
 
 test("config show --json gives scripts the same data", async () => {

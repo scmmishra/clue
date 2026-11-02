@@ -4,6 +4,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- `/copy` puts the last reply on the clipboard as Markdown, without the gutters and line wraps on screen. `/copy <request>` copies only the parts you describe, such as `/copy the sql`. Perplexity's Decider picks them when `OPENROUTER_API_KEY` is set, and Haiku when it isn't. The `copy` setting chooses another model.
 - `review.model` accepts any decision model on OpenRouter, such as `perplexity/pplx-decider-v1.2`. `decider` is a new short name next to `jev`. Both point to the latest version clue knows. Other short forms, such as `jev-1.14`, no longer work. Use the full id, such as `typesafe/jev-1.14`.
 - New pairs of models in `/model`: `haiku 5.5 + sonnet`, `sonnet 5.5 + opus` and `opus 5.5 + fable`. The first model does the work, and asks the second for advice on hard steps. Start one with `--model sonnet+opus`, for example. Each answer shows as an `Asked <advisor>` row, and the cost of a reply includes it.
 - In `/model`, `←` and `→` change the effort of the highlighted model.

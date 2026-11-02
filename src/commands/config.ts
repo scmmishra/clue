@@ -18,14 +18,25 @@ const USAGE = `Usage:
   clue config set <key> <value>     change one setting
   clue config unset <key>           go back to the default`;
 
-const SHOWN = ["model", "effort", "fast", "permission_mode", "bell", "review.provider", "review.model", "permission"];
+const SHOWN = [
+  "model",
+  "effort",
+  "fast",
+  "permission_mode",
+  "bell",
+  "review.provider",
+  "review.model",
+  "copy.provider",
+  "copy.model",
+  "permission",
+];
 const ENV: Record<string, string> = {
   model: "CLUE_MODEL",
   effort: "CLUE_EFFORT",
   permission_mode: "CLUE_PERMISSION_MODE",
 };
 // `set` handles single values. These hold nested rules, which order and shape matter for.
-const EDIT_ONLY = new Set(["permission", "review"]);
+const EDIT_ONLY = new Set(["permission", "review", "copy"]);
 
 function stop(message: string, code = 2): never {
   process.stderr.write(`clue: ${message}\n`);

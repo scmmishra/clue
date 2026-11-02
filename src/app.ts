@@ -20,6 +20,7 @@ import {
 } from "./agent/models";
 import { getClient, MissingCredentials, preconnect, warmCache } from "./agent/provider";
 import { mcpCommand } from "./commands/mcp";
+import { chooseCopy, lastReply } from "./copy";
 import { EFFORTS, PERMISSION_MODES, type Effort, type PermissionMode, type Settings } from "./config";
 import { McpManager } from "./mcp/manager";
 import { Permissions } from "./permissions";
@@ -36,7 +37,7 @@ import { OptionPicker, type Dial, type Option } from "./ui/option-picker";
 import { RewindPicker, rewindReport } from "./ui/rewind";
 import { undoReport } from "./ui/undo";
 import { usageReport } from "./ui/usage";
-import { clipboardImage, clipboardSupported, clipboardText } from "./ui/clipboard";
+import { clipboardImage, clipboardSupported, clipboardText, writeClipboard } from "./ui/clipboard";
 import { findImagePaths } from "./ui/paste";
 import { pickSession } from "./ui/picker";
 import { detailLines, Pager, replay, RESUME_SCROLLBACK_BYTES } from "./ui/replay";
@@ -54,6 +55,7 @@ const COMMANDS: Command[] = [
   { name: "rename", description: "name this session" },
   { name: "new", description: "start a fresh session" },
   { name: "mcp", description: "manage MCP servers" },
+  { name: "copy", description: "copy the last reply, or the part you describe" },
   { name: "paste", description: "attach the image on the clipboard" },
   { name: "compact", description: "replace the conversation with a summary" },
   { name: "undo", description: "restore the files changed in the last turn" },
@@ -365,6 +367,19 @@ export class App {
   }
 
   // Handles a key that adds to the input from outside it. True when the key was one.
+  // Keys wait for the copy, so a prompt typed meanwhile can't start a turn under it.
+  private async copy(request: string) {
+    if (!clipboardSupported) return this.notice("Copying to the clipboard works on macOS.");
+    const reply = lastReply(this.session.messages);
+    if (request && reply) this.screen.status("working");
+    const choice = await chooseCopy(reply, request, this.settings.copy);
+    this.screen.status("idle");
+    if ("problem" in choice) return this.notice(choice.problem);
+    if (!(await writeClipboard(choice.text)))
+      return this.print([`  ${style.red("pbcopy failed, so nothing was copied.")}`, ""]);
+    this.print([`  ${style.muted(choice.summary)}`, ...(choice.note ? [`  ${style.faint(choice.note)}`] : []), ""]);
+  }
+
   private async compact() {
     const before = this.session.turns.at(-1)?.context;
     this.print([`  ${style.muted("Compacting…")}`]);
@@ -803,6 +818,11 @@ export class App {
       case "mcp":
         await mcpCommand(args, this.cwd, this.mcp, (lines) => this.print(lines));
         return;
+      case "copy": {
+        const work = this.copy(args.join(" "));
+        this.keyboard.hold(work);
+        return work;
+      }
       case "paste": {
         const work = this.pasteClipboard();
         this.keyboard.hold(work);

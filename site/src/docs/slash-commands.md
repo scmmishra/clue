@@ -29,6 +29,7 @@ Type `/` to open the list of commands. `tab` completes the one you're typing.
 
 | Command | What it does |
 | --- | --- |
+| `/copy` | Copies the last reply, or the part you describe. |
 | `/paste` | Attaches the image on the clipboard. |
 | `/mcp` | Manages [MCP servers](/docs/mcp-servers). |
 | `/help` | Lists commands and keys. |
@@ -37,6 +38,16 @@ Type `/` to open the list of commands. `tab` completes the one you're typing.
 ## Undo
 
 `/undo` restores the files from the last turn that changed files. If those files changed since, `/undo force` overwrites the later changes. Shell commands aren't undone, and the conversation stays as it is.
+
+## Copy
+
+`/copy` puts the last reply on the clipboard as Markdown. It copies the text clue received, so the gutters and line wraps on screen are left out.
+
+`/copy <request>` copies only the parts you describe, such as `/copy the sql` or `/copy all the code blocks`. A code block is copied without its fences. If you describe several parts, they are joined with a blank line. A line under the command says what was copied.
+
+A model picks the parts. clue uses Perplexity's Decider through OpenRouter if `OPENROUTER_API_KEY` is set, and Claude Haiku if it isn't. If Decider fails, Haiku picks. The model sees the last reply but not the tool output. To use another model, see [Choose the copy model](/docs/settings#choose-the-copy-model).
+
+Copying works on macOS.
 
 ## Usage
 

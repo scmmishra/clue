@@ -66,6 +66,8 @@ export type Settings = {
   permission: PermissionRules;
   // Who reviews actions in auto mode.
   review?: HelperSetting;
+  // Who picks the parts of a reply that /copy <request> copies.
+  copy?: HelperSetting;
   bell: boolean;
 };
 
@@ -110,7 +112,7 @@ export async function saveSetting<K extends keyof Settings>(key: K, value: Setti
 }
 
 const HELPER_PROVIDERS = ["anthropic", "openrouter"];
-const HELPERS = ["review"];
+const HELPERS = ["review", "copy"];
 // A JSON object, such as settings.json or a group of settings in it.
 export type JsonObject = { [key: string]: unknown };
 export const isObject = (value: unknown): value is JsonObject =>
