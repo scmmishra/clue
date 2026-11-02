@@ -67,6 +67,8 @@ const marks = process.env.TERM !== "dumb";
 export const term = {
   promptStart: marks ? "\x1b]133;A\x1b\\" : "",
   outputStart: marks ? "\x1b]133;C\x1b\\" : "",
+  // An OSC 8 link around text that keeps its own style. NO_COLOR keeps it, since it draws nothing.
+  link: (text: string, url: string) => (marks ? `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\` : text),
   // Synchronized output (mode 2026): the terminal shows a redraw only once it's whole, so
   // erasing and drawing the live area never flickers. Terminals without it ignore both.
   syncStart: marks ? "\x1b[?2026h" : "",

@@ -1,3 +1,5 @@
+import { hostname } from "node:os";
+import { isAbsolute, join } from "node:path";
 import type { ConfirmAnswer, AgentEvents } from "../agent/loop";
 import { modelLabel } from "../agent/models";
 import type { ToolRecord, TurnRecord } from "../session";
@@ -99,7 +101,35 @@ type Row = {
   added?: number;
   removed?: number;
   startedAt: number;
+  // The file a read, write or edit worked on. Its row links to it.
+  path?: string;
 };
+
+const FILE_TOOLS = new Set(["read_file", "write_file", "edit_file"]);
+
+// The file a tool record worked on, as the tool was given it.
+export function toolFile(record: Pick<ToolRecord, "name" | "input">) {
+  const path = (record.input as { path?: unknown } | null)?.path;
+  return FILE_TOOLS.has(record.name) && typeof path === "string" && path ? path : undefined;
+}
+
+// A file:// URL with the host, as ls --hyperlink writes them, so a terminal can tell a file
+// on this machine from one on a server. clue runs in the session's folder, so a relative
+// path joins it, in a resumed session too.
+let host: string | undefined;
+// Most paths need neither normalizing nor escaping, and resume links every row.
+const PLAIN_PATH = /^[\w./-]+$/;
+function fileUrl(path: string, cwd: string) {
+  const file = isAbsolute(path) ? path : path.includes("./") || cwd === "/" ? join(cwd, path) : `${cwd}/${path}`;
+  const encoded = PLAIN_PATH.test(file) ? file : encodeURI(file).replace(/[?#]/g, encodeURIComponent);
+  return `file://${(host ??= hostname())}${encoded}`;
+}
+
+// Links the path at the end of a label, such as "Read src/app.ts", and leaves its look alone.
+function linkPath(label: string, path: string | undefined, cwd: () => string) {
+  if (!path || !label.endsWith(path)) return label;
+  return label.slice(0, -path.length) + term.link(path, fileUrl(path, cwd()));
+}
 
 const isHeld = (row: Pick<Row, "review">) =>
   row.review?.startsWith("held") || row.review === "declined" || row.review === "denied";
@@ -133,7 +163,7 @@ function firstLine(label: string) {
   return rest.length ? `${first} …` : first;
 }
 
-function rowText(row: Row, clock: string) {
+function rowText(row: Row, clock: string, cwd: () => string) {
   const extra = [
     row.added || row.removed ? `${style.green(`+${row.added ?? 0}`)} ${style.red(`−${row.removed ?? 0}`)}` : "",
     row.reviewing ? style.orange("reviewing") : "",
@@ -141,7 +171,8 @@ function rowText(row: Row, clock: string) {
     row.review ? style.muted(row.review) : "",
     clock,
   ].filter(Boolean);
-  const label = firstLine(row.label) || "…";
+  const path = row.path ?? ("name" in row ? toolFile(row as unknown as ToolRecord) : undefined);
+  const label = linkPath(firstLine(row.label), path, cwd) || "…";
   const text =
     row.done === false
       ? label
@@ -165,9 +196,12 @@ export function toolTree(rows: Row[] | ToolRecord[], clock?: string) {
   const shown = hidden ? items.slice(-(MAX_TREE_ROWS - 1)) : items;
   if (hidden) lines.push(style.muted(`├ … ${hidden + 1} earlier, ctrl+o shows all`));
   const lastRunning = items.findLast((row) => row.done === false);
+  // Read once per tree, and only when a row links a file.
+  let folder: string | undefined;
+  const cwd = () => (folder ??= process.cwd());
   shown.forEach((row, index) => {
     const branch = style.muted(index === shown.length - 1 ? "└ " : "├ ");
-    lines.push(`${branch}${rowText(row, row === lastRunning && clock ? clock : "")}`);
+    lines.push(`${branch}${rowText(row, row === lastRunning && clock ? clock : "", cwd)}`);
   });
   return lines;
 }
@@ -449,6 +483,7 @@ export class TurnView implements AgentEvents {
       reviewing: false,
       added: record.added,
       removed: record.removed,
+      path: toolFile(record),
     });
     this.screen.refresh();
   }
