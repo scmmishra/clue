@@ -8,6 +8,7 @@ import { ensureDir, paths, VERSION } from "./config";
 // messages, so a resume replays them byte for byte.
 
 export type MessageParam = Anthropic.Beta.Messages.BetaMessageParam;
+type Blocks = Anthropic.Beta.Messages.BetaContentBlockParam[];
 export type PromptImage = Anthropic.Beta.Messages.BetaImageBlockParam;
 
 export type Usage = {
@@ -56,9 +57,15 @@ export type TurnRecord = {
   costIsMinimum?: boolean;
 };
 
-// One /compact: the summary that replaces the messages, and what the summary cost.
+// One compaction: what replaces the older messages, and what the summary cost.
 export type CompactionRecord = {
-  message: MessageParam;
+  // The text of the message that replaces them, as sent: the summary and a note on reading it.
+  // It is stored whole, so a resumed session sends the same bytes and its later thinking stays valid.
+  summary?: string;
+  // How many of the latest messages stay after the summary, without their thinking.
+  kept?: number;
+  // Sessions from before clue wrote its own summaries: the API's summary, in a compaction block.
+  message?: MessageParam;
   usage: Usage;
   cost: number | null;
   model: string;
@@ -86,13 +93,43 @@ export type SessionRecord =
   | { t: "rewind"; transcript: number; turns: number }
   | { t: "name"; name: string };
 
-// A /compact summary sits first in the messages. An automatic compaction block never does.
-export function startsWithSummary(messages: MessageParam[]) {
-  const content = messages[0]?.content;
-  return Array.isArray(content) && content[0]?.type === "compaction";
+// The text that stands in for the messages a compaction summarized. The note tells Claude how
+// the summary and the messages kept after it fit together.
+export const summaryText = (summary: string) =>
+  `<summary>\n${summary}\n</summary>\n\nclue compacted this conversation to save space, and this summary replaces its earlier part. The messages after it, if any, are the latest part, word for word. Where they differ from the summary, they are more current. Continue from where the work stopped. Files may have changed since you read them, so read a file again before you edit it.`;
+
+const summaryMessage = (text: string): MessageParam => ({ role: "user", content: [{ type: "text", text }] });
+
+// Stands in for a reply that held only thinking, since a message can't be empty.
+const NO_TEXT = "(thinking omitted)";
+
+// Thinking is tied to the exact messages before it, and the API rejects it once those change.
+// A compaction changes them, so the messages it keeps go without their thinking.
+export function withoutThinking(message: MessageParam): MessageParam {
+  if (message.role !== "assistant" || typeof message.content === "string") return message;
+  const content = message.content.filter((block) => block.type !== "thinking" && block.type !== "redacted_thinking");
+  if (content.length && content.length === message.content.length) return message;
+  return { ...message, content: content.length ? content : [{ type: "text", text: NO_TEXT }] };
 }
 
-// What clue adds after a compaction during a turn. The user didn't type it.
+// Where the API's compaction block sits in a reply, or -1. Sessions from before clue wrote its
+// own summaries have them.
+function compactionBlock(message: MessageParam) {
+  if (message.role !== "assistant" || typeof message.content === "string") return -1;
+  return message.content.findIndex((block) => block.type === "compaction");
+}
+
+const compactionSummary = (message: MessageParam, index: number) =>
+  summaryText(String(((message.content as Blocks)[index] as { content?: unknown }).content ?? ""));
+
+// The <context> block clue sends with the first prompt.
+const holdsContext = (message: MessageParam) =>
+  message.role === "user" &&
+  Array.isArray(message.content) &&
+  message.content.some((block) => block.type === "text" && block.text.startsWith("<context>"));
+
+// What clue added after a compaction during a turn, before it kept the latest messages. Older
+// sessions have it. The user didn't type it.
 export const CONTINUE_PROMPT = "Continue with the task.";
 
 // The text a person typed, or null for tool results and clue's own messages.
@@ -178,8 +215,12 @@ function parseRecords(text: string) {
 
 export class Session {
   readonly file: string;
-  // What the next request sends. A compaction replaces these with its summary.
+  // What the next request sends. A compaction replaces the older ones with its summary.
   messages: MessageParam[] = [];
+  // The first message is a compaction's summary, which isn't in the transcript.
+  summarized = false;
+  // The session holds a summary the API wrote, so its thinking was tied to messages clue no longer sends.
+  private legacy = false;
   // Every message of the session, for showing it again on resume.
   transcript: MessageParam[] = [];
   compactions: CompactionRecord[] = [];
@@ -219,6 +260,8 @@ export class Session {
       session?.apply(record);
     }
     if (session && text && !text.endsWith("\n")) session.tornLastLine = true;
+    // Dropping all thinking is always valid, so this costs a resume only its cache.
+    if (session?.legacy) session.messages = session.messages.map(withoutThinking);
     return session;
   }
 
@@ -232,10 +275,26 @@ export class Session {
     if (record.t === "spend") this.spends.push(record);
     if (record.t === "compacted") {
       this.compactions.push(record);
-      this.messages = [record.message];
+      this.summarized = true;
+      if (record.summary !== undefined) {
+        const kept = this.messages.slice(Math.max(0, this.messages.length - (record.kept ?? 0)));
+        this.messages = [summaryMessage(record.summary), ...kept.map(withoutThinking)];
+        this.legacy = false;
+      } else {
+        const index = record.message ? compactionBlock(record.message) : -1;
+        this.messages = [summaryMessage(index === -1 ? summaryText("") : compactionSummary(record.message!, index))];
+        this.legacy = true;
+      }
     }
     if (record.t === "message") {
-      this.messages.push(record.message);
+      const index = compactionBlock(record.message);
+      if (index === -1) this.messages.push(record.message);
+      else {
+        // The API compacted the conversation during this reply. The reply goes on after its summary.
+        const reply = { role: "assistant" as const, content: (record.message.content as Blocks).slice(index + 1) };
+        this.messages = [summaryMessage(compactionSummary(record.message, index)), withoutThinking(reply)];
+        this.summarized = this.legacy = true;
+      }
       this.transcript.push(record.message);
       this.title ||= promptText(record.message) ?? "";
     } else if (record.t === "tool") this.tools.set(record.tool.id, record.tool);
@@ -333,9 +392,9 @@ export class Session {
     return this.messages.length === 0;
   }
 
-  // Prompts since the last compaction, oldest first. Earlier ones are no longer in what is sent.
+  // Prompts in what is sent, oldest first. A compaction summarized the earlier ones.
   get rewindPoints() {
-    const sent = this.messages.length - (this.carriesSummary ? 1 : 0);
+    const sent = this.messages.length - (this.summarized ? 1 : 0);
     const points: RewindPoint[] = [];
     let prompt = 0;
     this.transcript.forEach((message, index) => {
@@ -354,13 +413,10 @@ export class Session {
     return points;
   }
 
-  get carriesSummary() {
-    return startsWithSummary(this.messages);
-  }
-
-  // Compaction summarizes the opening context, so the next prompt brings it again.
+  // The first prompt brings the opening context. A compaction can summarize it away, and then
+  // the next prompt brings it again.
   get needsContext() {
-    return this.isEmpty || (this.messages.length === 1 && this.carriesSummary);
+    return this.isEmpty || (this.summarized && !this.messages.some(holdsContext));
   }
 
   // A crash mid-tool leaves tool calls without results, and the API refuses a new

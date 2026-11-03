@@ -3,8 +3,8 @@ import { isObject, type Effort, type Settings } from "../config";
 import type { McpManager } from "../mcp/manager";
 import { approvalQuestion, Permissions, reviewAction, reviewContext } from "../permissions";
 import {
-  CONTINUE_PROMPT,
   Session,
+  summaryText,
   type PromptImage,
   type RewindPoint,
   type ToolRecord,
@@ -14,19 +14,11 @@ import {
 import { findTool } from "../tools";
 import type { Skill } from "../tools/skills";
 import { clip, type Question, type ToolContext, type ToolOutput } from "../tools/types";
+import { keptCount } from "./compaction";
 import { buildContext } from "./context";
 import { msSince, now } from "../clock";
-import {
-  addUsage,
-  advisorOf,
-  compactAt,
-  cost,
-  emptyUsage,
-  fastEnabled,
-  modelLabel,
-  responseCost,
-  responseUsage,
-} from "./models";
+import { advisorOf, compactAt, emptyUsage, fastEnabled, modelLabel, responseCost, responseUsage } from "./models";
+import { COMPACT_PROMPT } from "./prompt";
 import { dropRejectedFeature, fastRejected, stream, summarize } from "./provider";
 import { UndoStack, type UndoResult } from "./undo";
 
@@ -110,34 +102,39 @@ export class Agent {
     return this.options.session;
   }
 
-  // Replaces the conversation with a summary. Returns its size in tokens, or why there is none.
-  async compact(signal: AbortSignal): Promise<{ summaryTokens: number } | { problem: string }> {
-    const { session, settings } = this.options;
+  // Replaces the older messages with a summary Claude writes, and keeps the latest ones as they
+  // were. Returns the summary's size in tokens and how many messages stayed, or why there is none.
+  async compact(signal: AbortSignal): Promise<{ summaryTokens: number; kept: number } | { problem: string }> {
+    const { session, settings, subagent } = this.options;
     session.closeUnfinishedTools();
     const model = settings.model;
     const fast = fastEnabled(settings);
-    const message = await summarize({ model, effort: settings.effort, fast, messages: session.messages }, signal);
-    const iterations = message.usage.iterations ?? [];
-    const usage = emptyUsage();
-    for (const iteration of iterations) addUsage(usage, iteration);
-    // Known gap: this early return records no cost. It matters only if the API bills a summary
-    // that didn't finish, which isn't confirmed, so it stays for now.
-    if (message.stop_reason !== "compaction" || !message.content.some((block) => block.type === "compaction")) {
+    const messages = session.messages;
+    const message = await summarize(
+      { model, effort: settings.effort, fast, messages, subagent },
+      COMPACT_PROMPT,
+      signal,
+    );
+    const servedFast = (message.usage.speed ?? (fast ? "fast" : "standard")) === "fast";
+    const usage = responseUsage(message.usage);
+    const price = responseCost(model, message.usage, servedFast);
+    const text = message.content
+      .flatMap((block) => (block.type === "text" ? [block.text] : []))
+      .join("\n")
+      .trim();
+    if (message.stop_reason !== "end_turn" || !text) {
+      // A summary clue can't use is still billed.
+      session.append({ t: "spend", usage, cost: price, model, at: Date.now() });
+      if (message.stop_reason === "end_turn") return { problem: "The summary came back empty." };
       return { problem: `The summary didn't finish (${message.stop_reason ?? "no reason given"}).` };
     }
-    session.append({
-      t: "compacted",
-      message: { role: "assistant", content: message.content as Anthropic.Beta.Messages.BetaContentBlockParam[] },
-      usage,
-      cost: cost(model, usage, fast),
-      model,
-      at: Date.now(),
-    });
+    const kept = keptCount(messages);
+    session.append({ t: "compacted", summary: summaryText(text), kept, usage, cost: price, model, at: Date.now() });
     // The summary doesn't hold file contents or instructions, so Claude has to read them again.
     this.readStamps.clear();
     this.seenInstructions.clear();
     this.lastContext = 0;
-    return { summaryTokens: usage.output };
+    return { summaryTokens: Math.round(text.length / 4), kept };
   }
 
   // Goes back to before a prompt. Returns the file result, or null when files stay as they are.
@@ -157,15 +154,19 @@ export class Agent {
     return files;
   }
 
-  // Automatic compaction can't run on a session with a /compact summary, so clue triggers it here.
+  // Compacts once the last request reached the point where this model compacts. During a turn it
+  // waits for tool results, since a reply that paused for a server tool has to go on as it was.
   private async compactIfFull(signal: AbortSignal, midTurn: boolean) {
     const { session, events } = this.options;
-    if (!session.carriesSummary || this.lastContext < compactAt(this.options.settings.model)) return;
+    if (this.lastContext < compactAt(this.options.settings.model)) return;
+    if (midTurn && session.messages.at(-1)?.role !== "user") return;
     let problem: string | null = null;
     try {
       const result = await this.compact(signal);
       if ("problem" in result) problem = result.problem;
     } catch (error) {
+      // The turn stops and says so. The next one tries again.
+      if (signal.aborted) return;
       problem = (error as Error).message;
     }
     if (problem) {
@@ -174,8 +175,6 @@ export class Agent {
       return events.notice(`Compaction failed. ${problem}`, "warn");
     }
     events.notice("Compacted the conversation.", "info");
-    // A request can't end on the summary, which is an assistant message.
-    if (midTurn) session.appendMessage({ role: "user", content: CONTINUE_PROMPT });
   }
 
   private turnOffFast() {
@@ -694,6 +693,8 @@ export class Agent {
       const spent = child.turns.at(-1);
       if (spent) tallyUp(tally, spent.usage, spent.cost);
       if (spent?.costIsMinimum) tally.minimum = true;
+      // The subagent's summaries are paid for too, and its session isn't saved anywhere.
+      for (const record of [...child.compactions, ...child.spends]) tallyUp(tally, record.usage, record.cost);
     }
     const last = child.messages.at(-1);
     const finalText =
@@ -708,7 +709,8 @@ export class Agent {
   }
 }
 
-// The size of the context in a response. After a compaction, the last `message` entry has the new size.
+// The size of the context in a response. A response can take several requests, such as around an
+// advisor call, and the last `message` entry is the latest.
 export function contextTokens(usage: Anthropic.Beta.Messages.BetaUsage) {
   const last = usage.iterations?.findLast((entry) => entry.type === "message") ?? usage;
   return (last.input_tokens ?? 0) + (last.cache_read_input_tokens ?? 0) + (last.cache_creation_input_tokens ?? 0);

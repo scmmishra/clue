@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CONTINUE_PROMPT, Session, type MessageParam, type TurnRecord } from "../src/session";
+import { CONTINUE_PROMPT, Session, type TurnRecord } from "../src/session";
 import { sessionEntries } from "../src/ui/replay";
 import { RewindPicker, rewindReport, sentAt, type RewindRow } from "../src/ui/rewind";
 import { usageReport } from "../src/ui/usage";
@@ -87,18 +87,14 @@ test("rewinding to the first prompt empties the session, so the context goes aga
 
 test("only prompts since a compaction are points, and a rewind keeps the summary", () => {
   const session = chat(["one"]);
-  const summary: MessageParam = {
-    role: "assistant",
-    content: [{ type: "compaction", content: "S", signature: "s" } as never],
-  };
-  session.append({ t: "compacted", message: summary, usage, cost: 0, model: "m", at: 2000 });
+  session.append({ t: "compacted", summary: "S", kept: 0, usage, cost: 0, model: "m", at: 2000 });
   session.appendMessage({ role: "user", content: "two" });
   session.appendMessage({ role: "assistant", content: "reply" });
   session.append({ t: "turn", turn: turn("two") });
   const points = session.rewindPoints;
   expect(points.map((point) => point.text)).toEqual(["two"]);
   session.append({ t: "rewind", transcript: points[0].transcript, turns: points[0].turns });
-  expect(session.messages).toEqual([summary]);
+  expect(session.messages).toEqual([{ role: "user", content: [{ type: "text", text: "S" }] }]);
   expect(session.needsContext).toBe(true);
 });
 

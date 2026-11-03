@@ -4,7 +4,7 @@ import { getClient } from "../agent/provider";
 import type { Settings } from "../config";
 import { McpManager } from "../mcp/manager";
 import { Permissions } from "../permissions";
-import type { Session } from "../session";
+import type { Session, Usage } from "../session";
 import { stopAllProcesses } from "../tools/shell";
 import { discoverSkills } from "../tools/skills";
 import { describeError } from "../errors";
@@ -52,12 +52,20 @@ export async function runAsk(prompt: string, settings: Settings, session: Sessio
   const controller = new AbortController();
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(signal, () => controller.abort());
   let code = 0;
+  const before = { compactions: session.compactions.length, spends: session.spends.length };
   try {
     const turn = await agent.runTurn(prompt, controller.signal);
     const final = (answer || current).trim();
     if (json) {
+      // A compaction during the run is paid for outside the turn, so it's added here.
+      const usage = { ...turn.usage };
+      let cost = turn.cost;
+      for (const record of [...session.compactions.slice(before.compactions), ...session.spends.slice(before.spends)]) {
+        for (const key of Object.keys(usage) as (keyof Usage)[]) usage[key] += record.usage[key];
+        cost = cost === null || record.cost === null ? null : cost + record.cost;
+      }
       process.stdout.write(
-        `${JSON.stringify({ final_output: final, session_id: session.id, stop_reason: turn.stop, tools: turn.tools, duration_ms: turn.ms, first_token_ms: turn.firstTokenMs, usage: turn.usage, cost_usd: turn.cost, cost_is_minimum: turn.costIsMinimum === true })}\n`,
+        `${JSON.stringify({ final_output: final, session_id: session.id, stop_reason: turn.stop, tools: turn.tools, duration_ms: turn.ms, first_token_ms: turn.firstTokenMs, usage, cost_usd: cost, cost_is_minimum: turn.costIsMinimum === true })}\n`,
       );
     } else process.stdout.write(`${final}\n`);
     if (turn.stop === "interrupted" || turn.stop === "refusal") code = 1;

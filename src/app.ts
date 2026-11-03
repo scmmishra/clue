@@ -427,11 +427,10 @@ export class App {
       if ("problem" in result) this.print([`  ${style.orange(result.problem)} ${style.muted("Nothing changed.")}`, ""]);
       else {
         const size = `${before ? `${tokens(before)} tokens into ` : ""}a ${tokens(result.summaryTokens)} token summary`;
-        this.print([
-          `  ${style.muted(`Compacted ${size}.`)}`,
-          `  ${style.faint("Images and file contents are gone. Claude reads files again when it needs them.")}`,
-          "",
-        ]);
+        const note = result.kept
+          ? "Recent messages stay as they were. Older images and file contents are gone, and Claude reads files again when it needs them."
+          : "Images and file contents are gone. Claude reads files again when it needs them.";
+        this.print([`  ${style.muted(`Compacted ${size}.`)}`, `  ${style.faint(note)}`, ""]);
       }
     } catch (error) {
       this.print([`  ${style.red(describeError(error))}`, ""]);
