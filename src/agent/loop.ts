@@ -110,7 +110,7 @@ export class Agent {
 
   constructor(private options: AgentOptions) {
     this.undo.startAt(options.session.transcript.length);
-    this.thread = options.subagent ? undefined : new MessageThread();
+    this.thread = options.subagent ? undefined : new MessageThread(() => options.session.revision);
   }
 
   get session() {

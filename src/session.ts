@@ -231,6 +231,9 @@ export class Session {
   readonly file: string;
   // What the next request sends. A compaction replaces the older ones with its summary.
   messages: MessageParam[] = [];
+  // Goes up each time `messages` changes other than by an append: a rewind cuts it back and a
+  // compaction replaces it. A message thread holds the old conversation, so it needs a new start.
+  revision = 0;
   // The first message is a compaction's summary, which isn't in the transcript.
   summarized = false;
   // The session holds a summary the API wrote, so its thinking was tied to messages clue no longer sends.
@@ -282,12 +285,14 @@ export class Session {
   private apply(record: SessionRecord) {
     this.records.push(record);
     if (record.t === "rewind") {
+      this.revision += 1;
       this.messages.length -= this.transcript.length - record.transcript;
       this.transcript.length = record.transcript;
       this.rewound.push(...this.turns.splice(record.turns));
     }
     if (record.t === "spend") this.spends.push(record);
     if (record.t === "compacted") {
+      this.revision += 1;
       this.compactions.push(record);
       this.summarized = true;
       if (record.summary !== undefined) {
@@ -305,6 +310,7 @@ export class Session {
       if (index === -1) this.messages.push(record.message);
       else {
         // The API compacted the conversation during this reply. The reply goes on after its summary.
+        this.revision += 1;
         const reply = { role: "assistant" as const, content: (record.message.content as Blocks).slice(index + 1) };
         this.messages = [summaryMessage(compactionSummary(record.message, index)), withoutThinking(reply)];
         this.summarized = this.legacy = true;

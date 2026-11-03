@@ -11,9 +11,67 @@ type Body = {
   output_config?: { effort?: string };
   speed?: string;
   betas?: string[];
+  system?: unknown;
+  tools?: unknown;
+  thread?: { type: string; previous_message_id?: string };
 };
 
+// Every request, as a full conversation: one that continues a thread is rebuilt the way the API does.
 export const requests: Body[] = [];
+
+// The requests of a thread as they went over the wire, before they were rebuilt.
+export const wire: Body[] = [];
+
+// What the API holds for each thread reply: the conversation up to it, Claude's reply included.
+const threads = new Map<string, { system: unknown; tools: unknown; messages: Body["messages"]; continued: boolean }>();
+const THREADS_BETA = "message-threads-2026-08-12";
+
+const failure = (status: number, type: string, message: string, code?: string) =>
+  Response.json(
+    { type: "error", error: { type, message, ...(code && { details: { error_code: code } }) } },
+    { status },
+  );
+
+// Checks a thread request the way the API does, and rebuilds a continue into the full conversation.
+function threadRequest(body: Body) {
+  const thread = body.thread;
+  if (!thread) return null;
+  wire.push({ ...body });
+  if (!body.betas?.includes(THREADS_BETA)) return failure(400, "invalid_request_error", "thread needs its beta header");
+  if (thread.type !== "continue") return null;
+  if (body.system !== undefined || body.tools !== undefined)
+    return failure(400, "invalid_request_error", "a continue request can't send system or tools");
+  const held = threads.get(thread.previous_message_id ?? "");
+  if (!held) return failure(404, "not_found_error", "thread not found", "thread_not_found");
+  if (held.continued) return failure(400, "invalid_request_error", "already continued", "thread_already_continued");
+  body.system = held.system;
+  body.tools = held.tools;
+  body.messages = [...held.messages, ...body.messages];
+  return null;
+}
+
+// Claude's reply, rebuilt from its stream events.
+function replyOf(events: Record<string, unknown>[]) {
+  const blocks: any[] = [];
+  const json = new Map<number, string>();
+  for (const event of events as any[]) {
+    if (event.type === "content_block_start") blocks[event.index] = structuredClone(event.content_block);
+    else if (event.type === "content_block_delta") {
+      const block = blocks[event.index];
+      const delta = event.delta;
+      if (delta.type === "text_delta") block.text += delta.text;
+      else if (delta.type === "thinking_delta") block.thinking += delta.thinking;
+      else if (delta.type === "signature_delta") block.signature = delta.signature;
+      else if (delta.type === "input_json_delta")
+        json.set(event.index, (json.get(event.index) ?? "") + delta.partial_json);
+    } else if (event.type === "content_block_stop" && json.has(event.index))
+      blocks[event.index].input = JSON.parse(json.get(event.index) || "{}");
+  }
+  return blocks.filter(Boolean);
+}
+
+// The request being answered. Set before any await, so the reply is stored with the right request.
+let current: Body | null = null;
 
 // Fast requests whose first message holds this text get a 400. An empty string matches every fast request.
 export const fastMode = { rejectedFor: null as string | null, rejectedFromRequest: Infinity };
@@ -42,6 +100,16 @@ export const resetReviewers = () => {
 const DELAY = Number(process.env.MOCK_DELAY_MS ?? 0);
 
 function sse(events: Record<string, unknown>[], delay: number) {
+  const start = events.find((event) => event.type === "message_start") as { message: { id: string } } | undefined;
+  // A reply that was served uses up the id it continued. A request the API rejects doesn't.
+  if (current?.thread?.type === "continue") threads.get(current.thread.previous_message_id ?? "")!.continued = true;
+  if (current?.thread && start)
+    threads.set(start.message.id, {
+      system: current.system,
+      tools: current.tools,
+      messages: [...current.messages, { role: "assistant", content: replyOf(events) }],
+      continued: false,
+    });
   const encode = (event: Record<string, unknown>) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
   if (!delay) return new Response(events.map(encode).join(""), { headers: { "content-type": "text/event-stream" } });
   const stream = new ReadableStream({
@@ -132,6 +200,9 @@ export function startMockApi(port = 0, delay = DELAY) {
       }
       // The SDK sends betas as a header.
       body.betas = request.headers.get("anthropic-beta")?.split(",") ?? [];
+      const rejected = threadRequest(body);
+      if (rejected) return rejected;
+      current = body;
       const lastMessage = body.messages.at(-1);
       if (lastMessage?.role === "user" && textOf(lastMessage).some((block) => block.text === COMPACT_PROMPT)) {
         compactions.push(body);

@@ -139,7 +139,9 @@ export const fastRejected = (error: unknown) => /\bspeed\b|fast.mode/i.test(Stri
 export async function stream(options: RequestOptions, signal: AbortSignal, thread?: MessageThread) {
   const client = await getClient();
   const request = buildRequest(options);
-  return client.beta.messages.stream(thread ? thread.prepare(request) : request, { signal });
+  const response = client.beta.messages.stream(thread ? thread.prepare(request) : request, { signal });
+  if (thread) response.on("finalMessage", (message) => thread.record(message));
+  return response;
 }
 
 // The conversation with a request at its end. A last user message, such as tool results, takes it
