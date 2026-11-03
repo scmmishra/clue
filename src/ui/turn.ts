@@ -61,11 +61,11 @@ export function statusLine({
 
 export const BAR = "┃ ";
 
-// A prompt as it goes to the scrollback. The terminal wraps it and only the first line has
-// the bar, so selecting it copies the text as typed, and it reflows when the window resizes.
+// A prompt as it goes to the scrollback, with the bar on every row, wrapped rows included.
+// clue wraps it at the current width, so it does not reflow when the window resizes, and
+// copying it includes the bars.
 export function promptLines(prompt: string) {
-  const [first, ...rest] = prompt.split("\n");
-  return markPrompt([`${style.brand(BAR)}${first}`, ...rest]);
+  return markPrompt(wrappedPromptLines(prompt));
 }
 
 // Marks a prompt for the terminal's jump-to-prompt keys (OSC 133): A where it starts, C where

@@ -53,17 +53,21 @@ test("the prompt has a blue bar and regular text", () => {
   expect(promptLines("fix it")).toEqual([`${term.promptStart}${style.brand(BAR)}fix it${term.outputStart}`]);
 });
 
-test("a long prompt stays one line, so the terminal wraps it and copying gives the original text", () => {
+test("a long prompt wraps with the bar on every row", () => {
   const long = "word ".repeat(200).trim();
-  expect(promptLines(long)).toEqual([`${term.promptStart}${style.brand(BAR)}${long}${term.outputStart}`]);
+  const lines = promptLines(long).map((line) =>
+    Bun.stripANSI(line.replaceAll(term.promptStart, "").replaceAll(term.outputStart, "")),
+  );
+  expect(lines.length).toBeGreaterThan(1);
+  for (const line of lines) expect(line.startsWith(BAR)).toBe(true);
 });
 
-test("only the first line of a prompt has the bar, so copied lines stay clean", () => {
+test("every line of a multiline prompt has the bar", () => {
   expect(promptLines("one\ntwo\n\nthree")).toEqual([
     `${term.promptStart}${style.brand(BAR)}one`,
-    "two",
-    "",
-    `three${term.outputStart}`,
+    `${style.brand(BAR)}two`,
+    `${style.brand(BAR)}`,
+    `${style.brand(BAR)}three${term.outputStart}`,
   ]);
 });
 
