@@ -28,7 +28,7 @@ When you start typing in a resumed session, clue sends the history once to warm 
 
 ## Rewind
 
-Press `esc` twice at an idle prompt to go back to before an earlier prompt. During a run, `esc esc` interrupts, so press it again afterwards.
+Press `esc` twice to go back to before an earlier prompt. During a run, the first `esc` interrupts it, and rewind opens once the run stops.
 
 Pick a prompt, then press `enter` to restore the files and cut the conversation back to it. Press `tab` to cut the conversation and keep the files. The prompt returns to the input, so you can edit it and send it again.
 

@@ -2,9 +2,10 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
-## Unreleased
+## 0.13.0
 
 - Claude can run a subagent on a different model or effort, such as Haiku for a simple search. Each subagent row shows its model, its tool calls and how long it ran, with a mark when it finishes. The model is grey when the subagent uses yours. Its effort shows only when it differs from yours. A subagent that waits for the one before it says `waiting`. A tree of only subagents reads `3 subagents · 1 running`, without `Subagent:` on each row.
+- One `esc` interrupts a running turn. Before, it took two. `esc esc` during a run interrupts it and then opens rewind, the same as `esc esc` at an idle prompt.
 - Conversations compact at 80% of the window left after the longest reply, about 749k tokens of 1M, instead of the API's default of 150k. Long sessions keep more of their history. A model clue doesn't know still compacts at 150k.
 - clue compacts conversations itself, with its own summary prompt, instead of the API's compaction. The latest messages, about 20k tokens of them, stay word for word, and Claude summarizes the rest. The summary keeps your instructions and exact errors, and leaves out file contents Claude can read again. Sessions the API compacted before still resume.
 - Claude Sonnet 5.5 cache reads are priced at $0.10 per million tokens, not $0.20. Costs shown for Sonnet 5.5 sessions were too high.
@@ -12,7 +13,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - The input and running tools at the bottom no longer flicker while they redraw, in terminals with synchronized output, such as Ghostty, kitty, WezTerm, iTerm2 and Alacritty. Each redraw reaches the screen whole. Other terminals ignore it.
 - The path in a `Read`, `Wrote` or `Edited` row links to the file, so a terminal with OSC 8 links opens it on click. Resumed sessions get the links too. The row looks the same.
 - If clue exits partway through a redraw, it ends synchronized output, so the terminal can't be left waiting for the rest of the frame.
-- A quick `esc esc` always rewinds, or interrupts a running turn. When both presses reached clue together, such as over SSH or while clue was busy, they read as one alt+esc and did nothing.
+- A quick `esc esc` always opens rewind. When both presses reached clue together, such as over SSH or while clue was busy, they read as one alt+esc and did nothing.
 
 ## 0.12.0
 
