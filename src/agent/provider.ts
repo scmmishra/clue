@@ -5,6 +5,7 @@ import type { MessageParam } from "../session";
 import { toolDefinitions } from "../tools";
 import { advisorOf, apiModel, MAX_OUTPUT_TOKENS, modelInfo, modelLabel, pairEffort } from "./models";
 import { advisorGuidance, SYSTEM_PROMPT } from "./prompt";
+import type { MessageThread } from "./thread";
 
 // Every model call goes through this file. Other providers, such as
 // OpenRouter or Codex, would be a sibling of this module.
@@ -135,9 +136,10 @@ export function dropRejectedFeature(error: unknown) {
 // user chose this one and the status line shows it, so the loop turns the setting off instead.
 export const fastRejected = (error: unknown) => /\bspeed\b|fast.mode/i.test(String((error as Error)?.message ?? ""));
 
-export async function stream(options: RequestOptions, signal: AbortSignal) {
+export async function stream(options: RequestOptions, signal: AbortSignal, thread?: MessageThread) {
   const client = await getClient();
-  return client.beta.messages.stream(buildRequest(options), { signal });
+  const request = buildRequest(options);
+  return client.beta.messages.stream(thread ? thread.prepare(request) : request, { signal });
 }
 
 // The conversation with a request at its end. A last user message, such as tool results, takes it

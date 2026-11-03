@@ -30,6 +30,7 @@ import {
 } from "./models";
 import { COMPACT_PROMPT } from "./prompt";
 import { dropRejectedFeature, fastRejected, stream, summarize } from "./provider";
+import { MessageThread } from "./thread";
 import { UndoStack, type UndoResult } from "./undo";
 
 type ContentBlock = Anthropic.Beta.Messages.BetaContentBlock;
@@ -104,9 +105,12 @@ export class Agent {
   private lastContext = 0;
   // The usage the current request's stream has reported. Billed even if the request never finishes.
   private streamed: StreamUsage | null = null;
+  // Sits between this agent's requests and the SDK. Subagents have short sessions and go without.
+  readonly thread: MessageThread | undefined;
 
   constructor(private options: AgentOptions) {
     this.undo.startAt(options.session.transcript.length);
+    this.thread = options.subagent ? undefined : new MessageThread();
   }
 
   get session() {
@@ -390,6 +394,7 @@ export class Agent {
     const response = await stream(
       { model, effort, fast, messages: this.session.messages, subagent: this.options.subagent },
       signal,
+      this.thread,
     );
     const blocks = new Map<number, { type: string; id?: string; name?: string; json: string }>();
     // Advisor calls waiting for their answer, by id. The answer arrives whole, after a pause.
