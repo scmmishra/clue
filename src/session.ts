@@ -88,10 +88,38 @@ export type SessionRecord =
   | { t: "rewind"; transcript: number; turns: number }
   | { t: "name"; name: string };
 
-// A /compact summary sits first in the messages. An automatic compaction block never does.
+// A summary sits first in the messages.
 export function startsWithSummary(messages: MessageParam[]) {
   const content = messages[0]?.content;
   return Array.isArray(content) && content[0]?.type === "compaction";
+}
+
+const holdsCompaction = (message: MessageParam) =>
+  message.role === "assistant" &&
+  Array.isArray(message.content) &&
+  message.content.some((block) => block.type === "compaction");
+
+// Claude's thinking in the replies after an old summary was checked against the summary block.
+// As plain text, the conversation before it differs, so the API would reject that thinking.
+function withoutThinking(message: MessageParam): MessageParam {
+  if (message.role !== "assistant" || !Array.isArray(message.content)) return message;
+  return {
+    ...message,
+    content: message.content.filter((block) => block.type !== "thinking" && block.type !== "redacted_thinking"),
+  };
+}
+
+// The API's summary as a user message, and the rest of the reply it opened, if any.
+function fromOldSummary(message: MessageParam): [MessageParam, MessageParam | null] {
+  const blocks = Array.isArray(message.content) ? message.content : [];
+  const at = blocks.findIndex((block) => block.type === "compaction");
+  const text = (blocks[at] as { content?: string | null }).content ?? "";
+  const summary: MessageParam = {
+    role: "user",
+    content: [{ type: "text", text: `The earlier conversation was compacted. Its summary:\n\n${text}` }],
+  };
+  const rest = withoutThinking({ role: "assistant", content: blocks.slice(at + 1) });
+  return [summary, (rest.content as unknown[]).length ? rest : null];
 }
 
 // What clue adds after a compaction during a turn. The user didn't type it.
@@ -190,6 +218,8 @@ export class Session {
   messages: MessageParam[] = [];
   // Every message of the session, for showing it again on resume.
   transcript: MessageParam[] = [];
+  // The API's own summary from an old session, sent as plain text, until clue compacts again.
+  private oldSummary: MessageParam | null = null;
   compactions: CompactionRecord[] = [];
   spends: SpendRecord[] = [];
   // Turns a rewind dropped. Their cost still counts.
@@ -240,11 +270,20 @@ export class Session {
     if (record.t === "spend") this.spends.push(record);
     if (record.t === "compacted") {
       this.compactions.push(record);
+      this.oldSummary = null;
       const kept = Math.min(record.kept ?? 0, this.messages.length);
       this.messages = [record.message, ...this.messages.slice(this.messages.length - kept)];
     }
     if (record.t === "message") {
-      this.messages.push(record.message);
+      if (holdsCompaction(record.message)) {
+        // A session from before clue chose when to compact: the API summarized on its own, at the
+        // start of a reply. The API ignored everything before it, so clue sends from it on. Such a
+        // block works only with the API's automatic compaction, which can't be combined with
+        // clue's summary requests, so the summary goes as plain text instead.
+        const [summary, reply] = fromOldSummary(record.message);
+        this.oldSummary = summary;
+        this.messages = reply ? [summary, reply] : [summary];
+      } else this.messages.push(this.oldSummary ? withoutThinking(record.message) : record.message);
       this.transcript.push(record.message);
       this.title ||= promptText(record.message) ?? "";
     } else if (record.t === "tool") this.tools.set(record.tool.id, record.tool);
@@ -364,7 +403,7 @@ export class Session {
   }
 
   get carriesSummary() {
-    return startsWithSummary(this.messages);
+    return startsWithSummary(this.messages) || (this.oldSummary !== null && this.messages[0] === this.oldSummary);
   }
 
   // Compaction summarizes the opening context, so the next prompt brings it again, unless a

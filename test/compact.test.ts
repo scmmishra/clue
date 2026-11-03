@@ -78,6 +78,58 @@ test("a saved session loads with its summary", () => {
   expect(loaded.compactions).toHaveLength(1);
 });
 
+test("a session the API compacted on its own resumes from the API's summary, as plain text", () => {
+  const current = session();
+  const reply: MessageParam = {
+    role: "assistant",
+    content: [
+      { type: "compaction", content: "Summary." } as never,
+      { type: "thinking", thinking: "Hmm.", signature: "s1" },
+      { type: "text", text: "Reading it." },
+      { type: "tool_use", id: "t1", name: "read_file", input: { path: "a.ts" } },
+    ],
+  };
+  const result: MessageParam = {
+    role: "user",
+    content: [{ type: "tool_result", tool_use_id: "t1", content: "a" }],
+  };
+  const next: MessageParam = {
+    role: "assistant",
+    content: [
+      { type: "thinking", thinking: "Done.", signature: "s2" },
+      { type: "text", text: "Done." },
+    ],
+  };
+  current.appendMessage({ role: "user", content: "first" });
+  current.appendMessage({ role: "assistant", content: "hello" });
+  current.appendMessage({ role: "user", content: "second" });
+  current.appendMessage(reply);
+  current.appendMessage(result);
+  current.appendMessage(next);
+  const loaded = Session.load(current.file)!;
+  expect(loaded.messages).toEqual([
+    { role: "user", content: [{ type: "text", text: "The earlier conversation was compacted. Its summary:\n\nSummary." }] },
+    {
+      role: "assistant",
+      content: [
+        { type: "text", text: "Reading it." },
+        { type: "tool_use", id: "t1", name: "read_file", input: { path: "a.ts" } },
+      ],
+    },
+    result,
+    { role: "assistant", content: [{ type: "text", text: "Done." }] },
+  ]);
+  expect(loaded.transcript).toHaveLength(6);
+  // No compaction block is left, so the request needs no compaction beta.
+  expect(buildRequest(options(loaded.messages)).betas ?? []).not.toContain("compact-2026-09-04");
+  expect(loaded.carriesSummary).toBe(true);
+  expect(loaded.needsContext).toBe(true);
+  expect(loaded.rewindPoints).toEqual([]);
+  // clue's own compaction replaces it as usual.
+  loaded.append({ t: "compacted", ...record() });
+  expect(loaded.messages).toEqual([summary]);
+});
+
 test("the next prompt brings the opening context again, once", () => {
   const current = session();
   expect(current.needsContext).toBe(true);
