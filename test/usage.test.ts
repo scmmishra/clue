@@ -77,12 +77,19 @@ test("context size is everything sent in the request", () => {
   ).toBe(240);
 });
 
-test("after a compaction, context size comes from the last message entry", () => {
+test("around an advisor call, context size comes from the last message entry", () => {
   const usage = {
     input_tokens: 999_999,
     output_tokens: 5,
     iterations: [
-      { type: "compaction", input_tokens: 180_000, output_tokens: 2000 },
+      {
+        type: "message",
+        input_tokens: 3000,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        output_tokens: 5,
+      },
+      { type: "advisor_message", model: "claude-opus-5-5", input_tokens: 180_000, output_tokens: 2000 },
       {
         type: "message",
         input_tokens: 4000,

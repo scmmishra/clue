@@ -70,10 +70,22 @@ test("a turn that loses fast mode pays the fast price only for its fast requests
   expect(result.cost_usd).toBeCloseTo(expected, 10);
 }, 15_000);
 
-test("a compaction the API ran during a turn is counted and priced", async () => {
-  const { result } = await ask("compact on the server");
-  expect(result.usage.input).toBe(usage.input_tokens * 2 + 5000);
-  expect(result.usage.output).toBe(40 + 60 + 700);
+test("a compaction during a turn is counted and priced", async () => {
+  usage.cache_read_input_tokens = 800_000;
+  try {
+    const { result, records } = await ask("read it");
+    const compaction = records(result.session_id).find((record) => record.t === "compacted");
+    expect(compaction.summary).toStartWith("<summary>");
+    expect(compaction.cost).toBeGreaterThan(0);
+    // Two requests in the turn, and the summary between them.
+    const model = "claude-opus-5-5";
+    expect(result.usage.output).toBe(40 + 60 + 700);
+    expect(result.usage.cacheRead).toBe(3 * 800_000);
+    const expected = cost(model, oneRequest(40))! + cost(model, oneRequest(60))! + cost(model, oneRequest(700))!;
+    expect(result.cost_usd).toBeCloseTo(expected, 10);
+  } finally {
+    usage.cache_read_input_tokens = 2000;
+  }
 }, 15_000);
 
 test("a turn that fails keeps a record of what it already spent, and the session stays findable", async () => {

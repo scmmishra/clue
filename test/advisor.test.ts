@@ -3,7 +3,8 @@ import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { apiModel, cost, fastEnabled, modelLabel, pairEffort, resolveModel, responseCost } from "../src/agent/models";
-import { buildRequest } from "../src/agent/provider";
+import { COMPACT_PROMPT } from "../src/agent/prompt";
+import { buildRequest, withSummaryRequest } from "../src/agent/provider";
 import { chooseReviewer } from "../src/permissions";
 import type { TurnRecord } from "../src/session";
 import { OptionPicker } from "../src/ui/option-picker";
@@ -78,12 +79,13 @@ test("subagents go without the advisor", () => {
   expect(request.system).toHaveLength(1);
 });
 
-test("a summary starts with the same tools and system prompt as the turns, so it reads their cache", () => {
+test("a summary request starts like the turns, so it reads their cache", () => {
   const turn = pairRequest({ messages: advice });
-  const summary = pairRequest({ summarize: true, messages: advice });
+  const summary = pairRequest({ messages: withSummaryRequest(advice, COMPACT_PROMPT) });
   expect(JSON.stringify(summary.tools)).toBe(JSON.stringify(turn.tools));
   expect(JSON.stringify(summary.system)).toBe(JSON.stringify(turn.system));
-  expect(summary.betas).toContain("advisor-tool-2026-03-01");
+  expect(summary.messages.slice(0, 2)).toEqual(turn.messages.slice(0, 2));
+  expect(summary.betas).toEqual(turn.betas);
 });
 
 test("the guidance names each pair's advisor, and the cache breakpoint sits after it", () => {

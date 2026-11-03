@@ -109,7 +109,9 @@ test("a torn line followed by one record keeps that record", () => {
 
 test("a 400 turns off only a feature it names", () => {
   expect(dropRejectedFeature(new Error("messages.0: image exceeds the size limit"))).toBe(false);
-  expect(buildRequest({ model: "claude-opus-5-5", effort: "medium", messages: [] }).context_management).toBeDefined();
+  const request = buildRequest({ model: "claude-opus-5-5", effort: "medium", messages: [] }) as any;
+  expect(request.fallbacks).toBe("default");
+  expect(request.thinking.display).toBe("updates");
 });
 
 test("clue mcp passes --, --project and --all through to the command", async () => {

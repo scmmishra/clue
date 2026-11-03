@@ -5,6 +5,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 ## Unreleased
 
 - Conversations compact at 80% of the window left after the longest reply, about 749k tokens of 1M, instead of the API's default of 150k. Long sessions keep more of their history. A model clue doesn't know still compacts at 150k.
+- clue compacts conversations itself, with its own summary prompt, instead of the API's compaction. The latest messages, about 20k tokens of them, stay word for word, and Claude summarizes the rest. The summary keeps your instructions and exact errors, and leaves out file contents Claude can read again. Sessions the API compacted before still resume.
 - Claude Sonnet 5.5 cache reads are priced at $0.10 per million tokens, not $0.20. Costs shown for Sonnet 5.5 sessions were too high.
 - `/copy` works on Linux and over SSH. clue asks the terminal to set the clipboard with an OSC 52 code, so the copy lands on the computer in front of you, not on the server. On a local Mac it still uses `pbcopy`. The first copy in a session says how to allow clipboard access if nothing arrived.
 - The input and running tools at the bottom no longer flicker while they redraw, in terminals with synchronized output, such as Ghostty, kitty, WezTerm, iTerm2 and Alacritty. Each redraw reaches the screen whole. Other terminals ignore it.

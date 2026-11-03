@@ -146,7 +146,7 @@ export const pairEffort = <E extends string>(model: string, effort: E): E | "med
 
 // The longest reply clue asks for. A request keeps room for it, so it isn't part of the usable window.
 export const MAX_OUTPUT_TOKENS = 64_000;
-// For a model clue doesn't know: where it compacts, which is the API's own default.
+// For a model clue doesn't know: where clue compacts, the API's old default.
 export const DEFAULT_COMPACT_AT = 150_000;
 
 // Where a conversation compacts on this model: 80% of the window left after the longest reply,
@@ -204,11 +204,11 @@ export function addUsage(total: UsageCounts, usage: ApiUsage) {
   total.webSearches += usage.server_tool_use?.web_search_requests ?? 0;
 }
 
-// What one response cost in tokens. A compaction the API ran is outside the top-level fields.
+// What one response cost in tokens: the executor's requests. An advisor's are priced in
+// responseCost but not counted here.
 export function responseUsage(usage: ApiUsage) {
   const total = emptyUsage();
   addUsage(total, usage);
-  for (const entry of usage.iterations ?? []) if (entry.type === "compaction") addUsage(total, entry);
   return total;
 }
 
@@ -229,14 +229,14 @@ export function cost(model: string, usage: UsageCounts, fast = false): number | 
 
 // What one response cost. Each request in it is priced on its own rate card, at its own model's
 // rates. The top-level usage is the sum of the executor's requests. When the iterations list
-// those, each is priced alone, since a long-prompt card applies per request. Compactions and
-// advisor calls are only in the iterations, never in the top-level usage.
+// those, each is priced alone, since a long-prompt card applies per request. Advisor calls are
+// only in the iterations, never in the top-level usage.
 export function responseCost(model: string, usage: ApiUsage, fast = false): number | null {
   const iterations = usage.iterations ?? [];
   const requests = iterations.some((entry) => entry.type === "message")
     ? iterations.filter((entry) => entry.type === "message")
     : [usage];
-  const extra = iterations.filter((entry) => entry.type === "compaction" || entry.type === "advisor_message");
+  const extra = iterations.filter((entry) => entry.type === "advisor_message");
   let total = (usage.server_tool_use?.web_search_requests ?? 0) * WEB_SEARCH_COST;
   for (const entry of [...requests, ...extra]) {
     const counts = emptyUsage();

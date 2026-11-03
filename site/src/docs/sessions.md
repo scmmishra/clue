@@ -12,7 +12,7 @@ Each session is saved under `~/.clue/sessions/` and belongs to the folder it sta
 | `clue --name <name>` | Opens the session with that name in the current folder, or creates it. |
 | `/rename <name>` | Renames this session. |
 
-A name is unique within a folder and ignores case. `clue --name <name> "prompt"` sends the prompt only when it creates the session, so a tool can run the same command every time. `--name` never opens a session from another folder, but `clue -r <name>` can. When a conversation nears the context limit, Claude's server-side compaction summarizes older turns.
+A name is unique within a folder and ignores case. `clue --name <name> "prompt"` sends the prompt only when it creates the session, so a tool can run the same command every time. `--name` never opens a session from another folder, but `clue -r <name>` can.
 
 `clue -r` and `/resume` list only the sessions of the current folder, and you can type to search their titles and prompts. To resume a session from another folder, use `clue -r <id or name>`, and clue continues it in its own folder. If that folder no longer exists, clue tells you and doesn't resume.
 
@@ -34,4 +34,4 @@ Pick a prompt, then press `enter` to restore the files and cut the conversation 
 
 Your scrollback stays as it was. A marker shows where the rewind happened, and the output above it no longer applies.
 
-Each row shows what is possible. `shell` means the turn ran commands, which clue can't reverse. `conversation only` means clue has no file snapshots for that point, such as after a resume. If a file changed since, clue names it, and pressing `enter` again overwrites it. Only prompts since the last compaction appear.
+Each row shows what is possible. `shell` means the turn ran commands, which clue can't reverse. `conversation only` means clue has no file snapshots for that point, such as after a resume. If a file changed since, clue names it, and pressing `enter` again overwrites it. Prompts that the last compaction summarized don't appear.

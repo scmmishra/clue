@@ -1,9 +1,9 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Effort } from "../config";
 import { resolveAuth } from "../auth";
-import { startsWithSummary, type MessageParam } from "../session";
+import type { MessageParam } from "../session";
 import { toolDefinitions } from "../tools";
-import { advisorOf, apiModel, compactAt, MAX_OUTPUT_TOKENS, modelInfo, modelLabel, pairEffort } from "./models";
+import { advisorOf, apiModel, MAX_OUTPUT_TOKENS, modelInfo, modelLabel, pairEffort } from "./models";
 import { advisorGuidance, SYSTEM_PROMPT } from "./prompt";
 
 // Every model call goes through this file. Other providers, such as
@@ -47,13 +47,11 @@ export function getClient(): Promise<Anthropic> {
 // Optional features that some accounts, models or proxies reject. When the API
 // refuses one, clue drops it for the rest of the process and retries.
 const features = {
-  compaction: true,
   progressNotes: true,
   fallbacks: true,
 };
 
 export type RequestOptions = {
-  summarize?: boolean;
   model: string;
   effort: Effort;
   messages: MessageParam[];
@@ -111,16 +109,7 @@ export function buildRequest(options: RequestOptions) {
   } else {
     request.thinking = { type: "adaptive", display: "summarized" };
   }
-  // Automatic compaction can't run on a request that carries a /compact summary.
-  if (options.summarize) request.compaction = { type: "summarize" };
-  if (options.summarize || startsWithSummary(options.messages)) betas.push("compact-2026-09-04");
-  else if (features.compaction) {
-    request.context_management = {
-      edits: [{ type: "compact_20260112", trigger: { type: "input_tokens", value: compactAt(options.model) } }],
-    };
-    betas.push("compact-2026-01-12");
-  }
-  if (features.fallbacks && info?.fallbacks && !options.summarize) {
+  if (features.fallbacks && info?.fallbacks) {
     (request as { fallbacks?: unknown }).fallbacks = "default";
     betas.push("server-side-fallback-2026-07-01");
   }
@@ -133,14 +122,12 @@ export function buildRequest(options: RequestOptions) {
 }
 
 // Drops the optional feature a 400 names. Returns false when it names none: most 400s
-// are about the request itself, and dropping compaction for those would cost the session.
+// are about the request itself, and retrying those without a feature would only fail again.
 export function dropRejectedFeature(error: unknown) {
   const message = String((error as Error)?.message ?? "").toLowerCase();
   if (features.fallbacks && message.includes("fallback")) return !(features.fallbacks = false);
   if (features.progressNotes && (message.includes("display") || message.includes("updates")))
     return !(features.progressNotes = false);
-  if (features.compaction && (message.includes("context_management") || message.includes("compact")))
-    return !(features.compaction = false);
   return false;
 }
 
@@ -153,10 +140,22 @@ export async function stream(options: RequestOptions, signal: AbortSignal) {
   return client.beta.messages.stream(buildRequest(options), { signal });
 }
 
-// Asks for a summary of the conversation. The response holds a compaction block and no reply.
-export async function summarize(options: RequestOptions, signal: AbortSignal) {
+// The conversation with a request at its end. A last user message, such as tool results, takes it
+// as one more block, so the roles still alternate.
+export function withSummaryRequest(messages: MessageParam[], prompt: string): MessageParam[] {
+  const request = { type: "text" as const, text: prompt };
+  const last = messages.at(-1);
+  if (last?.role !== "user") return [...messages, { role: "user", content: [request] }];
+  const content = typeof last.content === "string" ? [{ type: "text" as const, text: last.content }] : last.content;
+  return [...messages.slice(0, -1), { ...last, content: [...content, request] }];
+}
+
+// Asks Claude to summarize the conversation. The request is a turn's with the prompt at its end, so
+// it reads the cache the turns before it wrote.
+export async function summarize(options: RequestOptions, prompt: string, signal: AbortSignal) {
   const client = await getClient();
-  return client.beta.messages.stream(buildRequest({ ...options, summarize: true }), { signal }).finalMessage();
+  const request = buildRequest({ ...options, messages: withSummaryRequest(options.messages, prompt) });
+  return client.beta.messages.stream(request, { signal }).finalMessage();
 }
 
 // Caches a resumed conversation while the user types. max_tokens 0 runs the

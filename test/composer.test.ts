@@ -873,9 +873,8 @@ test("/compact sends the summary first, then the context again with the next pro
   await clue.type("next");
   await clue.type(ENTER);
   await clue.turns(2);
-  const last = requests.at(-1) as { messages: { role: string; content: any }[]; context_management?: unknown };
-  expect(last.messages[0].content[0].type).toBe("compaction");
-  expect(last.context_management).toBeUndefined();
+  const last = requests.at(-1) as { messages: { role: string; content: any }[] };
+  expect(last.messages[0].content[0].text).toStartWith("<summary>\nSummary of the conversation.\n</summary>");
   expect(JSON.stringify(last.messages)).not.toContain("hello there");
   expect(JSON.stringify(last.messages[1])).toContain("<context>");
 }, 25_000);
@@ -889,7 +888,7 @@ test("a summary that doesn't finish leaves the conversation as it was", async ()
   await clue.type("/compact");
   await clue.type(ENTER);
   await clue.seen("Nothing changed.");
-  compactionStop.value = "compaction";
+  compactionStop.value = "end_turn";
   await clue.type("next");
   await clue.type(ENTER);
   await clue.turns(2);
@@ -919,28 +918,17 @@ test("a resumed session still shows what came before a compaction", async () => 
   await second.seen("the early prompt");
 }, 25_000);
 
-const compactedSession = async () => {
+test("clue compacts a full conversation itself before the next prompt", async () => {
   const clue = await startClue();
-  await clue.type("hello there");
-  await clue.type(ENTER);
-  await clue.turns(1);
-  await clue.type("/compact");
-  await clue.type(ENTER);
-  await clue.seen("token summary");
-  return clue;
-};
-
-test("after /compact, clue compacts a full conversation itself before the next prompt", async () => {
-  const clue = await compactedSession();
   usage.cache_read_input_tokens = 800_000;
   await clue.type("zebra-two");
   await clue.type(ENTER);
-  await clue.turns(2);
+  await clue.turns(1);
   usage.cache_read_input_tokens = 2000;
   const before = compactions.length;
   await clue.type("third");
   await clue.type(ENTER);
-  await clue.turns(3);
+  await clue.turns(2);
   expect(compactions.length).toBe(before + 1);
   await clue.seen("Compacted the conversation.");
   const last = JSON.stringify((requests.at(-1) as { messages: unknown }).messages);
@@ -948,18 +936,21 @@ test("after /compact, clue compacts a full conversation itself before the next p
   expect(last).toContain("third");
 }, 25_000);
 
-test("a compaction during a turn lets the turn continue", async () => {
-  const clue = await compactedSession();
+test("a compaction during a turn lets the turn go on", async () => {
+  const clue = await startClue();
   usage.cache_read_input_tokens = 800_000;
   const before = compactions.length;
   await clue.type("read the package");
   await clue.type(ENTER);
-  await clue.turns(2);
+  await clue.turns(1);
   usage.cache_read_input_tokens = 2000;
   expect(compactions.length).toBe(before + 1);
+  // The summary request asks after the tool results, in the same message.
+  const asked = compactions.at(-1)!.messages.at(-1)!.content as { type: string }[];
+  expect(asked.map((block) => block.type)).toEqual(["tool_result", "text"]);
   const last = (requests.at(-1) as { messages: { role: string; content: any }[] }).messages;
-  expect(last[0].content[0].type).toBe("compaction");
-  expect(last.at(-1)).toEqual({ role: "user", content: "Continue with the task." });
+  expect(last[0].content[0].text).toStartWith("<summary>");
+  expect(JSON.stringify(last)).not.toContain("Continue with the task.");
 }, 25_000);
 
 const ESC = "\x1b";

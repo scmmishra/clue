@@ -1,6 +1,8 @@
 // A stand-in for the Anthropic Messages API, for tests without credentials.
 // It streams a reply that calls read_file, then a final answer once the tool result arrives.
 
+import { COMPACT_PROMPT } from "../src/agent/prompt";
+
 type Body = {
   model?: string;
   messages: { role: string; content: unknown }[];
@@ -83,8 +85,12 @@ function streamText(text: string, index: number) {
   ];
 }
 
-export const compactions: unknown[] = [];
-export const compactionStop = { value: "compaction" };
+// Requests for a summary, which clue sends to compact a conversation, and how they stop.
+export const compactions: Body[] = [];
+export const compactionStop = { value: "end_turn" };
+
+const textOf = (message: { content: unknown } | undefined) =>
+  Array.isArray(message?.content) ? (message.content as { type: string; text?: string }[]) : [];
 
 export function startMockApi(port = 0, delay = DELAY) {
   return Bun.serve({
@@ -107,30 +113,6 @@ export function startMockApi(port = 0, delay = DELAY) {
         });
       if (!url.pathname.endsWith("/v1/messages")) return new Response("not found", { status: 404 });
       const body = (await request.json()) as Body;
-      if ((body as { compaction?: unknown }).compaction) {
-        compactions.push(body);
-        return sse(
-          [
-            { type: "message_start", message: message([], "") },
-            {
-              type: "content_block_start",
-              index: 0,
-              content_block: { type: "compaction", content: "Summary of the conversation.", signature: "sig" },
-            },
-            { type: "content_block_stop", index: 0 },
-            {
-              type: "message_delta",
-              delta: { stop_reason: compactionStop.value, stop_sequence: null },
-              usage: {
-                output_tokens: 0,
-                iterations: [{ type: "compaction", input_tokens: 5000, output_tokens: 700 }],
-              },
-            },
-            { type: "message_stop" },
-          ],
-          delay,
-        );
-      }
       // A review is the one request that doesn't stream and asks for a reply.
       if (!body.stream && body.max_tokens !== 0) {
         reviewers.claudeCalls.push({ model: body.model!, effort: body.output_config?.effort });
@@ -150,6 +132,23 @@ export function startMockApi(port = 0, delay = DELAY) {
       }
       // The SDK sends betas as a header.
       body.betas = request.headers.get("anthropic-beta")?.split(",") ?? [];
+      const lastMessage = body.messages.at(-1);
+      if (lastMessage?.role === "user" && textOf(lastMessage).some((block) => block.text === COMPACT_PROMPT)) {
+        compactions.push(body);
+        return sse(
+          [
+            { type: "message_start", message: message([], "") },
+            ...streamText("Summary of the conversation.", 0),
+            {
+              type: "message_delta",
+              delta: { stop_reason: compactionStop.value, stop_sequence: null },
+              usage: { output_tokens: 700 },
+            },
+            { type: "message_stop" },
+          ],
+          delay,
+        );
+      }
       requests.push(body);
       if (
         body.speed === "fast" &&
@@ -234,7 +233,9 @@ export function startMockApi(port = 0, delay = DELAY) {
           delay,
         );
       }
-      if (!hasToolResult && !JSON.stringify(body.messages).includes("Continue with the task.")) {
+      // After a compaction that kept nothing, Claude goes on from the summary with a final answer.
+      const fromSummary = lastMessage?.role === "user" && textOf(lastMessage)[0]?.text?.startsWith("<summary>");
+      if (!hasToolResult && !fromSummary) {
         const wantsPush = promptText.includes("push");
         const wantsWrite = promptText.includes("create the note");
         const wantsSubagent = promptText.includes("delegate this");
@@ -301,12 +302,7 @@ export function startMockApi(port = 0, delay = DELAY) {
           {
             type: "message_delta",
             delta: { stop_reason: "end_turn", stop_sequence: null },
-            usage: {
-              output_tokens: 60,
-              ...(firstPrompt.includes("compact on the server")
-                ? { iterations: [{ type: "compaction", input_tokens: 5000, output_tokens: 700 }] }
-                : {}),
-            },
+            usage: { output_tokens: 60 },
           },
           { type: "message_stop" },
         ],

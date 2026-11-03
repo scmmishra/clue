@@ -9,9 +9,14 @@
 // licensed under Apache-2.0. See NOTICE.
 
 import advisorPrompt from "../../prompts/advisor.md" with { type: "text" };
+import compactPrompt from "../../prompts/compact.md" with { type: "text" };
 import systemPrompt from "../../prompts/system.md" with { type: "text" };
 
 export const SYSTEM_PROMPT = systemPrompt.trimEnd();
+
+// Asks for a summary that replaces the conversation. It goes after the last message, so the
+// request reads the cache the turns wrote.
+export const COMPACT_PROMPT = compactPrompt.trimEnd();
 
 // Added after the system prompt when a pair's executor can ask its advisor, such as "Opus 5.5".
 // The text is fixed for each pair, so a pair's requests keep the same cached prefix.

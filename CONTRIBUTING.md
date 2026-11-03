@@ -27,7 +27,7 @@ clue measures three waits: from `clue` to a ready prompt, from `clue -c` to a re
 
 ## Prompts
 
-The system prompt is in `prompts/system.md` and the reviewer's prompt is in `prompts/review.yaml`. Bun embeds both in the binary at build time. Tool descriptions stay in the code, next to each tool's parameters.
+The system prompt is in `prompts/system.md`, the reviewer's prompt is in `prompts/review.yaml`, and the prompt that asks for a compaction's summary is in `prompts/compact.md`. Bun embeds them in the binary at build time. Tool descriptions stay in the code, next to each tool's parameters.
 
 ## Release
 
