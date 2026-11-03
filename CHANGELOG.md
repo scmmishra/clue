@@ -14,6 +14,8 @@ All notable changes to clue are listed here. The release workflow publishes the 
 - The path in a `Read`, `Wrote` or `Edited` row links to the file, so a terminal with OSC 8 links opens it on click. Resumed sessions get the links too. The row looks the same.
 - If clue exits partway through a redraw, it ends synchronized output, so the terminal can't be left waiting for the rest of the frame.
 - A quick `esc esc` always opens rewind. When both presses reached clue together, such as over SSH or while clue was busy, they read as one alt+esc and did nothing.
+- A web search row shows its query again. With the newer Claude models, the query arrived in a form clue did not read, so rows said `Searched the web for ""`. The code Claude writes to run those searches no longer shows as a search row.
+- A prompt you send has the bar on every row, wrapped and blank lines included. Before, only the first line had it. clue wraps the prompt at the current width, so it does not reflow when you resize the window, and copying it includes the bars.
 
 ## 0.12.0
 
