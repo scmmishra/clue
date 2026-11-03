@@ -932,7 +932,7 @@ const compactedSession = async () => {
 
 test("after /compact, clue compacts a full conversation itself before the next prompt", async () => {
   const clue = await compactedSession();
-  usage.cache_read_input_tokens = 200_000;
+  usage.cache_read_input_tokens = 800_000;
   await clue.type("zebra-two");
   await clue.type(ENTER);
   await clue.turns(2);
@@ -950,7 +950,7 @@ test("after /compact, clue compacts a full conversation itself before the next p
 
 test("a compaction during a turn lets the turn continue", async () => {
   const clue = await compactedSession();
-  usage.cache_read_input_tokens = 200_000;
+  usage.cache_read_input_tokens = 800_000;
   const before = compactions.length;
   await clue.type("read the package");
   await clue.type(ENTER);

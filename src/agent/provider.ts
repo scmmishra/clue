@@ -3,14 +3,13 @@ import type { Effort } from "../config";
 import { resolveAuth } from "../auth";
 import { startsWithSummary, type MessageParam } from "../session";
 import { toolDefinitions } from "../tools";
-import { advisorOf, apiModel, modelInfo, modelLabel, pairEffort } from "./models";
+import { advisorOf, apiModel, compactAt, MAX_OUTPUT_TOKENS, modelInfo, modelLabel, pairEffort } from "./models";
 import { advisorGuidance, SYSTEM_PROMPT } from "./prompt";
 
 // Every model call goes through this file. Other providers, such as
 // OpenRouter or Codex, would be a sibling of this module.
 
 const API_ORIGIN = process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com";
-const MAX_OUTPUT_TOKENS = 64_000;
 
 // The advisor's output per call, thinking included, and its calls per request.
 const ADVISOR_MAX_TOKENS = 4096;
@@ -116,7 +115,9 @@ export function buildRequest(options: RequestOptions) {
   if (options.summarize) request.compaction = { type: "summarize" };
   if (options.summarize || startsWithSummary(options.messages)) betas.push("compact-2026-09-04");
   else if (features.compaction) {
-    request.context_management = { edits: [{ type: "compact_20260112" }] };
+    request.context_management = {
+      edits: [{ type: "compact_20260112", trigger: { type: "input_tokens", value: compactAt(options.model) } }],
+    };
     betas.push("compact-2026-01-12");
   }
   if (features.fallbacks && info?.fallbacks && !options.summarize) {

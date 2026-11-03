@@ -16,6 +16,8 @@ type ModelInfo = {
   fastMode: boolean;
   // A prompt over `over` tokens bills every token at `multiplier` times the rates above.
   longPrompt?: { over: number; multiplier: number };
+  // The context window, in tokens.
+  context: number;
   // A pair: this model does the work, and the advisor tool asks the stronger one on hard steps.
   executor?: string;
   advisor?: string;
@@ -32,6 +34,7 @@ const MODELS: Record<string, ModelInfo> = {
     dynamicWebTools: true,
     fallbacks: true,
     fastMode: false,
+    context: 1_000_000,
   },
   "claude-fable-5": {
     label: "fable 5",
@@ -43,6 +46,7 @@ const MODELS: Record<string, ModelInfo> = {
     dynamicWebTools: true,
     fallbacks: false,
     fastMode: false,
+    context: 1_000_000,
   },
   "claude-opus-5-5": {
     label: "opus 5.5",
@@ -54,6 +58,7 @@ const MODELS: Record<string, ModelInfo> = {
     dynamicWebTools: true,
     fallbacks: true,
     fastMode: true,
+    context: 1_000_000,
   },
   "claude-opus-5": {
     label: "opus 5",
@@ -65,17 +70,19 @@ const MODELS: Record<string, ModelInfo> = {
     dynamicWebTools: true,
     fallbacks: true,
     fastMode: true,
+    context: 1_000_000,
   },
   "claude-sonnet-5-5": {
     label: "sonnet 5.5",
     input: 2,
     output: 10,
-    cacheRead: 0.2,
+    cacheRead: 0.1,
     cacheWrite: 2.5,
     progressNotes: true,
     dynamicWebTools: true,
     fallbacks: true,
     fastMode: false,
+    context: 1_000_000,
   },
   "claude-sonnet-5": {
     label: "sonnet 5",
@@ -87,6 +94,7 @@ const MODELS: Record<string, ModelInfo> = {
     dynamicWebTools: true,
     fallbacks: false,
     fastMode: false,
+    context: 1_000_000,
   },
   "claude-haiku-5-5": {
     label: "haiku 5.5",
@@ -100,6 +108,7 @@ const MODELS: Record<string, ModelInfo> = {
     dynamicWebTools: false,
     fallbacks: false,
     fastMode: false,
+    context: 1_000_000,
   },
 };
 
@@ -135,8 +144,18 @@ export const PAIR_EFFORTS = ["medium", "high", "xhigh", "max"] as const;
 export const pairEffort = <E extends string>(model: string, effort: E): E | "medium" =>
   advisorOf(model) && effort === "low" ? "medium" : effort;
 
-// The context size where the API compacts a conversation by default.
-export const COMPACTION_TRIGGER_TOKENS = 150_000;
+// The longest reply clue asks for. A request keeps room for it, so it isn't part of the usable window.
+export const MAX_OUTPUT_TOKENS = 64_000;
+// For a model clue doesn't know: where it compacts, which is the API's own default.
+export const DEFAULT_COMPACT_AT = 150_000;
+
+// Where a conversation compacts on this model: 80% of the window left after the longest reply,
+// about 749k tokens of 1M.
+export function compactAt(id: string) {
+  const info = MODELS[id] ?? MODELS[apiModel(id)];
+  if (!info) return DEFAULT_COMPACT_AT;
+  return Math.round((info.context - MAX_OUTPUT_TOKENS) * 0.8);
+}
 
 // Cost of one web search, in dollars.
 const WEB_SEARCH_COST = 0.01;

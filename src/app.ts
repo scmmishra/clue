@@ -8,6 +8,7 @@ import { gitBranch, prefetchGitStatus } from "./agent/context";
 import {
   advisorOf,
   apiModel,
+  compactAt,
   FAST_MODELS,
   fastEnabled,
   KNOWN_MODELS,
@@ -903,7 +904,13 @@ export class App {
       case "cost":
       case "usage":
         return this.print(
-          usageReport(this.session.turns, this.session.compactions, this.session.rewound, this.session.spends),
+          usageReport(
+            this.session.turns,
+            this.session.compactions,
+            this.session.rewound,
+            this.session.spends,
+            compactAt(this.settings.model),
+          ),
         );
       case "exit":
       case "quit":

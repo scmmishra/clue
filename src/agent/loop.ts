@@ -19,7 +19,7 @@ import { msSince, now } from "../clock";
 import {
   addUsage,
   advisorOf,
-  COMPACTION_TRIGGER_TOKENS,
+  compactAt,
   cost,
   emptyUsage,
   fastEnabled,
@@ -160,7 +160,7 @@ export class Agent {
   // Automatic compaction can't run on a session with a /compact summary, so clue triggers it here.
   private async compactIfFull(signal: AbortSignal, midTurn: boolean) {
     const { session, events } = this.options;
-    if (!session.carriesSummary || this.lastContext < COMPACTION_TRIGGER_TOKENS) return;
+    if (!session.carriesSummary || this.lastContext < compactAt(this.options.settings.model)) return;
     let problem: string | null = null;
     try {
       const result = await this.compact(signal);
