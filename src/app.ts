@@ -68,6 +68,13 @@ const DOUBLE_PRESS_MS = 1500;
 // A slash command's name has no second slash, so a pasted path like /tmp/a.png is a prompt.
 const SLASH_COMMAND = /^\/[\w-]*(\s|$)/;
 
+// Who owns the keyboard and the live area. Each mode has one key handler and one renderer,
+// set together by App.enter, so they can't disagree.
+// idle: the input. picker: a list under the input, such as /model or rewind.
+// command: a slash command is running, and keys wait for it. turn: Claude is working.
+type Mode = "idle" | "picker" | "command" | "turn";
+const blank = (): LiveFrame => ({ lines: [] });
+
 export type AppOptions = {
   settings: Settings;
   session: Session;
@@ -105,6 +112,9 @@ export class App {
   private turn: AbortController | null = null;
   private pager: Pager | null = null;
   private lastEscape = 0;
+  private mode: Mode = "idle";
+  // Keys typed while a command runs. They go to whichever mode follows it.
+  private typedAhead: Key[] = [];
   private rewindPicker: RewindPicker | null = null;
   private optionPicker: OptionPicker | null = null;
   private onChosen: (value: string, level: string) => void = () => {};
@@ -174,6 +184,7 @@ export class App {
         view()?.confirm(label, subject, pattern, note) ?? Promise.resolve("no"),
       question: (question: Question) => view()?.question(question) ?? Promise.resolve(null),
       notice: (text, tone) => view()?.notice(text, tone),
+      toolsStopped: () => view()?.toolsStopped(),
       steer: () => {
         const steer = this.steering;
         if (!steer) return null;
@@ -315,10 +326,23 @@ export class App {
     };
   };
 
+  private enter(mode: Mode) {
+    this.mode = mode;
+    const [handler, render]: [(key: Key) => void, () => LiveFrame] =
+      mode === "idle"
+        ? [this.onIdleKey, this.composer]
+        : mode === "picker"
+          ? [this.onPickerKey, this.composer]
+          : mode === "command"
+            ? [this.onCommandKey, blank]
+            : [this.onTurnKey, blank];
+    this.keyboard.set((key) => handler.call(this, key));
+    this.screen.setRenderer(render);
+  }
+
   // Waiting for input.
   private idle() {
-    this.screen.setRenderer(this.composer);
-    this.keyboard.set((key) => this.onIdleKey(key));
+    this.enter("idle");
   }
 
   // A paste with no text can mean the clipboard holds an image, so clue looks for one.
@@ -495,7 +519,7 @@ export class App {
     }));
     this.editor.closePicker();
     this.rewindPicker = new RewindPicker(rows);
-    this.screen.refresh();
+    this.enter("picker");
   }
 
   private choose(
@@ -508,13 +532,27 @@ export class App {
     this.editor.closePicker();
     this.optionPicker = new OptionPicker(title, options, current, dial);
     this.onChosen = onChosen;
-    this.screen.refresh();
+    this.enter("picker");
+  }
+
+  private closePicker() {
+    this.rewindPicker = this.optionPicker = null;
+    this.idle();
+  }
+
+  // Ctrl+C cancels a list, like esc.
+  private onPickerKey(key: Key) {
+    if (this.pager) return this.pager.handle(key);
+    const cancel = key.ctrl && key.name === "c" ? { name: "escape" } : key;
+    if (this.rewindPicker) return this.rewindKey(cancel);
+    if (this.optionPicker) return this.optionKey(cancel);
+    this.closePicker();
   }
 
   private optionKey(key: Key) {
     const picker = this.optionPicker!;
     const value = picker.handle(key);
-    if (value !== null) this.optionPicker = null;
+    if (value !== null) this.closePicker();
     if (value) this.onChosen(value, picker.chosenLevel);
     this.screen.refresh();
   }
@@ -574,13 +612,13 @@ export class App {
   private rewindKey(key: Key) {
     const picker = this.rewindPicker!;
     const choice = picker.handle(key);
-    if (choice === "cancel") this.rewindPicker = null;
+    if (choice === "cancel") this.closePicker();
     else if (choice) {
       const dropped = picker.turnsDropped;
       const result = this.agent.rewind(choice.point, choice);
       if (result?.kind === "changed") picker.conflict(result.paths.map((path) => display(this.cwd, path)));
       else {
-        this.rewindPicker = null;
+        this.closePicker();
         this.print(rewindReport(dropped, result, this.cwd));
         this.editor.restore(choice.point.text, []);
       }
@@ -590,8 +628,6 @@ export class App {
 
   private onIdleKey(key: Key) {
     if (this.pager) return this.pager.handle(key);
-    if (this.rewindPicker) return this.rewindKey(key);
-    if (this.optionPicker) return this.optionKey(key);
     if (key.ctrl && key.name === "o") return this.openDetail();
     if (key.ctrl && key.name === "c") {
       if (this.editor.text) {
@@ -637,26 +673,50 @@ export class App {
     this.screen.refresh();
   }
 
+  // Every prompt and command starts here, typed or queued, so each runs in its own mode.
   private async submit(text: string, images: PromptImage[] = []) {
     const trimmed = text.trim();
     if (SLASH_COMMAND.test(trimmed) && !trimmed.includes("\n")) {
-      this.screen.setRenderer(() => ({ lines: [] }));
+      // Before the first await: keys typed from here on wait for the command.
+      this.enter("command");
       this.print([...markPrompt([`${style.brand(BAR)}${style.muted(trimmed)}`]), ""]);
-      await this.command(trimmed);
-      this.idle();
+      try {
+        await this.command(trimmed);
+      } finally {
+        this.endCommand();
+      }
       return;
     }
     await this.runTurn(text, images);
   }
 
+  // Back to the input, unless the command handed the keyboard on, such as to a list.
+  // Then the keys typed meanwhile go to whatever mode is current, as if typed now.
+  private endCommand() {
+    if (this.mode === "command") this.idle();
+    const keys = this.typedAhead;
+    this.typedAhead = [];
+    for (const key of keys) this.keyboard.deliver(key);
+  }
+
+  // Keys during a command wait for it, so Enter can't start a turn under it or steer
+  // a turn that isn't running. Ctrl+C twice still exits, since a command can wait minutes.
+  private onCommandKey(key: Key) {
+    if (key.ctrl && key.name === "c") {
+      if (Date.now() - this.lastInterrupt < DOUBLE_PRESS_MS) return void this.exit(0);
+      this.lastInterrupt = Date.now();
+      return;
+    }
+    this.typedAhead.push(key);
+  }
+
   private async runTurn(prompt: string, images: PromptImage[]) {
     this.warmOnKey = false;
     this.warming?.abort();
-    this.screen.setRenderer(() => ({ lines: [] }));
+    // Before the first await: a second Enter must queue, not start a second turn.
+    this.enter("turn");
     this.print([...promptLines(prompt), ""]);
     this.screen.status("working");
-    // Before the first await: a second Enter must queue, not start a second turn.
-    this.keyboard.set((key) => this.onTurnKey(key));
     try {
       await getClient();
     } catch (error) {
@@ -831,22 +891,13 @@ export class App {
       case "mcp":
         await mcpCommand(args, this.cwd, this.mcp, (lines) => this.print(lines));
         return;
-      case "copy": {
-        const work = this.copy(args.join(" "));
-        this.keyboard.hold(work);
-        return work;
-      }
-      case "paste": {
-        const work = this.pasteClipboard();
-        this.keyboard.hold(work);
-        return work;
-      }
-      case "compact": {
+      case "copy":
+        return this.copy(args.join(" "));
+      case "paste":
+        return this.pasteClipboard();
+      case "compact":
         if (this.session.isEmpty) return say(style.muted("Nothing to compact."));
-        const work = this.compact();
-        this.keyboard.hold(work);
-        return work;
-      }
+        return this.compact();
       case "undo":
         return this.print(undoReport(this.agent.undo.undo(args[0] === "force"), this.cwd));
       case "cost":

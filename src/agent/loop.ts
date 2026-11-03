@@ -49,6 +49,9 @@ export type AgentEvents = {
   confirm(label: string, subject: string, pattern: string, note?: string): Promise<ConfirmAnswer>;
   question(question: Question): Promise<string | null>;
   notice(text: string, tone?: "info" | "warn" | "error"): void;
+  // A request failed or was interrupted after it started tool calls, so those calls will
+  // never run or end. The interface closes whatever is still open.
+  toolsStopped?(): void;
   // A message the user typed to steer the running turn, taken once. The loop sends it with
   // the next tool results, so Claude reads it before its next step.
   steer?(): Steer | null;
@@ -256,6 +259,7 @@ export class Agent {
         });
         jsonRetries = 0;
       } catch (error) {
+        events.toolsStopped?.();
         this.tallyStreamed(tally, model, askedFast);
         // The SDK is loaded by now: the request needed it. Importing it here keeps it off the startup path.
         const { default: Sdk } = await import("@anthropic-ai/sdk");
@@ -311,12 +315,30 @@ export class Agent {
         break;
       }
       if (stop === "max_tokens") {
-        // A tool input cut off mid-way must not run.
+        // A tool input cut off mid-way must not run. It is still a call, so it ends like one.
+        const content = "The tool input was cut off by the output limit. Retry with smaller steps.";
+        for (const use of toolUses) {
+          const tool = findTool(use.name);
+          const record: ToolRecord = {
+            id: use.id,
+            name: use.name,
+            input: use.input,
+            label: tool ? safeLabel(tool, {}, false) : use.name,
+            kind: tool ? tool.kind : "mcp",
+            output: content,
+            isError: true,
+            startedAt: Date.now(),
+            ms: 0,
+            note: "cut off by the output limit",
+          };
+          session.append({ t: "tool", tool: record });
+          events.toolEnd(record);
+        }
         const results: ToolResult[] = toolUses.map((use) => ({
           type: "tool_result",
           tool_use_id: use.id,
           is_error: true,
-          content: "The tool input was cut off by the output limit. Retry with smaller steps.",
+          content,
         }));
         session.appendMessage({ role: "user", content: results });
         continue;
@@ -389,6 +411,7 @@ export class Agent {
         } else if ((block.type as string) === "advisor_tool_result") {
           const answer = block as unknown as { tool_use_id: string; content?: { type?: string; error_code?: string } };
           const record = this.advisorRecord(answer.tool_use_id, asking.get(answer.tool_use_id), answer.content);
+          asking.delete(answer.tool_use_id);
           this.session.append({ t: "tool", tool: record });
           events.toolEnd(record);
         }
@@ -429,6 +452,12 @@ export class Agent {
     }
     if (inText) events.textDone();
     events.thinking(null);
+    // An advisor call whose answer never came still ends, as a failed call.
+    for (const [id, startedAt] of asking) {
+      const record = this.advisorRecord(id, startedAt, { type: "advisor_tool_result_error", error_code: "no_answer" });
+      this.session.append({ t: "tool", tool: record });
+      events.toolEnd(record);
+    }
     const message = await response.finalMessage();
     // The full usage is on the message now, so nothing is left to count from the stream.
     this.streamed = null;

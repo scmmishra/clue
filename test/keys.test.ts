@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { term } from "../src/ui/ansi";
-import { keyModes, parseKeys, readyInput } from "../src/ui/screen";
+import { Keyboard, keyModes, parseKeys, readyInput } from "../src/ui/screen";
 
 const one = (data: string) => parseKeys(data)[0];
 const SHIFT = 2,
@@ -160,4 +160,21 @@ test("an unfinished paste waits for its end, and keys before it go now", () => {
   expect(readyInput(`${start}/tmp/a.png${end}`)).toEqual([`${start}/tmp/a.png${end}`, ""]);
   expect(readyInput(`${start}x${end}c${start}y`)).toEqual([`${start}x${end}c`, `${start}y`]);
   expect(readyInput("plain")).toEqual(["plain", ""]);
+});
+
+test("overlapping holds release keys only when the last one settles", async () => {
+  const keyboard = new Keyboard();
+  const seen: string[] = [];
+  keyboard.set((key) => seen.push(key.text ?? key.name));
+  let first = () => {};
+  let second = () => {};
+  keyboard.hold(new Promise<void>((resolve) => (first = resolve)));
+  keyboard.hold(new Promise<void>((resolve) => (second = resolve)));
+  keyboard.deliver({ name: "char", text: "a" });
+  first();
+  await Bun.sleep(0);
+  expect(seen).toEqual([]);
+  second();
+  await Bun.sleep(0);
+  expect(seen).toEqual(["a"]);
 });
