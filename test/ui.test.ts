@@ -196,3 +196,66 @@ test("a held multi-line command keeps its review after the first line", () => {
   const [, line] = plain(toolTree([row({ label: script, note: undefined, review: "held by jev" })] as never));
   expect(line).toBe("└ Ran cat > /tmp/a.py <<'EOF' …  held by jev");
 });
+
+// Subagent rows: aligned columns, each with its model, calls and own time.
+const agent = (over: object = {}) =>
+  row({ label: "Subagent finished: Find the prompt", kind: "subagent", note: undefined, ms: 41_000, ...over });
+const info = (over: object = {}) => ({
+  model: "claude-opus-5-5",
+  chosen: false,
+  calls: 5,
+  startedAt: Date.now(),
+  ...over,
+});
+
+test("a run of subagents lines up their models, calls and times", () => {
+  const lines = plainTree([
+    agent({ subagent: info({ model: "claude-haiku-5-5", chosen: true }) }),
+    agent({
+      label: "Subagent: Look around",
+      done: false,
+      subagent: info({ calls: 0, startedAt: Date.now() - 3000 }),
+    }),
+    agent({ label: "Subagent: Read the docs", done: false }),
+    agent({ isError: true, subagent: info({ calls: 1, effort: "low" }), ms: 62_000 }),
+  ]);
+  expect(lines[0]).toEndWith("4 subagents · 1 running · 1 failed");
+  expect(lines[1]).toBe("├ ✓ Find the prompt  haiku 5.5     5 calls · 41s");
+  expect(lines[2]).toMatch(/^├ . Look around      opus 5\.5      starting · 3\.0s$/);
+  expect(lines[3]).toBe("├ · Read the docs                  waiting");
+  expect(lines[4]).toBe("└ ✗ Find the prompt  opus 5.5 low  1 call · 1m2s");
+});
+
+test("an inherited model is grey and a chosen one is not", () => {
+  const [, chosen, inherited] = toolTree([
+    agent({ subagent: info({ model: "claude-haiku-5-5", chosen: true }) }),
+    agent({ subagent: info() }),
+  ] as never);
+  expect(chosen).toContain("  haiku 5.5  ");
+  expect(inherited).toContain(style.muted("opus 5.5"));
+});
+
+test("a narrow terminal drops the time, then the calls, then cuts the description, and keeps the model", () => {
+  const before = process.stdout.columns;
+  try {
+    process.stdout.columns = 40;
+    expect(plainTree([agent({ subagent: info() })])[1]).toBe("└ ✓ Find the prompt  opus 5.5  5 calls");
+    process.stdout.columns = 26;
+    expect(plainTree([agent({ subagent: info({ effort: "low" }) })])[1]).toBe("└ ✓ Find the p…  opus 5.5");
+  } finally {
+    process.stdout.columns = before;
+  }
+});
+
+test("a subagent row from an older session keeps its count", () => {
+  expect(plainTree([agent({ note: "3 tool calls" })])[1]).toBe("└ ✓ Find the prompt  3 tool calls · 41s");
+});
+
+test("subagents among other tools keep the usual summary", () => {
+  const [summary] = plainTree([row(), agent({ subagent: info() })]);
+  expect(summary).toEndWith("2 tool calls · 1 read · 1 subagent");
+});
+
+function plainTree(rows: object[]) {
+  return toolTree(rows as never).map((line) => Bun.stripANSI(line));
+}

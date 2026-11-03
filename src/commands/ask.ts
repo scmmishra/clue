@@ -1,5 +1,6 @@
 import { prefetchGitStatus } from "../agent/context";
 import { Agent, type AgentEvents } from "../agent/loop";
+import { modelLabel } from "../agent/models";
 import { getClient } from "../agent/provider";
 import type { Settings } from "../config";
 import { McpManager } from "../mcp/manager";
@@ -32,8 +33,13 @@ export async function runAsk(prompt: string, settings: Settings, session: Sessio
       current = "";
     },
     toolUpdate: () => {},
-    toolEnd: (record) =>
-      progress(`${record.isError ? "✗" : "✓"} ${record.label}${record.note ? `  ${record.note}` : ""}`),
+    toolEnd: (record) => {
+      const agent = record.subagent;
+      const note = agent
+        ? `${modelLabel(agent.model)} · ${agent.calls} tool ${agent.calls === 1 ? "call" : "calls"}`
+        : record.note;
+      progress(`${record.isError ? "✗" : "✓"} ${record.label}${note ? `  ${note}` : ""}`);
+    },
     review: () => {},
     confirm: async () => "no",
     question: async () => null,

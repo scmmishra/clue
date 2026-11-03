@@ -113,6 +113,8 @@ export class App {
   private turn: AbortController | null = null;
   private pager: Pager | null = null;
   private lastEscape = 0;
+  // A second esc came while an interrupted turn was still stopping. Rewind opens once it stops.
+  private rewindAfterTurn = false;
   private mode: Mode = "idle";
   // Keys typed while a command runs. They go to whichever mode follows it.
   private typedAhead: Key[] = [];
@@ -178,7 +180,7 @@ export class App {
       text: (delta) => view()?.text(delta),
       textDone: () => view()?.textDone(),
       toolStart: (id, label, kind) => view()?.toolStart(id, label, kind),
-      toolUpdate: (id, label, note) => view()?.toolUpdate(id, label, note),
+      toolUpdate: (id, label, note, subagent) => view()?.toolUpdate(id, label, note, subagent),
       toolEnd: (record) => view()?.toolEnd(record),
       review: (id, state, detail) => view()?.review(id, state, detail),
       confirm: (label, subject, pattern, note) =>
@@ -728,6 +730,7 @@ export class App {
     const view = new TurnView(this.screen, this.composer);
     this.view = view;
     this.turn = new AbortController();
+    this.rewindAfterTurn = false;
     view.start();
     let turn: TurnRecord | null = null;
     try {
@@ -754,6 +757,10 @@ export class App {
     }
     this.unqueue();
     this.idle();
+    if (this.rewindAfterTurn) {
+      this.rewindAfterTurn = false;
+      this.openRewind();
+    }
   }
 
   private onTurnKey(key: Key) {
@@ -765,10 +772,16 @@ export class App {
       this.view?.notice("Interrupting…", "warn");
     };
     if (key.ctrl && key.name === "c") return interrupt();
+    // One esc interrupts. A second one soon after also opens rewind, once the turn stops.
+    // If the turn stops first, the second esc reaches onIdleKey, which opens rewind the same way.
     if (key.name === "escape" && !this.editor.pickerOpen) {
-      if (Date.now() - this.lastEscape < DOUBLE_PRESS_MS) return interrupt();
+      if (Date.now() - this.lastEscape < DOUBLE_PRESS_MS) {
+        this.lastEscape = 0;
+        this.rewindAfterTurn = true;
+        return;
+      }
       this.lastEscape = Date.now();
-      return;
+      return interrupt();
     }
     this.hint = "";
     if (this.cycleKey(key) || this.pasteKey(key)) return;
@@ -807,7 +820,7 @@ export class App {
           "",
           `  ${style.muted("enter send · shift+enter, alt+enter or \\ newline · ↑↓ history · @ file · tab complete · shift+tab permission mode")}`,
           `  ${style.muted("while clue works: enter steer the turn · tab queue for after it · ↑ edit")}`,
-          `  ${style.muted("esc esc interrupt, or rewind when idle · ctrl+c interrupt · ctrl+o detail · ctrl+d exit")}`,
+          `  ${style.muted("esc interrupt · esc esc rewind · ctrl+c interrupt · ctrl+o detail · ctrl+d exit")}`,
           "",
         ]);
         return;

@@ -2,10 +2,24 @@ import { hostname } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { ConfirmAnswer, AgentEvents } from "../agent/loop";
 import { modelLabel } from "../agent/models";
-import type { ToolRecord, TurnRecord } from "../session";
+import type { SubagentInfo, ToolRecord, TurnRecord } from "../session";
 import type { Question } from "../tools/types";
 import { VERSION } from "../config";
-import { columns, duration, homePath, money, spinnerFrame, spread, style, term, tokens, width, wrapLine } from "./ansi";
+import {
+  columns,
+  duration,
+  homePath,
+  money,
+  pad,
+  spinnerFrame,
+  spread,
+  style,
+  term,
+  tokens,
+  truncate,
+  width,
+  wrapLine,
+} from "./ansi";
 import { MarkdownStream } from "./markdown";
 import { msSince, now } from "../clock";
 import type { Key, LiveFrame, Screen } from "./screen";
@@ -101,8 +115,10 @@ type Row = {
   added?: number;
   removed?: number;
   startedAt: number;
+  ms?: number;
   // The file a read, write or edit worked on. Its row links to it.
   path?: string;
+  subagent?: SubagentInfo;
 };
 
 const FILE_TOOLS = new Set(["read_file", "write_file", "edit_file"]);
@@ -135,7 +151,8 @@ const isHeld = (row: Pick<Row, "review">) =>
   row.review?.startsWith("held") || row.review === "declined" || row.review === "denied";
 
 // "5 tool calls · 2 reads · 1 edit · 2 commands · 1 failed". Line counts show on each edit's row.
-function summary(rows: Pick<Row, "kind" | "isError" | "review">[]) {
+// A run of only subagents reads "3 subagents · 2 running".
+function summary(rows: Pick<Row, "kind" | "isError" | "review" | "done" | "subagent">[]) {
   const counts = new Map<string, number>();
   let failed = 0;
   let held = 0;
@@ -151,10 +168,108 @@ function summary(rows: Pick<Row, "kind" | "isError" | "review">[]) {
       const [one, many] = KIND_NAMES[kind] ?? [kind, `${kind}s`];
       return style.muted(`${count} ${count === 1 ? one : many}`);
     });
+  const total = rows.length;
+  if (counts.size === 1 && counts.has("subagent")) {
+    parts.length = 0;
+    const running = rows.filter((row) => row.done === false && row.subagent).length;
+    if (running) parts.push(style.muted(`${running} running`));
+  }
   if (held) parts.push(style.orange(`${held} held`));
   else if (failed) parts.push(style.red(`${failed} failed`));
-  const total = rows.length;
-  return [style.muted(`${total} tool ${total === 1 ? "call" : "calls"}`), ...parts].join(dot);
+  const head = counts.size === 1 && counts.has("subagent") ? KIND_NAMES.subagent : ["tool call", "tool calls"];
+  return [style.muted(`${total} ${total === 1 ? head[0] : head[1]}`), ...parts].join(dot);
+}
+
+// Rows from before the structured subagent rows have the description in a label like this.
+const SUBAGENT_LABEL = /^Subagent(?: finished)?: /;
+
+// The parts of a subagent's row, styled. `model` is the model and the effort, if it differs.
+function subagentCells(row: Row) {
+  const info = row.subagent;
+  const running = row.done === false && info !== undefined;
+  const waiting = row.done === false && info === undefined;
+  const mark = running
+    ? style.brand(spinnerFrame())
+    : waiting
+      ? style.faint("·")
+      : isHeld(row)
+        ? style.orange("✗")
+        : row.isError
+          ? style.red("✗")
+          : style.green("✓");
+  const text = firstLine(row.label.replace(SUBAGENT_LABEL, "")) || "…";
+  const paint =
+    row.done === false ? (value: string) => value : isHeld(row) ? style.orange : row.isError ? style.red : style.muted;
+  const model = info ? (info.chosen ? modelLabel(info.model) : style.muted(modelLabel(info.model))) : "";
+  const effort = info?.effort ? style.muted(info.effort) : "";
+  const calls = waiting
+    ? "waiting"
+    : info
+      ? info.calls
+        ? `${info.calls} ${info.calls === 1 ? "call" : "calls"}`
+        : running
+          ? "starting"
+          : "no calls"
+      : // An older row keeps its count in the note.
+        (row.note ?? "");
+  const ms = running ? Date.now() - info.startedAt : row.done !== false ? row.ms : undefined;
+  const extra = [
+    row.reviewing ? style.orange("reviewing") : "",
+    info && row.note ? style.muted(row.note) : "",
+    row.review ? style.muted(row.review) : "",
+  ].filter(Boolean);
+  return {
+    mark,
+    text,
+    paint,
+    model,
+    effort,
+    calls: calls ? style.muted(calls) : "",
+    time: ms ? style.muted(duration(ms)) : "",
+    extra: extra.join("  "),
+  };
+}
+
+// Subagent rows as aligned columns: mark, description, model and effort, then calls and time.
+// When the widest row doesn't fit, the time goes first, then the calls, then the effort.
+// Then the description is cut. The model stays.
+function subagentLines(rows: Row[]) {
+  const cells = rows.map(subagentCells);
+  const room = columns() - 3;
+  const show = { time: true, calls: true, effort: true };
+  const modelCell = (cell: (typeof cells)[number]) =>
+    show.effort && cell.effort ? `${cell.model} ${cell.effort}` : cell.model;
+  const tail = (cell: (typeof cells)[number]) =>
+    [show.calls ? cell.calls : "", show.time ? cell.time : ""].filter(Boolean).join(style.muted(" · "));
+  const widest = (measure: (cell: (typeof cells)[number]) => number) => Math.max(0, ...cells.map(measure));
+  let textWidth = widest((cell) => width(cell.text));
+  const lineWidth = () => {
+    const modelWidth = widest((cell) => width(modelCell(cell)));
+    return widest(
+      (cell) =>
+        2 +
+        textWidth +
+        (modelWidth ? 2 + modelWidth : 0) +
+        (tail(cell) ? 2 + width(tail(cell)) : 0) +
+        (cell.extra ? 2 + width(cell.extra) : 0),
+    );
+  };
+  for (const part of ["time", "calls", "effort"] as const) {
+    if (lineWidth() <= room) break;
+    show[part] = false;
+  }
+  const over = lineWidth() - room;
+  if (over > 0) textWidth = Math.max(8, textWidth - over);
+  const modelWidth = widest((cell) => width(modelCell(cell)));
+  return cells.map((cell) => {
+    const parts = [
+      `${cell.mark} ${cell.paint(pad(truncate(cell.text, textWidth), textWidth))}`,
+      ...(modelWidth ? [pad(modelCell(cell), modelWidth)] : []),
+      tail(cell),
+      cell.extra,
+    ];
+    return parts.filter(Boolean).join("  ").trimEnd();
+  });
 }
 
 // A label can be a whole script. A row shows its first line.
@@ -195,13 +310,16 @@ export function toolTree(rows: Row[] | ToolRecord[], clock?: string) {
   const hidden = Math.max(0, items.length - MAX_TREE_ROWS);
   const shown = hidden ? items.slice(-(MAX_TREE_ROWS - 1)) : items;
   if (hidden) lines.push(style.muted(`├ … ${hidden + 1} earlier, ctrl+o shows all`));
-  const lastRunning = items.findLast((row) => row.done === false);
+  // A subagent row has its own clock.
+  const lastRunning = items.findLast((row) => row.done === false && row.kind !== "subagent");
+  const agents = shown.filter((row) => row.kind === "subagent");
+  const agentLines = new Map(subagentLines(agents).map((line, index) => [agents[index], line]));
   // Read once per tree, and only when a row links a file.
   let folder: string | undefined;
   const cwd = () => (folder ??= process.cwd());
   shown.forEach((row, index) => {
     const branch = style.muted(index === shown.length - 1 ? "└ " : "├ ");
-    lines.push(`${branch}${rowText(row, row === lastRunning && clock ? clock : "", cwd)}`);
+    lines.push(`${branch}${agentLines.get(row) ?? rowText(row, row === lastRunning && clock ? clock : "", cwd)}`);
   });
   return lines;
 }
@@ -461,11 +579,12 @@ export class TurnView implements AgentEvents {
     this.screen.refresh();
   }
 
-  toolUpdate(id: string, label: string, note?: string) {
+  toolUpdate(id: string, label: string, note?: string, subagent?: SubagentInfo) {
     const row = this.rows.find((item) => item.id === id);
     if (!row) return;
     if (label) row.label = label;
     if (note !== undefined) row.note = note === "done" ? undefined : note;
+    if (subagent) row.subagent = subagent;
     this.screen.refresh();
   }
 
@@ -486,6 +605,8 @@ export class TurnView implements AgentEvents {
       added: record.added,
       removed: record.removed,
       path: toolFile(record),
+      ms: record.ms,
+      subagent: record.subagent ?? row.subagent,
     });
     this.screen.refresh();
   }

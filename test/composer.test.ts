@@ -734,7 +734,7 @@ test("the picker works while a turn runs, and takes up, tab and enter from the q
   expect(clue.wasSent("@notes.md now")).toBe(true);
 }, 25_000);
 
-test("escape in the picker during a turn doesn't count toward an interrupt", async () => {
+test("escape in the picker during a turn closes the picker and doesn't interrupt", async () => {
   const cwd = scratch("clue-mention-esc-");
   writeFileSync(join(cwd, "notes.md"), "hello");
   const clue = await startClue({ cwd, delay: 30 });
@@ -743,7 +743,6 @@ test("escape in the picker during a turn doesn't count toward an interrupt", asy
   await clue.working();
   await clue.type("@not");
   await clue.seen("notes.md");
-  await clue.type("\x1b");
   await clue.type("\x1b");
   await clue.turns(1);
   expect(clue.screen()).not.toContain("Interrupting");
@@ -1015,14 +1014,32 @@ test("esc closes rewind, and an empty session has nothing to rewind", async () =
   expect(clue.wasSent("next")).toBe(true);
 }, 25_000);
 
-test("esc esc during a run interrupts instead of rewinding", async () => {
+test("one esc during a run interrupts it, and rewind stays closed", async () => {
+  const clue = await startClue({ delay: 30 });
+  await clue.type("hello");
+  await clue.type(ENTER);
+  await clue.working();
+  await clue.type(ESC);
+  await clue.seen("Interrupting");
+  await clue.seen("interrupted");
+  await Bun.sleep(100);
+  expect(clue.screen()).not.toContain("Rewind to before:");
+}, 25_000);
+
+test("esc esc during a run interrupts it, then opens rewind", async () => {
   const clue = await startClue({ delay: 30 });
   await clue.type("hello");
   await clue.type(ENTER);
   await clue.working();
   await pressTwice(clue);
   await clue.seen("Interrupting");
-  expect(clue.screen()).not.toContain("Rewind to before:");
+  await clue.seen("Rewind to before:");
+  await clue.type(ESC);
+  await clue.type("next");
+  await clue.type(ENTER);
+  // The interrupted turn doesn't report "done", so this one is the first.
+  await clue.turns(1);
+  expect(clue.wasSent("next")).toBe(true);
 }, 25_000);
 
 test("/model with no argument opens a list, and enter selects", async () => {
@@ -1192,6 +1209,16 @@ test("when a subagent loses fast mode, the session does too, and clue says so", 
   } finally {
     fastMode.rejectedFor = null;
   }
+}, 25_000);
+
+test("a subagent runs on the model the call picked, and its row names the model", async () => {
+  const clue = await startClue();
+  await clue.type("delegate this on haiku");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  await clue.seen("haiku 5.5");
+  expect(requests[0].model).not.toBe("claude-haiku-5-5");
+  expect(requests.some((request) => request.model === "claude-haiku-5-5")).toBe(true);
 }, 25_000);
 
 test("closing the terminal stops running commands", async () => {

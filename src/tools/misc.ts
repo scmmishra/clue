@@ -1,3 +1,5 @@
+import { advisorOf, KNOWN_MODELS, modelInfo, modelLabel, resolveModel } from "../agent/models";
+import { EFFORTS } from "../config";
 import { checkFields, type Tool } from "./types";
 
 const PAGE_CHARS = 20_000;
@@ -88,20 +90,51 @@ export const askUser: Tool<{
   },
 };
 
-export const subagent: Tool<{ task: string; description: string }> = {
+// A subagent works without the advisor, so it takes a single model, not a pair.
+const SUBAGENT_MODELS = KNOWN_MODELS.filter((id) => !advisorOf(id));
+
+// The model id for a subagent's `model` field, or null when clue can't run a subagent on it.
+export function subagentModel(name: string) {
+  const id = resolveModel(name);
+  return modelInfo(id) && !advisorOf(id) ? id : null;
+}
+
+export const subagent: Tool<{ task: string; description: string; model?: string; effort?: string }> = {
   name: "subagent",
   description:
-    "Hand a self-contained task to another agent with a fresh context, such as a broad search across the codebase or researching one question. It has the same tools except subagent and ask_user_question. You get back only its final answer, so say exactly what to return.",
+    "Hand a self-contained task to another agent with a fresh context, such as a broad search across the codebase or researching one question. It has the same tools except subagent and ask_user_question. You get back only its final answer, so say exactly what to return. The agent uses your model and effort. To use a different model, set model. For example, use haiku for a simple search.",
   schema: {
     type: "object",
     properties: {
       description: { type: "string", description: "Three to six words for the transcript." },
       task: { type: "string", description: "The complete task, with everything the agent needs to know." },
+      model: {
+        type: "string",
+        description: `The model for the agent: ${SUBAGENT_MODELS.map(modelLabel).join(", ")}. A family name, such as haiku, selects its newest model. Default: your model.`,
+      },
+      effort: {
+        type: "string",
+        enum: [...EFFORTS],
+        description: "The thinking effort for the agent. Default: your effort.",
+      },
     },
     required: ["description", "task"],
   },
   kind: "subagent",
   label: (input, done) => `${done ? "Subagent finished" : "Subagent"}: ${input.description}`,
-  validate: (input) => checkFields(input, { task: "string", description: "string" }),
-  run: (input, context) => context.subagent(input.task, input.description, context.signal),
+  validate(input) {
+    const problem = checkFields(input, { task: "string", description: "string", model: "string?", effort: "string?" });
+    if (problem) return problem;
+    const { model, effort } = input as { model?: string; effort?: string };
+    if (model && !subagentModel(model))
+      return `Unknown model "${model}". Use one of these: ${SUBAGENT_MODELS.map(modelLabel).join(", ")}.`;
+    if (effort && !(EFFORTS as readonly string[]).includes(effort))
+      return `Unknown effort "${effort}". Use one of these: ${EFFORTS.join(", ")}.`;
+    return null;
+  },
+  run: (input, context) =>
+    context.subagent(input.task, input.description, context.signal, {
+      model: input.model ? (subagentModel(input.model) ?? undefined) : undefined,
+      effort: input.effort,
+    }),
 };
