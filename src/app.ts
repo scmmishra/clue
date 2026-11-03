@@ -37,7 +37,7 @@ import { OptionPicker, type Dial, type Option } from "./ui/option-picker";
 import { RewindPicker, rewindReport } from "./ui/rewind";
 import { undoReport } from "./ui/undo";
 import { usageReport } from "./ui/usage";
-import { clipboardImage, clipboardSupported, clipboardText, writeClipboard } from "./ui/clipboard";
+import { clipboardImage, clipboardSupported, clipboardText, copyMethod, writeClipboard } from "./ui/clipboard";
 import { findImagePaths } from "./ui/paste";
 import { pickSession } from "./ui/picker";
 import { detailLines, Pager, replay, RESUME_SCROLLBACK_BYTES } from "./ui/replay";
@@ -369,15 +369,28 @@ export class App {
   // Handles a key that adds to the input from outside it. True when the key was one.
   // Keys wait for the copy, so a prompt typed meanwhile can't start a turn under it.
   private async copy(request: string) {
-    if (!clipboardSupported) return this.notice("Copying to the clipboard works on macOS.");
+    const method = copyMethod();
+    if (!method) return this.notice("Copying needs a terminal that takes escape codes, and TERM is dumb here.");
     const reply = lastReply(this.session.messages);
     if (request && reply) this.screen.status("working");
     const choice = await chooseCopy(reply, request, this.settings.copy);
     this.screen.status("idle");
     if ("problem" in choice) return this.notice(choice.problem);
-    if (!(await writeClipboard(choice.text)))
+    if (!(await writeClipboard(choice.text, method)))
       return this.print([`  ${style.red("pbcopy failed, so nothing was copied.")}`, ""]);
-    this.print([`  ${style.muted(choice.summary)}`, ...(choice.note ? [`  ${style.faint(choice.note)}`] : []), ""]);
+    const notes = [choice.note, method === "terminal" ? this.terminalCopyNote() : undefined].filter(Boolean);
+    this.print([`  ${style.muted(choice.summary)}`, ...notes.map((note) => `  ${style.faint(note!)}`), ""]);
+  }
+
+  // A terminal never says whether it took an OSC 52 copy, and some turn them off until
+  // asked. The first copy in a session says how to turn it on.
+  private terminalCopyNoted = false;
+  private terminalCopyNote() {
+    if (this.terminalCopyNoted) return undefined;
+    this.terminalCopyNoted = true;
+    return process.env.TMUX
+      ? "The terminal sets the clipboard. In tmux, that needs `set -g set-clipboard on`."
+      : "The terminal sets the clipboard. If nothing arrived, allow clipboard access in its settings.";
   }
 
   private async compact() {

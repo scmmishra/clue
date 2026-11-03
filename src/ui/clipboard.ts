@@ -20,13 +20,36 @@ export async function clipboardText(): Promise<string> {
   }
 }
 
-// Puts text on the clipboard. False when that didn't work. pbcopy reads its input in
-// the locale's encoding, so LANG is set for anything outside ASCII.
+// How a copy reaches the clipboard. On a Mac, pbcopy. Anywhere else, and over SSH, where
+// pbcopy would fill the remote machine's clipboard, an OSC 52 code asks the terminal in
+// front of the user to set it. A dumb terminal can't take the code.
+export type CopyMethod = "pbcopy" | "terminal";
+
+export function copyMethod(
+  env: Record<string, string | undefined> = process.env,
+  platform = process.platform,
+): CopyMethod | null {
+  const remote = Boolean(env.SSH_CONNECTION || env.SSH_CLIENT || env.SSH_TTY);
+  if (platform === "darwin" && !remote) return "pbcopy";
+  return env.TERM === "dumb" ? null : "terminal";
+}
+
+// OSC 52 with the text in base64, for the system clipboard. It ends with ESC \ like clue's
+// other codes, since a BEL could ring.
+export const osc52 = (text: string) => `\x1b]52;c;${Buffer.from(text).toString("base64")}\x1b\\`;
+
+// Puts text on the clipboard. False when pbcopy failed. A terminal never says whether it
+// took an OSC 52 code, so that counts as done. pbcopy reads its input in the locale's
+// encoding, so LANG is set for anything outside ASCII.
 // Tests set CLUE_TEST_CLIPBOARD_OUT to a file, which gets the text in its place.
-export async function writeClipboard(text: string): Promise<boolean> {
+export async function writeClipboard(text: string, method: CopyMethod = "pbcopy"): Promise<boolean> {
   const fake = process.env.CLUE_TEST_CLIPBOARD_OUT;
   if (fake !== undefined) {
     await Bun.write(fake, text);
+    return true;
+  }
+  if (method === "terminal") {
+    process.stdout.write(osc52(text));
     return true;
   }
   try {

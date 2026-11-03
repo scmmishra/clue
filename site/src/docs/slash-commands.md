@@ -47,7 +47,7 @@ Type `/` to open the list of commands. `tab` completes the one you're typing.
 
 A model picks the parts. clue uses Perplexity's Decider through OpenRouter if `OPENROUTER_API_KEY` is set, and Claude Haiku if it isn't. If Decider fails, Haiku picks. The model sees the last reply but not the tool output. To use another model, see [Choose the copy model](/docs/settings#choose-the-copy-model).
 
-Copying works on macOS.
+On a Mac, clue copies with `pbcopy`. On Linux, and over SSH, it asks your terminal to set the clipboard with an OSC 52 code, so the copy lands on the computer in front of you. Ghostty, kitty, WezTerm and iTerm2 support it, and some turn it off until you allow clipboard access in their settings. In tmux, add `set -g set-clipboard on` to your tmux config. The first copy in a session says so.
 
 ## Usage
 

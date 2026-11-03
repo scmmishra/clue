@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chooseCopy, lastReply, splitBlocks } from "../src/copy";
 import type { MessageParam } from "../src/session";
-import { writeClipboard } from "../src/ui/clipboard";
+import { copyMethod, osc52, writeClipboard } from "../src/ui/clipboard";
 
 const F = "```";
 
@@ -86,6 +86,22 @@ test("the last reply is the assistant text since the last prompt", () => {
 test("a bare /copy takes the whole reply", async () => {
   expect(await chooseCopy(REPLY, "")).toEqual({ text: REPLY, summary: "Copied the last reply, 14 lines." });
   expect(await chooseCopy("", "")).toEqual({ problem: "There's no reply to copy yet." });
+});
+
+test("a local Mac copies with pbcopy, and anything else asks the terminal", () => {
+  expect(copyMethod({ TERM: "xterm-ghostty" }, "darwin")).toBe("pbcopy");
+  expect(copyMethod({ TERM: "xterm-256color" }, "linux")).toBe("terminal");
+  // Over SSH, pbcopy would fill the remote machine's clipboard.
+  expect(copyMethod({ TERM: "xterm-256color", SSH_CONNECTION: "10.0.0.2 51000 10.0.0.1 22" }, "darwin")).toBe(
+    "terminal",
+  );
+  expect(copyMethod({ TERM: "xterm-256color", SSH_TTY: "/dev/ttys001" }, "darwin")).toBe("terminal");
+  expect(copyMethod({ TERM: "dumb" }, "linux")).toBeNull();
+});
+
+test("an OSC 52 copy carries the text as base64 and ends without a bell", () => {
+  expect(osc52("héllo")).toBe(`\x1b]52;c;${Buffer.from("héllo").toString("base64")}\x1b\\`);
+  expect(osc52("héllo")).not.toContain("\x07");
 });
 
 test("the clipboard writer can be pointed at a file", async () => {

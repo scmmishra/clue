@@ -41,7 +41,18 @@ test("the next redraw erases only the rows that were drawn", () => {
   const { out, screen } = draw(5, { lines: numbered(8), cursor: { row: 5, col: 2 } });
   out.text = "";
   screen.flush();
-  expect(out.text.startsWith(`${term.up(1)}\r${term.clearDown}`)).toBe(true);
+  expect(out.text.startsWith(`${term.syncStart}${term.up(1)}\r${term.clearDown}`)).toBe(true);
+});
+
+test("each redraw and each print above the live area is one synchronized update", () => {
+  const { out, screen } = draw(10, { lines: numbered(3) });
+  screen.commit(["done"]);
+  screen.flush();
+  const updates = out.text.split(term.syncStart).slice(1);
+  expect(updates).toHaveLength(3);
+  for (const update of updates) expect(update.endsWith(term.syncEnd)).toBe(true);
+  expect(out.text.startsWith(term.syncStart)).toBe(true);
+  expect([term.syncStart, term.syncEnd]).toEqual(["\x1b[?2026h", "\x1b[?2026l"]);
 });
 
 test("a terminal one row tall still draws the cursor's row", () => {
