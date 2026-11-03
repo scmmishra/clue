@@ -178,7 +178,7 @@ export class App {
       text: (delta) => view()?.text(delta),
       textDone: () => view()?.textDone(),
       toolStart: (id, label, kind) => view()?.toolStart(id, label, kind),
-      toolUpdate: (id, label, note) => view()?.toolUpdate(id, label, note),
+      toolUpdate: (id, label, note, subagent) => view()?.toolUpdate(id, label, note, subagent),
       toolEnd: (record) => view()?.toolEnd(record),
       review: (id, state, detail) => view()?.review(id, state, detail),
       confirm: (label, subject, pattern, note) =>

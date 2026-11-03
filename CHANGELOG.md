@@ -4,6 +4,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- Claude can run a subagent on a different model or effort, such as Haiku for a simple search. Each subagent row shows its model, its tool calls and how long it ran, with a mark when it finishes. The model is grey when the subagent uses yours. Its effort shows only when it differs from yours. A subagent that waits for the one before it says `waiting`. A tree of only subagents reads `3 subagents · 1 running`, without `Subagent:` on each row.
 - Conversations compact at 80% of the window left after the longest reply, about 749k tokens of 1M, instead of the API's default of 150k. Long sessions keep more of their history. A model clue doesn't know still compacts at 150k.
 - clue compacts conversations itself, with its own summary prompt, instead of the API's compaction. The latest messages, about 20k tokens of them, stay word for word, and Claude summarizes the rest. The summary keeps your instructions and exact errors, and leaves out file contents Claude can read again. Sessions the API compacted before still resume.
 - Claude Sonnet 5.5 cache reads are priced at $0.10 per million tokens, not $0.20. Costs shown for Sonnet 5.5 sessions were too high.

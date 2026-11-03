@@ -14,7 +14,7 @@ The model chooses these tools itself. [Permissions](/docs/permissions) decide wh
 | `shell` | Runs commands in your shell. Dev servers keep running across prompts. |
 | `web_search` | Searches the web. |
 | `web_fetch` | Reads a public URL. |
-| `subagent` | Hands a task to another agent with its own context. |
+| `subagent` | Hands a task to another agent with its own context. The agent uses your model and effort, unless Claude sets a different model or effort for it, such as Haiku for a simple search. |
 | `skill` | Reads a skill's instructions. |
 | `install_skill` | Installs a skill. |
 | `capability_search` | Finds installed skills and MCP tools. |

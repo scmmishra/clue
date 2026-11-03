@@ -245,7 +245,11 @@ export function startMockApi(port = 0, delay = DELAY) {
             : wantsWrite
               ? { path: "note.txt", content: "from clue" }
               : wantsSubagent
-                ? { task: "the child task", description: "look around" }
+                ? {
+                    task: "the child task",
+                    description: "look around",
+                    ...(promptText.includes("on haiku") ? { model: "haiku" } : {}),
+                  }
                 : { path: "package.json" },
         );
         const toolName = wantsPush ? "shell" : wantsWrite ? "write_file" : wantsSubagent ? "subagent" : "read_file";

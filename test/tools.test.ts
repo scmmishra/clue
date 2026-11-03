@@ -8,6 +8,7 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { UndoStack } from "../src/agent/undo";
 import { editFile, encodeImage, globFiles, grepFiles, readFile, writeFile } from "../src/tools/files";
 import { shell, stopAllProcesses } from "../src/tools/shell";
+import { subagent } from "../src/tools/misc";
 import type { ToolContext } from "../src/tools/types";
 
 const dir = mkdtempSync(join(tmpdir(), "clue-tools-"));
@@ -425,4 +426,28 @@ test("grep_files keeps an explicit choice", async () => {
 
 test("grep_files reports no matches for text that isn't there", async () => {
   expect((await grepProject().run({ pattern: "missing|absent" })).content).toBe("No matches.");
+});
+
+test("a subagent takes a single model by short name, and an effort clue knows", () => {
+  const base = { task: "t", description: "d" };
+  expect(subagent.validate(base)).toBeNull();
+  expect(subagent.validate({ ...base, model: "haiku", effort: "low" })).toBeNull();
+  expect(subagent.validate({ ...base, model: "claude-sonnet-5" })).toBeNull();
+  expect(subagent.validate({ ...base, model: "gpt-5" })).toContain("Unknown model");
+  // A pair needs the advisor, and a subagent works without it.
+  expect(subagent.validate({ ...base, model: "sonnet+opus" })).toContain("Unknown model");
+  expect(subagent.validate({ ...base, effort: "huge" })).toContain("Unknown effort");
+});
+
+test("a subagent's model reaches the loop as a full id", async () => {
+  let picked: unknown;
+  const ctx = {
+    ...context(),
+    subagent: async (_t: string, _d: string, _s: AbortSignal, choice?: unknown) => {
+      picked = choice;
+      return { content: "" };
+    },
+  };
+  await subagent.run({ task: "t", description: "d", model: "haiku" }, ctx);
+  expect(picked).toEqual({ model: "claude-haiku-5-5", effort: undefined });
 });

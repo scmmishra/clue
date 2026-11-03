@@ -1194,6 +1194,16 @@ test("when a subagent loses fast mode, the session does too, and clue says so", 
   }
 }, 25_000);
 
+test("a subagent runs on the model the call picked, and its row names the model", async () => {
+  const clue = await startClue();
+  await clue.type("delegate this on haiku");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  await clue.seen("haiku 5.5");
+  expect(requests[0].model).not.toBe("claude-haiku-5-5");
+  expect(requests.some((request) => request.model === "claude-haiku-5-5")).toBe(true);
+}, 25_000);
+
 test("closing the terminal stops running commands", async () => {
   const clue = await startClue();
   const runs = () => Bun.spawnSync(["pgrep", "-f", "^sleep 26\\.5$"]).exitCode === 0;

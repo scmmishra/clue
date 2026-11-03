@@ -35,6 +35,20 @@ export type ToolRecord = {
   ms: number;
   review?: string;
   note?: string;
+  subagent?: SubagentInfo;
+};
+
+// What a subagent's row shows next to its description.
+export type SubagentInfo = {
+  // The model the subagent runs on.
+  model: string;
+  // The call picked the model. Otherwise the subagent uses the parent's model.
+  chosen: boolean;
+  // Set only when it differs from the parent's effort.
+  effort?: string;
+  calls: number;
+  // When the subagent started work. A call can wait for the calls before it.
+  startedAt: number;
 };
 
 export type TurnRecord = {

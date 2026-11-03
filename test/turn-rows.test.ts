@@ -68,6 +68,18 @@ test("rows of a failed request close, so the next rows can fold", () => {
   expect(text).toContain("Read next.ts");
 });
 
+test("a subagent row takes its model and calls from the loop, and keeps them in the scrollback", () => {
+  const { commits, view } = recording();
+  view.toolStart("sub", "Subagent: Look around", "subagent");
+  const info = { model: "claude-haiku-5-5", chosen: true, calls: 2, startedAt: Date.now() };
+  view.toolUpdate("sub", "", undefined, info);
+  view.toolEnd({ ...ended("sub", "Subagent finished: Look around"), kind: "subagent", ms: 4000 });
+  view.text("Done.");
+  const text = commits.join("\n");
+  expect(text).toContain("1 subagent");
+  expect(text).toContain("✓ Look around  haiku 5.5  2 calls · 4.0s");
+});
+
 // ---------------------------------------------------------------------------
 // The loop, against a server that answers each request with the next script.
 

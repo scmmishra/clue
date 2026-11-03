@@ -7,17 +7,27 @@ import {
   summaryText,
   type PromptImage,
   type RewindPoint,
+  type SubagentInfo,
   type ToolRecord,
   type TurnRecord,
   type Usage,
 } from "../session";
 import { findTool } from "../tools";
 import type { Skill } from "../tools/skills";
-import { clip, type Question, type ToolContext, type ToolOutput } from "../tools/types";
+import { clip, type Question, type SubagentChoice, type ToolContext, type ToolOutput } from "../tools/types";
 import { keptCount } from "./compaction";
 import { buildContext } from "./context";
 import { msSince, now } from "../clock";
-import { advisorOf, compactAt, emptyUsage, fastEnabled, modelLabel, responseCost, responseUsage } from "./models";
+import {
+  advisorOf,
+  apiModel,
+  compactAt,
+  emptyUsage,
+  fastEnabled,
+  modelLabel,
+  responseCost,
+  responseUsage,
+} from "./models";
 import { COMPACT_PROMPT } from "./prompt";
 import { dropRejectedFeature, fastRejected, stream, summarize } from "./provider";
 import { UndoStack, type UndoResult } from "./undo";
@@ -34,7 +44,8 @@ export type AgentEvents = {
   text(delta: string): void;
   textDone(): void;
   toolStart(id: string, label: string, kind: string): void;
-  toolUpdate(id: string, label: string, note?: string): void;
+  // `subagent` is a subagent's progress. It replaces what the row had.
+  toolUpdate(id: string, label: string, note?: string, subagent?: SubagentInfo): void;
   toolEnd(record: ToolRecord): void;
   review(id: string, state: "reviewing" | "approved" | "held", detail?: string): void;
   // `note` says why clue asks when it isn't the usual approval, such as a reviewer's flag.
@@ -528,6 +539,7 @@ export class Agent {
         note:
           output.note ??
           (output.isError && !review ? full.trim().split("\n")[0].slice(0, ERROR_NOTE_CHARS) || undefined : undefined),
+        subagent: output.subagent,
       };
       session.append({ t: "tool", tool: record });
       events.toolEnd(record);
@@ -642,7 +654,7 @@ export class Agent {
       seenInstructions: this.seenInstructions,
       ask: (question) => events.question(question),
       progress: (note) => events.toolUpdate(use.id, label, note),
-      subagent: (task, description, childSignal) => this.runSubagent(task, description, childSignal, use.id, tally),
+      subagent: (task, description, childSignal, choice) => this.runSubagent(task, childSignal, use.id, tally, choice),
       interactive: this.options.interactive,
     };
     let output: ToolOutput;
@@ -656,29 +668,43 @@ export class Agent {
 
   private async runSubagent(
     task: string,
-    description: string,
     signal: AbortSignal,
     parentId: string,
     tally: Tally,
+    choice: SubagentChoice = {},
   ): Promise<ToolOutput> {
     const child = new Session(`${this.session.id}-sub`, this.options.cwd);
     child.ephemeral = true;
-    let calls = 0;
+    const own = this.options.settings;
+    const settings = { ...own, model: choice.model ?? own.model, effort: (choice.effort as Effort) ?? own.effort };
+    // A subagent works without the advisor, so a pair's subagent runs on the pair's executor.
+    const info: SubagentInfo = {
+      model: apiModel(settings.model),
+      chosen: settings.model !== own.model,
+      effort: settings.effort !== own.effort ? settings.effort : undefined,
+      calls: 0,
+      startedAt: Date.now(),
+    };
     let text = "";
     const parent = this.options.events;
+    const report = () => parent.toolUpdate(parentId, "", undefined, { ...info });
+    report();
     const agent = new Agent({
       ...this.options,
       session: child,
       subagent: true,
       onFastOff: () => this.turnOffFast(),
-      settings: { ...this.options.settings },
+      settings,
       events: {
         thinking: () => {},
         text: (delta) => (text += delta),
         textDone: () => (text += "\n"),
         toolStart: () => {},
         toolUpdate: () => {},
-        toolEnd: () => parent.toolUpdate(parentId, `Subagent: ${description}`, `${++calls} tool calls`),
+        toolEnd: () => {
+          info.calls += 1;
+          report();
+        },
         review: () => {},
         confirm: (label, subject, pattern, note) => parent.confirm(`subagent: ${label}`, subject, pattern, note),
         question: async () => null,
@@ -703,8 +729,8 @@ export class Agent {
         : text;
     return {
       content: finalText.trim() || "The subagent finished without an answer.",
-      note: `${calls} tool calls`,
       isError: turn.stop === "interrupted",
+      subagent: info,
     };
   }
 }

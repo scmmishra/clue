@@ -1,6 +1,6 @@
 import type { UndoStack } from "../agent/undo";
 import type Anthropic from "@anthropic-ai/sdk";
-import type { Session } from "../session";
+import type { Session, SubagentInfo } from "../session";
 import type { McpManager } from "../mcp/manager";
 import type { Skill } from "./skills";
 
@@ -17,7 +17,11 @@ export type ToolOutput = {
   removed?: number;
   // Short outcome appended to the transcript line, such as "12 matches".
   note?: string;
+  subagent?: SubagentInfo;
 };
+
+// A model and an effort the subagent call picked. Each one left out is the parent's.
+export type SubagentChoice = { model?: string; effort?: string };
 
 export type Question = { question: string; options: { label: string; description?: string }[]; multiple?: boolean };
 
@@ -33,7 +37,7 @@ export type ToolContext = {
   seenInstructions: Set<string>;
   ask: (question: Question) => Promise<string | null>;
   progress: (text: string) => void;
-  subagent: (task: string, description: string, signal: AbortSignal) => Promise<ToolOutput>;
+  subagent: (task: string, description: string, signal: AbortSignal, choice?: SubagentChoice) => Promise<ToolOutput>;
   interactive: boolean;
 };
 

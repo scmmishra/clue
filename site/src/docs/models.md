@@ -36,7 +36,7 @@ clue --model sonnet+opus
 
 Each answer shows as an `Asked <advisor>` row, such as `Asked opus 5.5`. The advice itself is encrypted, so clue can't show it. The cost of a reply includes the advice.
 
-A pair runs at `medium` effort or above. Below that, the first model rarely asks its advisor, so clue raises `low` to `medium`. Subagents use the first model alone. Fast mode doesn't work with a pair.
+A pair runs at `medium` effort or above. Below that, the first model rarely asks its advisor, so clue raises `low` to `medium`. Subagents use the first model alone, unless Claude gives a subagent a different model. Fast mode doesn't work with a pair.
 
 ## Fast mode
 
