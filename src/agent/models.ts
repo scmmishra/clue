@@ -170,7 +170,7 @@ const reserveFor = (context: number) => Math.max(Math.floor(context * 0.15), 16_
 // A `compact_at` setting: a token count, or a share of the context window such as "30%".
 export type CompactAt = number | string;
 
-const COMPACT_AT_PERCENT = /^(\d{1,2}(?:\.\d+)?)%$/;
+export const COMPACT_AT_PERCENT = /^(\d{1,2}(?:\.\d+)?)%$/;
 
 // Where clue compacts a conversation on this model: the setting if it has one, or the model's
 // default. Never under MIN_COMPACT_AT, and always with room left in the window.

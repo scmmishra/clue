@@ -120,10 +120,12 @@ export function buildRequest(options: RequestOptions) {
   } else {
     request.thinking = { type: "adaptive", display: "summarized" };
   }
-  // clue decides when to compact, between requests (see Agent.compactIfFull), so a request never
-  // asks the API to compact on its own.
+  // The /compact and automatic summary request. clue decides when to compact, between requests
+  // (see Agent.compactIfFull).
   if (options.summarize) request.compaction = { type: "summarize", instructions: COMPACT_INSTRUCTIONS };
   if (options.summarize || startsWithSummary(options.messages)) betas.push("compact-2026-09-04");
+  // Ordinary requests leave compaction to clue. Only a history with a compaction block the API
+  // inserted keeps the API's own, because the API reads such a block only with it on.
   else if (holdsServerCompaction(options.messages)) {
     request.context_management = { edits: [{ type: "compact_20260112" }] };
     betas.push("compact-2026-01-12");

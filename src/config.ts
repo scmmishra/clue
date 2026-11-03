@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 // package.json is the one place the version is set. The release workflow publishes when it changes.
 import { version } from "../package.json" with { type: "json" };
+import { COMPACT_AT_PERCENT, MIN_COMPACT_AT } from "./agent/models";
 
 export const VERSION = version;
 
@@ -127,10 +128,12 @@ const anObject = (value: unknown) => (isObject(value) ? null : "must be an objec
 
 const aBoolean = (value: unknown) => (typeof value === "boolean" ? null : "must be true or false");
 
-// A token count, or a share of the context window from 5% to 85%. models.ts reads the same forms.
+// A token count, or a share of the context window from 5% to 85%. The forms and the minimum come
+// from models.ts, which reads the setting.
 const aCompactionPoint = (value: unknown) => {
-  if (typeof value === "number") return Number.isInteger(value) && value >= 50_000 ? null : "must be at least 50000";
-  const share = typeof value === "string" ? /^(\d{1,2}(?:\.\d+)?)%$/.exec(value.trim()) : null;
+  if (typeof value === "number")
+    return Number.isInteger(value) && value >= MIN_COMPACT_AT ? null : `must be at least ${MIN_COMPACT_AT}`;
+  const share = typeof value === "string" ? COMPACT_AT_PERCENT.exec(value.trim()) : null;
   if (share && Number(share[1]) >= 5 && Number(share[1]) <= 85) return null;
   return 'must be a token count such as 300000, or a share of the context window from "5%" to "85%"';
 };
