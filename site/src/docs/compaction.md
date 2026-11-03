@@ -6,11 +6,11 @@ Compaction replaces older turns of a conversation with a summary that Claude wri
 
 ## When it runs
 
-The API compacts a conversation on its own when it reaches about 150k tokens. `/usage` shows how close you are.
+The API compacts a conversation on its own when it reaches 80% of the window left after the longest reply. That is about 749k tokens on clue's models, which all have a 1M window. A model clue doesn't know compacts at the API's default of 150k. `/usage` shows how close you are.
 
 `/compact` does it when you ask, such as when you finish one task and start another in the same session. If the summary doesn't finish, clue tells you why and the conversation stays as it was.
 
-After you run `/compact` in a session, clue starts the later compactions itself, at the same 150k point. They can run before your next message or between tool calls.
+After you run `/compact` in a session, clue starts the later compactions itself, at the same point. They can run before your next message or between tool calls.
 
 ## What changes
 

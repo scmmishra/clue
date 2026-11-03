@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { compactAt, cost, DEFAULT_COMPACT_AT } from "../src/agent/models";
 import { buildRequest } from "../src/agent/provider";
 import { Session, startsWithSummary, type CompactionRecord, type MessageParam } from "../src/session";
 import { usageReport } from "../src/ui/usage";
@@ -30,6 +31,22 @@ test("an ordinary request uses automatic compaction", () => {
   expect(request.context_management.edits[0].type).toBe("compact_20260112");
   expect(request.betas).toContain("compact-2026-01-12");
   expect(request.compaction).toBeUndefined();
+});
+
+test("automatic compaction starts at 80% of the window left after the longest reply", () => {
+  expect(compactAt("claude-opus-5-5")).toBe(748_800);
+  expect(compactAt("claude-sonnet-5-5")).toBe(748_800);
+  // A pair compacts where its executor does.
+  expect(compactAt("claude-sonnet-5-5+opus-5-5")).toBe(748_800);
+  // A model clue doesn't know keeps the API's default.
+  expect(compactAt("claude-unknown-9")).toBe(DEFAULT_COMPACT_AT);
+  const request = buildRequest(options([{ role: "user", content: "hi" }])) as any;
+  expect(request.context_management.edits[0].trigger).toEqual({ type: "input_tokens", value: 748_800 });
+});
+
+test("Sonnet 5.5 cache reads cost $0.10 per million tokens", () => {
+  const usage = { input: 0, output: 0, cacheRead: 1_000_000, cacheWrite: 0, webSearches: 0 };
+  expect(cost("claude-sonnet-5-5", usage)).toBeCloseTo(0.1);
 });
 
 test("a summary request has no automatic compaction, which the API rejects alongside it", () => {
@@ -111,4 +128,11 @@ test("/usage shows context again after the next reply", () => {
     .map((line) => Bun.stripANSI(line))
     .join("\n");
   expect(text).toContain("90k of 150k");
+});
+
+test("/usage measures context against the model's compaction point", () => {
+  const text = usageReport([{ ...turn, startedAt: 9000 }], [record()], [], [], compactAt("claude-opus-5-5"))
+    .map((line) => Bun.stripANSI(line))
+    .join("\n");
+  expect(text).toContain("90k of 749k");
 });
