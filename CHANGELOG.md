@@ -4,10 +4,10 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
-- clue decides when to compact, instead of the API. Fable, Opus and Sonnet compact at 80% of the window, less the longest reply (about 749k tokens), not 150k, so long sessions lose less to summaries. Haiku 5.5 compacts at 80k, under its higher price for prompts over 100k.
+- clue decides when to compact, instead of the API. Fable, Opus and Sonnet compact at 80% of the window left after the longest reply (about 749k tokens of 1M), not 150k, so long sessions lose less to summaries. Haiku 5.5 compacts at 80k, under its higher price for prompts over 100k.
 - Automatic compaction keeps the latest 20k tokens of the conversation word for word after the summary. Before, it summarized everything, including the tool output Claude was working with.
 - Compaction doesn't repeat until the context has grown by 20k tokens since the last attempt, so a summary that frees little or fails isn't asked for on every request. It also counts the tool results about to be sent.
-- Sessions where the API compacted on its own, from before clue chose when to compact, no longer get automatic compaction.
+- Sessions where the API compacted on its own, from before clue chose when to compact, aren't supported any more. They may fail to resume.
 - Summaries follow clue's own instructions: your requests and constraints, decisions and approaches that failed, files changed, open errors and the next step.
 - The `compact_at` setting moves the compaction point, as a token count or a share of the context window, such as `clue config set compact_at 40%`.
 - `/usage` measures the context against the current model's compaction point.

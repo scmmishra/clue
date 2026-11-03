@@ -19,7 +19,7 @@ type ModelInfo = {
   // The context window, in tokens.
   context: number;
   // Where clue compacts the conversation when the settings don't say, in tokens. Without one, a
-  // model compacts at 80% of its window minus the longest reply it can write.
+  // model compacts at 80% of the window left after the longest reply it can write.
   compactAt?: number;
   // A pair: this model does the work, and the advisor tool asks the stronger one on hard steps.
   executor?: string;

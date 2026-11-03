@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildRequest, dropRejectedFeature } from "../src/agent/provider";
 import { Session } from "../src/session";
-import { requests, startMockApi } from "./mock-api";
+import { compactions, requests, startMockApi, usage } from "./mock-api";
 
 let server: ReturnType<typeof startMockApi>;
 const home = mkdtempSync(join(tmpdir(), "clue-test-"));
@@ -137,4 +137,18 @@ test("clue mcp passes --, --project and --all through to the command", async () 
   const { stdout } = await run(["mcp", "approve", "--all"], { cwd, home: mcpHome });
   expect(stdout).toContain("Approved");
   expect(JSON.parse(readFileSync(join(mcpHome, "mcp-approvals.json"), "utf8"))[cwd].other).toMatch(/^approved:/);
+});
+
+test("clue ask compacts at the compact_at setting", async () => {
+  const askHome = mkdtempSync(join(tmpdir(), "clue-test-"));
+  writeFileSync(join(askHome, "settings.json"), JSON.stringify({ compact_at: 50_000 }));
+  const before = compactions.length;
+  usage.cache_read_input_tokens = 60_000;
+  try {
+    const { stderr, code } = await run(["ask", "--json", "what is this package?"], { home: askHome });
+    expect(code, stderr).toBe(0);
+    expect(compactions.length).toBe(before + 1);
+  } finally {
+    usage.cache_read_input_tokens = 2000;
+  }
 });

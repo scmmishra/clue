@@ -10,7 +10,7 @@ clue compacts a conversation before a request would reach the model's compaction
 
 | Model | Compacts at |
 | --- | --- |
-| Fable, Opus and Sonnet | 80% of the window, less the longest reply: about 749k tokens of a 1M window |
+| Fable, Opus and Sonnet | 80% of the window left after the longest reply: about 749k tokens of a 1M window |
 | Haiku 5.5 | 80k tokens, under its higher price for prompts over 100k |
 | A model clue doesn't know | 150k tokens |
 
