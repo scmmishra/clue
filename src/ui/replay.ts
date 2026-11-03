@@ -49,7 +49,7 @@ export function sessionEntries(session: Session): Entry[] {
       if (block.type === "text" && block.text.trim()) {
         flush();
         entries.push({ type: "text", text: block.text });
-      } else if (block.type === "tool_use" || block.type === "server_tool_use") {
+      } else if (block.type === "tool_use" || (block.type === "server_tool_use" && block.name !== "code_execution")) {
         const record = session.tools.get(block.id);
         group.push(
           record ?? {

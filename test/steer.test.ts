@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { awaitsServerTool } from "../src/agent/loop";
+import { awaitsServerTool, serverToolRecord } from "../src/agent/loop";
 import { Session, steerText, type MessageParam } from "../src/session";
 import { detailLines, replay, sessionEntries } from "../src/ui/replay";
 
@@ -47,4 +47,10 @@ test("a resumed session shows the steer after the tools it followed, as the user
 
 test("a steer is part of its turn, so rewind doesn't list it", () => {
   expect(steered().rewindPoints.map((point) => point.text)).toEqual(["fix it"]);
+});
+
+test("a web search row names its query, and has no empty quotes without one", () => {
+  expect(serverToolRecord("s", "web_search", { query: "bun 1.3" }).label).toBe('Searched the web for "bun 1.3"');
+  expect(serverToolRecord("s", "web_search", {}).label).toBe("Searched the web");
+  expect(serverToolRecord("f", "web_fetch", { url: "https://bun.com" }).label).toBe("Fetched https://bun.com");
 });

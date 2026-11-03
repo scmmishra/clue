@@ -414,8 +414,15 @@ export class Agent {
         } else if (block.type === "server_tool_use" && block.name === "advisor") {
           asking.set(block.id, Date.now());
           events.toolStart(block.id, `Asking ${this.advisorLabel()}`, "advisor");
-        } else if (block.type === "server_tool_use") {
+        } else if (block.type === "server_tool_use" && !isCodeExecution(block.name)) {
+          // With dynamic web tools the whole input arrives here and no deltas follow.
+          const input = (block as { input?: unknown }).input;
+          const seeded = isObject(input) && Object.keys(input).length ? JSON.stringify(input) : "";
+          blocks.get(event.index)!.json = seeded;
           events.toolStart(block.id, block.name === "web_fetch" ? "Fetching" : "Searching the web", "web");
+          const preview = previewInput(seeded);
+          if (preview?.query) events.toolUpdate(block.id, `Searching the web for "${preview.query}"`);
+          else if (preview?.url) events.toolUpdate(block.id, `Fetching ${preview.url}`);
         } else if (block.type === "web_search_tool_result" || block.type === "web_fetch_tool_result") {
           events.toolUpdate(block.tool_use_id, "", "done");
         } else if ((block.type as string) === "advisor_tool_result") {
@@ -441,7 +448,7 @@ export class Agent {
             const tool = findTool(block.name ?? "");
             const preview = previewInput(block.json);
             if (tool && preview) events.toolUpdate(block.id, safeLabel(tool, preview, false));
-          } else if (block.type === "server_tool_use" && block.id) {
+          } else if (block.type === "server_tool_use" && block.id && !isCodeExecution(block.name)) {
             const preview = previewInput(block.json);
             if (preview?.query) events.toolUpdate(block.id, `Searching the web for "${preview.query}"`);
             else if (preview?.url) events.toolUpdate(block.id, `Fetching ${preview.url}`);
@@ -453,7 +460,7 @@ export class Agent {
           events.textDone();
           inText = false;
         }
-        if (block?.type === "server_tool_use" && block.id && block.name !== "advisor") {
+        if (block?.type === "server_tool_use" && block.id && block.name !== "advisor" && !isCodeExecution(block.name)) {
           const record = serverToolRecord(block.id, block.name ?? "web_search", parseJson(block.json));
           this.session.append({ t: "tool", tool: record });
           events.toolEnd(record);
@@ -791,13 +798,19 @@ function safeLabel(tool: NonNullable<ReturnType<typeof findTool>>, input: unknow
   }
 }
 
-function serverToolRecord(id: string, name: string, input: Record<string, unknown>): ToolRecord {
+// Dynamic web tools run searches from code the model writes. The search rows are the visible part.
+function isCodeExecution(name: string | undefined) {
+  return name === "code_execution";
+}
+
+export function serverToolRecord(id: string, name: string, input: Record<string, unknown>): ToolRecord {
   const query = typeof input.query === "string" ? input.query : typeof input.url === "string" ? input.url : "";
+  const searched = query ? `Searched the web for "${query}"` : "Searched the web";
   return {
     id,
     name,
     input,
-    label: name === "web_fetch" ? `Fetched ${query}` : `Searched the web for "${query}"`,
+    label: name === "web_fetch" ? (query ? `Fetched ${query}` : "Fetched") : searched,
     kind: "web",
     output: "",
     isError: false,
