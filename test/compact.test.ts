@@ -33,20 +33,7 @@ test("an ordinary request leaves compaction to clue", () => {
   const request = buildRequest(options([{ role: "user", content: "hi" }])) as any;
   expect(request.context_management).toBeUndefined();
   expect(request.compaction).toBeUndefined();
-  expect(request.betas ?? []).not.toContain("compact-2026-01-12");
   expect(request.betas ?? []).not.toContain("compact-2026-09-04");
-});
-
-test("a session the API compacted on its own, before clue did, keeps automatic compaction", () => {
-  const compacted: MessageParam = {
-    role: "assistant",
-    content: [{ type: "text", text: "done" }, { type: "compaction", content: "Summary.", signature: "sig" } as never],
-  };
-  const request = buildRequest(
-    options([{ role: "user", content: "hi" }, compacted, { role: "user", content: "next" }]),
-  ) as any;
-  expect(request.context_management.edits[0].type).toBe("compact_20260112");
-  expect(request.betas).toContain("compact-2026-01-12");
 });
 
 test("a summary request asks for clue's summary instead of the API's default one", () => {
@@ -62,7 +49,6 @@ test("a summary request asks for clue's summary instead of the API's default one
 test("a request that carries a summary needs the beta", () => {
   const request = buildRequest(options([summary, { role: "user", content: "next" }])) as any;
   expect(request.betas).toContain("compact-2026-09-04");
-  expect(request.betas).not.toContain("compact-2026-01-12");
   expect(request.context_management).toBeUndefined();
 });
 
@@ -241,8 +227,9 @@ test("a kept message that holds the context means it isn't sent again", () => {
 });
 
 test("each model compacts at its own point, and the setting moves it", () => {
-  expect(compactAt("claude-opus-5-5")).toBe(300_000);
-  expect(compactAt("claude-sonnet-5-5+opus-5-5")).toBe(300_000);
+  // 80% of the window, less the longest reply: (1M - 64k) * 0.8.
+  expect(compactAt("claude-opus-5-5")).toBe(748_800);
+  expect(compactAt("claude-sonnet-5-5+opus-5-5")).toBe(748_800);
   // Under Haiku 5.5's long-prompt price.
   expect(compactAt("claude-haiku-5-5")).toBeLessThan(100_000);
   // A model clue doesn't know keeps the API's default.
@@ -252,7 +239,7 @@ test("each model compacts at its own point, and the setting moves it", () => {
   expect(compactAt("claude-opus-5-5", 1_000)).toBe(MIN_COMPACT_AT);
   // Room stays for the reply and one more step.
   expect(compactAt("claude-opus-5-5", 2_000_000)).toBe(850_000);
-  expect(compactAt("claude-opus-5-5", "half")).toBe(300_000);
+  expect(compactAt("claude-opus-5-5", "half")).toBe(748_800);
 });
 
 test("compact_at takes a token count or a share of the window", () => {

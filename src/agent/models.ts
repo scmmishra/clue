@@ -18,16 +18,18 @@ type ModelInfo = {
   longPrompt?: { over: number; multiplier: number };
   // The context window, in tokens.
   context: number;
-  // Where clue compacts the conversation when the settings don't say, in tokens.
-  compactAt: number;
+  // Where clue compacts the conversation when the settings don't say, in tokens. Without one, a
+  // model compacts at 80% of its window minus the longest reply it can write.
+  compactAt?: number;
   // A pair: this model does the work, and the advisor tool asks the stronger one on hard steps.
   executor?: string;
   advisor?: string;
 };
 
-// Where a model with a 1M window compacts by default. Each request reads the whole context, so a
-// later point costs more per request, and long, noisy contexts lose accuracy.
-const LONG_CONTEXT_COMPACT_AT = 300_000;
+// The longest reply clue asks for. A request has room for it, so it isn't part of the usable window.
+export const MAX_OUTPUT_TOKENS = 64_000;
+// Models without their own point compact at this share of the usable window.
+const COMPACT_SHARE = 0.8;
 
 const MODELS: Record<string, ModelInfo> = {
   "claude-fable-5-1": {
@@ -37,7 +39,6 @@ const MODELS: Record<string, ModelInfo> = {
     cacheRead: 0.25,
     cacheWrite: 12.5,
     context: 1_000_000,
-    compactAt: LONG_CONTEXT_COMPACT_AT,
     progressNotes: true,
     dynamicWebTools: true,
     fallbacks: true,
@@ -50,7 +51,6 @@ const MODELS: Record<string, ModelInfo> = {
     cacheRead: 1,
     cacheWrite: 12.5,
     context: 1_000_000,
-    compactAt: LONG_CONTEXT_COMPACT_AT,
     progressNotes: true,
     dynamicWebTools: true,
     fallbacks: false,
@@ -63,7 +63,6 @@ const MODELS: Record<string, ModelInfo> = {
     cacheRead: 0.2,
     cacheWrite: 5,
     context: 1_000_000,
-    compactAt: LONG_CONTEXT_COMPACT_AT,
     progressNotes: true,
     dynamicWebTools: true,
     fallbacks: true,
@@ -76,7 +75,6 @@ const MODELS: Record<string, ModelInfo> = {
     cacheRead: 0.5,
     cacheWrite: 6.25,
     context: 1_000_000,
-    compactAt: LONG_CONTEXT_COMPACT_AT,
     progressNotes: false,
     dynamicWebTools: true,
     fallbacks: true,
@@ -89,7 +87,6 @@ const MODELS: Record<string, ModelInfo> = {
     cacheRead: 0.1,
     cacheWrite: 2.5,
     context: 1_000_000,
-    compactAt: LONG_CONTEXT_COMPACT_AT,
     progressNotes: true,
     dynamicWebTools: true,
     fallbacks: true,
@@ -102,7 +99,6 @@ const MODELS: Record<string, ModelInfo> = {
     cacheRead: 0.2,
     cacheWrite: 2.5,
     context: 1_000_000,
-    compactAt: LONG_CONTEXT_COMPACT_AT,
     progressNotes: false,
     dynamicWebTools: true,
     fallbacks: false,
@@ -177,7 +173,8 @@ export const COMPACT_AT_PERCENT = /^(\d{1,2}(?:\.\d+)?)%$/;
 export function compactAt(id: string, setting?: CompactAt | null) {
   const info = MODELS[id] ?? MODELS[apiModel(id)];
   const context = info?.context ?? UNKNOWN_CONTEXT;
-  let tokens = info?.compactAt ?? DEFAULT_COMPACT_AT;
+  const usable = context - MAX_OUTPUT_TOKENS;
+  let tokens = info ? (info.compactAt ?? usable * COMPACT_SHARE) : DEFAULT_COMPACT_AT;
   if (typeof setting === "number" && Number.isFinite(setting)) tokens = setting;
   else if (typeof setting === "string" && COMPACT_AT_PERCENT.test(setting.trim()))
     tokens = (context * Number.parseFloat(setting)) / 100;

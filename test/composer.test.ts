@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { projectKey } from "../src/session";
 import { statusReport, type ProgramStatus } from "../src/ui/status";
-import { compactions, compactionStop, fastMode, requests, startMockApi, usage } from "./mock-api";
+import { compactions, compactionStop, fastMode, requests, startMockApi, toolStepUsage, usage } from "./mock-api";
 
 // A 1×1 PNG.
 const PNG = Buffer.from(
@@ -20,7 +20,12 @@ const CTRL_V = "\x16";
 const paste = (text: string) => `\x1b[200~${text}\x1b[201~`;
 
 let stop = async () => {};
-afterEach(() => stop());
+afterEach(() => {
+  usage.cache_read_input_tokens = 2000;
+  toolStepUsage.cacheRead = null;
+  compactionStop.value = "compaction";
+  return stop();
+});
 
 async function startClue(
   options: { delay?: number; env?: Record<string, string>; args?: string[]; cwd?: string; home?: string } = {},
@@ -894,39 +899,45 @@ const compactedSession = async () => {
   await clue.type("/compact");
   await clue.type(ENTER);
   await clue.seen("token summary");
+  // The first reply after a summary is small, which is the size the next compaction measures from.
+  await clue.type("warm up");
+  await clue.type(ENTER);
+  await clue.turns(2);
   return clue;
 };
 
 test("after /compact, clue compacts a full conversation itself before the next prompt", async () => {
   const clue = await compactedSession();
-  usage.cache_read_input_tokens = 400_000;
+  // A small context while the turn's tool runs, and a full one when it ends.
+  toolStepUsage.cacheRead = 2000;
+  usage.cache_read_input_tokens = 800_000;
   await clue.type("zebra-two");
   await clue.type(ENTER);
-  await clue.turns(2);
+  await clue.turns(3);
   usage.cache_read_input_tokens = 2000;
   const before = compactions.length;
   await clue.type("third");
   await clue.type(ENTER);
-  await clue.turns(3);
+  await clue.turns(4);
   expect(compactions.length).toBe(before + 1);
   await clue.seen("Compacted the conversation.");
-  // A summary covers the prompt. The latest reply is recent enough to stay word for word.
+  // The latest turn is small enough to stay word for word, so the summary request leaves it out.
   expect(
     compactions.some((body) => JSON.stringify((body as { messages: unknown }).messages).includes("zebra-two")),
-  ).toBe(true);
-  // The request that sent the prompt: the summary, the kept reply, then the prompt and the context.
+  ).toBe(false);
+  // The request that sent the prompt: the summary, the kept turn, then the prompt and the context.
   const sent = requests
     .map((request) => (request as { messages: { role: string; content: any }[] }).messages)
     .find((messages) => JSON.stringify(messages.at(-1)).includes("third"))!;
   expect(sent[0].content[0].type).toBe("compaction");
-  expect(sent[1].role).toBe("assistant");
-  expect(JSON.stringify(sent)).not.toContain("zebra-two");
+  expect(JSON.stringify(sent.slice(1, -1))).toContain("zebra-two");
   expect(JSON.stringify(sent.at(-1))).toContain("<context>");
 }, 25_000);
 
 test("clue compacts a full conversation without a /compact first", async () => {
   const clue = await startClue();
-  usage.cache_read_input_tokens = 400_000;
+  toolStepUsage.cacheRead = 2000;
+  usage.cache_read_input_tokens = 800_000;
   await clue.type("zebra-one");
   await clue.type(ENTER);
   await clue.turns(1);
@@ -942,13 +953,43 @@ test("clue compacts a full conversation without a /compact first", async () => {
   expect(JSON.stringify(request.messages)).not.toContain("zebra-one");
 }, 25_000);
 
+test("a compaction that frees little isn't repeated on the next request", async () => {
+  const clue = await startClue();
+  const before = compactions.length;
+  // The mock keeps reporting 800k after the summary, as a session whose context stays large would.
+  usage.cache_read_input_tokens = 800_000;
+  for (const turn of [1, 2, 3]) {
+    await clue.type(`prompt ${turn}`);
+    await clue.type(ENTER);
+    await clue.turns(turn);
+  }
+  expect(compactions.length).toBe(before + 1);
+}, 25_000);
+
+test("a summary that fails isn't asked for again until the context has grown", async () => {
+  const clue = await startClue();
+  const before = compactions.length;
+  usage.cache_read_input_tokens = 800_000;
+  compactionStop.value = "max_tokens";
+  await clue.type("prompt 1");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  await clue.seen("Compaction failed.");
+  for (const turn of [2, 3]) {
+    await clue.type(`prompt ${turn}`);
+    await clue.type(ENTER);
+    await clue.turns(turn);
+  }
+  expect(compactions.length).toBe(before + 1);
+}, 25_000);
+
 test("a compaction during a turn keeps the tool call and its result, and the turn goes on", async () => {
   const clue = await compactedSession();
-  usage.cache_read_input_tokens = 400_000;
+  usage.cache_read_input_tokens = 800_000;
   const before = compactions.length;
   await clue.type("read the package");
   await clue.type(ENTER);
-  await clue.turns(2);
+  await clue.turns(3);
   usage.cache_read_input_tokens = 2000;
   expect(compactions.length).toBe(before + 1);
   const last = (requests.at(-1) as { messages: { role: string; content: any }[] }).messages;

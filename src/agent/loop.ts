@@ -27,7 +27,7 @@ import {
   responseCost,
   responseUsage,
 } from "./models";
-import { keepFrom } from "./compaction";
+import { estimateTokens, keepFrom, KEEP_RECENT_TOKENS } from "./compaction";
 import { dropRejectedFeature, fastRejected, stream, summarize } from "./provider";
 import { UndoStack, type UndoResult } from "./undo";
 
@@ -99,6 +99,11 @@ export class Agent {
   private lastContext = 0;
   // The last reply's output. The next request sends it too.
   private lastOutput = 0;
+  // The context size of the first reply after a compaction attempt, or null before any attempt.
+  // Another attempt waits until the context has grown from it, so a compaction that frees little,
+  // or a summary that fails, isn't repeated on every request.
+  private baseline: number | null = null;
+  private awaitingBaseline = false;
   // The usage the current request's stream has reported. Billed even if the request never finishes.
   private streamed: StreamUsage | null = null;
 
@@ -151,6 +156,7 @@ export class Agent {
     this.seenInstructions.clear();
     this.lastContext = 0;
     this.lastOutput = 0;
+    this.awaitingBaseline = true;
     return { summaryTokens: usage.output, kept };
   }
 
@@ -181,7 +187,11 @@ export class Agent {
   // sends the last request's context and its reply. The latest messages stay word for word.
   private async compactIfFull(signal: AbortSignal, midTurn: boolean) {
     const { session, events } = this.options;
-    if (this.lastContext + this.lastOutput < this.compactAt) return;
+    // The next request sends the last context, its reply, and the messages added since: tool
+    // results, or a prompt.
+    const added = session.messages.at(-1)?.role === "user" ? estimateTokens(session.messages.at(-1)!) : 0;
+    if (this.lastContext + this.lastOutput + added < this.compactAt) return;
+    if (this.baseline !== null && this.lastContext < this.baseline + KEEP_RECENT_TOKENS) return;
     let problem: string | null = null;
     let kept = 0;
     try {
@@ -195,6 +205,9 @@ export class Agent {
       // Trying again before the next request would only repeat the failure.
       this.lastContext = 0;
       this.lastOutput = 0;
+      this.awaitingBaseline = true;
+      // An interrupt isn't a failure worth a warning.
+      if (signal.aborted) return;
       return events.notice(`Compaction failed. ${problem}`, "warn");
     }
     events.notice("Compacted the conversation.", "info");
@@ -323,6 +336,10 @@ export class Agent {
       fast ||= servedFast;
       context = this.lastContext = contextTokens(message.usage);
       this.lastOutput = message.usage.output_tokens ?? 0;
+      if (this.awaitingBaseline) {
+        this.baseline = context;
+        this.awaitingBaseline = false;
+      }
       session.appendMessage({
         role: "assistant",
         content: message.content as Anthropic.Beta.Messages.BetaContentBlockParam[],

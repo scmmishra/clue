@@ -3,14 +3,13 @@ import type { Effort } from "../config";
 import { resolveAuth } from "../auth";
 import { startsWithSummary, type MessageParam } from "../session";
 import { toolDefinitions } from "../tools";
-import { advisorOf, apiModel, modelInfo, modelLabel, pairEffort } from "./models";
+import { advisorOf, apiModel, MAX_OUTPUT_TOKENS, modelInfo, modelLabel, pairEffort } from "./models";
 import { advisorGuidance, COMPACT_INSTRUCTIONS, SYSTEM_PROMPT } from "./prompt";
 
 // Every model call goes through this file. Other providers, such as
 // OpenRouter or Codex, would be a sibling of this module.
 
 const API_ORIGIN = process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com";
-const MAX_OUTPUT_TOKENS = 64_000;
 
 // The advisor's output per call, thinking included, and its calls per request.
 const ADVISOR_MAX_TOKENS = 4096;
@@ -70,15 +69,6 @@ const holdsAdvice = (messages: MessageParam[]) =>
       Array.isArray(message.content) && message.content.some((block) => block.type === "advisor_tool_result"),
   );
 
-// A compaction block the API added inside a reply, in a session from before clue chose when to
-// compact. The API reads such a block only with automatic compaction on.
-const holdsServerCompaction = (messages: MessageParam[]) =>
-  messages.some(
-    (message, index) =>
-      Array.isArray(message.content) &&
-      message.content.some((block, position) => block.type === "compaction" && (index > 0 || position > 0)),
-  );
-
 export function buildRequest(options: RequestOptions) {
   const model = apiModel(options.model);
   const info = modelInfo(model);
@@ -120,16 +110,10 @@ export function buildRequest(options: RequestOptions) {
   } else {
     request.thinking = { type: "adaptive", display: "summarized" };
   }
-  // The /compact and automatic summary request. clue decides when to compact, between requests
-  // (see Agent.compactIfFull).
+  // Only a summary request asks the API to compact. clue decides when, between requests (see
+  // Agent.compactIfFull).
   if (options.summarize) request.compaction = { type: "summarize", instructions: COMPACT_INSTRUCTIONS };
   if (options.summarize || startsWithSummary(options.messages)) betas.push("compact-2026-09-04");
-  // Ordinary requests leave compaction to clue. Only a history with a compaction block the API
-  // inserted keeps the API's own, because the API reads such a block only with it on.
-  else if (holdsServerCompaction(options.messages)) {
-    request.context_management = { edits: [{ type: "compact_20260112" }] };
-    betas.push("compact-2026-01-12");
-  }
   if (features.fallbacks && info?.fallbacks && !options.summarize) {
     (request as { fallbacks?: unknown }).fallbacks = "default";
     betas.push("server-side-fallback-2026-07-01");

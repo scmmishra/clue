@@ -61,7 +61,12 @@ export const usage = {
   cache_creation_input_tokens: 300,
 };
 
-function message(content: unknown[], stop: string) {
+// When set, a reply that calls a tool reports this many cached input tokens, and the reply after
+// the tool result reports `usage`. It lets a test have a small context mid-turn and a full one
+// at the turn's end.
+export const toolStepUsage = { cacheRead: null as number | null };
+
+function message(content: unknown[], stop: string, used = usage) {
   return {
     id: `msg_${Math.random().toString(36).slice(2)}`,
     type: "message",
@@ -70,7 +75,7 @@ function message(content: unknown[], stop: string) {
     content,
     stop_reason: stop,
     stop_sequence: null,
-    usage,
+    usage: used,
   };
 }
 
@@ -248,9 +253,11 @@ export function startMockApi(port = 0, delay = DELAY) {
                 : { path: "package.json" },
         );
         const toolName = wantsPush ? "shell" : wantsWrite ? "write_file" : wantsSubagent ? "subagent" : "read_file";
+        const stepUsage =
+          toolStepUsage.cacheRead === null ? usage : { ...usage, cache_read_input_tokens: toolStepUsage.cacheRead };
         return sse(
           [
-            { type: "message_start", message: message([], "") },
+            { type: "message_start", message: message([], "", stepUsage) },
             { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } },
             {
               type: "content_block_delta",
