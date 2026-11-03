@@ -351,7 +351,7 @@ export class Keyboard {
     if (!this.started) return;
     this.started = false;
     clearTimeout(this.pendingTimer);
-    process.stdout.write(term.bracketedPasteOff + this.modes.off + term.showCursor);
+    process.stdout.write(term.bracketedPasteOff + this.modes.off + term.showCursor + term.syncEnd);
     process.stdin.setRawMode(false);
     process.stdin.pause();
   }
