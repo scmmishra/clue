@@ -45,7 +45,7 @@ clue usage                  # cost and cache use across sessions
 | --- | --- |
 | Install and sign in | [Quick start](https://clue.shivam.dev/docs) |
 | `@` file mentions, images, steering and queued messages | [Prompts](https://clue.shivam.dev/docs/prompts) |
-| Resume and undo | [Sessions](https://clue.shivam.dev/docs/sessions) |
+| Resume, undo and cost across sessions | [Sessions](https://clue.shivam.dev/docs/sessions) |
 | `/compact` and long sessions | [Compaction](https://clue.shivam.dev/docs/compaction) |
 | `clue ask` and JSON output | [Scripts](https://clue.shivam.dev/docs/scripts) |
 | `ask`, `auto` and `full-access` | [Permissions](https://clue.shivam.dev/docs/permissions) |
