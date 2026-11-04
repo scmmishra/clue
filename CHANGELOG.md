@@ -2,7 +2,7 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
-## Unreleased
+## 0.14.2
 
 - `clue doctor` names the models that review actions in `auto` mode and pick what `/copy` copies. Without `OPENROUTER_API_KEY`, it says the key would switch them from Haiku to Jev and Decider. A `review` or `copy` setting that can't work shows as a warning.
 
