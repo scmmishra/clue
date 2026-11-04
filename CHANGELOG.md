@@ -2,6 +2,10 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- `clue doctor` names the models that review actions in `auto` mode and pick what `/copy` copies. Without `OPENROUTER_API_KEY`, it says the key would switch them from Haiku to Jev and Decider. A `review` or `copy` setting that can't work shows as a warning.
+
 ## 0.14.1
 
 - The install command is shorter: `curl -fsSL https://clue.shivam.dev/install | bash`. The old URL still works.

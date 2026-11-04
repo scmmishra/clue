@@ -23,6 +23,10 @@ clue reads your credentials in this order:
 
 `clue logout` removes a saved key.
 
+## Optional: OpenRouter
+
+Two small jobs use a decision model: reviewing risky actions in `auto` mode, and picking what `/copy <request>` copies. By default, if `OPENROUTER_API_KEY` is set, clue uses Jev for reviews and Perplexity's Decider for `/copy`, both through OpenRouter. If it isn't set, Claude Haiku does both. See [Choose the reviewer](/docs/settings#choose-the-reviewer) and [Choose the copy model](/docs/settings#choose-the-copy-model).
+
 
 ## First prompt
 
@@ -35,4 +39,4 @@ Type what you want done and press Enter. You can also pass the first prompt: `cl
 
 ## If something looks wrong
 
-`clue doctor` checks your version, credentials, API access, settings, tools, terminal and MCP servers. It exits with a nonzero status if a check fails.
+`clue doctor` checks your version, credentials, API access, settings, tools, terminal and MCP servers. It also names the models that review actions and pick what `/copy` copies. It exits with a nonzero status if a check fails.

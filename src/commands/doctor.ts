@@ -1,5 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { chooseHelper, DEFAULT_DECISION_MODELS, helperName } from "../agent/helpers";
 import { getClient } from "../agent/provider";
 import { resolveAuth, type AuthSource } from "../auth";
 import { CLUE_HOME, loadSettings, paths, settingsWarnings, VERSION } from "../config";
@@ -55,6 +56,27 @@ async function credentialChecks() {
 function settingsCheck() {
   const warnings = settingsWarnings();
   return warnings.length ? warnings.map((text) => warn("settings", text)) : [ok("settings", paths.settings)];
+}
+
+// The models that review actions in auto mode and pick what /copy copies, chosen the way clue
+// chooses them. A setting that can't work is only a warning, because Haiku takes over at run time.
+export function helperChecks(settings = loadSettings(), openrouterKey = process.env.OPENROUTER_API_KEY): Check[] {
+  const helpers = [
+    ["reviewer", settings.review, DEFAULT_DECISION_MODELS.review],
+    ["copy", settings.copy, DEFAULT_DECISION_MODELS.copy],
+  ] as const;
+  return helpers.map(([name, setting, decisionModel]) => {
+    try {
+      const helper = chooseHelper(setting, decisionModel, openrouterKey);
+      if (helper.provider === "openrouter") return ok(name, `${helperName(helper)} on OpenRouter`);
+      // Haiku because no key is set, not because a setting asked for it.
+      const byDefault = !setting?.provider && !setting?.model;
+      const instead = helperName({ provider: "openrouter", model: decisionModel });
+      return ok(name, byDefault ? `haiku. Set OPENROUTER_API_KEY to use ${instead} instead.` : helperName(helper));
+    } catch (error) {
+      return warn(name, `${message(error)}. Haiku takes over.`);
+    }
+  });
 }
 
 function homeCheck() {
@@ -139,7 +161,16 @@ export function formatChecks(checks: Check[]) {
 export async function doctor() {
   const terminal = await terminalChecks();
   const groups = await Promise.all([versionCheck(), credentialChecks(), mcpChecks(process.cwd())]);
-  const checks = [groups[0], ...groups[1], settingsCheck(), homeCheck(), toolChecks(), terminal, groups[2]].flat();
+  const checks = [
+    groups[0],
+    ...groups[1],
+    settingsCheck(),
+    helperChecks(),
+    homeCheck(),
+    toolChecks(),
+    terminal,
+    groups[2],
+  ].flat();
   console.log(formatChecks(checks).join("\n"));
   process.exit(checks.some((check) => check.status === "fail") ? 1 : 0);
 }

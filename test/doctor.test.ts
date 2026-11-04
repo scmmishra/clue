@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { formatChecks } from "../src/commands/doctor";
+import { formatChecks, helperChecks } from "../src/commands/doctor";
 import { startMockApi } from "./mock-api";
 
 let server: ReturnType<typeof startMockApi>;
@@ -95,4 +95,24 @@ test("the summary counts problems and warnings", () => {
 
 test("a clean run says so", () => {
   expect(formatChecks([{ status: "ok", name: "a", detail: "fine" }]).at(-1)).toBe("Everything looks fine.");
+});
+
+test("without an OpenRouter key, Haiku reviews and copies, and doctor names the key that changes it", async () => {
+  const { stdout } = await run({ OPENROUTER_API_KEY: "" });
+  expect(stdout).toMatch(/reviewer +haiku\. Set OPENROUTER_API_KEY to use jev instead\./);
+  expect(stdout).toMatch(/copy +haiku\. Set OPENROUTER_API_KEY to use decider instead\./);
+}, 20_000);
+
+test("with an OpenRouter key, Jev reviews and Decider copies", async () => {
+  const { stdout, code } = await run({ OPENROUTER_API_KEY: "sk-or-test" });
+  expect(code).toBe(0);
+  expect(stdout).toMatch(/reviewer +jev on OpenRouter/);
+  expect(stdout).toMatch(/copy +decider on OpenRouter/);
+}, 20_000);
+
+test("a helper setting names the model it asks for, and one that can't work is a warning", () => {
+  const settings = { review: { provider: "anthropic" }, copy: { provider: "openrouter" } } as never;
+  const [reviewer, copy] = helperChecks(settings, "");
+  expect(reviewer).toEqual({ status: "ok", name: "reviewer", detail: "haiku" });
+  expect(copy).toEqual({ status: "warn", name: "copy", detail: "OPENROUTER_API_KEY isn't set. Haiku takes over." });
 });
