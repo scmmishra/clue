@@ -2,6 +2,11 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## 0.14.1
+
+- The install command is shorter: `curl -fsSL https://clue.shivam.dev/install | bash`. The old URL still works.
+- Resuming a long session is a little faster. clue matched each prompt to its turn by searching every turn, and now looks it up once per pass. On a 120-prompt session that saves about 0.4 ms.
+
 ## 0.14.0
 
 - In a long session, each request sends only the messages since Claude's last reply, not the whole conversation. Claude's API keeps the conversation for a few minutes as a message thread, so it has less to read before the first token. Tokens and cost don't change. If the API can't continue the thread, clue sends the whole conversation, as before.
