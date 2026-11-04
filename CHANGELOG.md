@@ -2,6 +2,10 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- In a long session, each request sends only the messages since Claude's last reply, not the whole conversation. Claude's API keeps the conversation for a few minutes as a message thread, so it has less to read before the first token. Tokens and cost don't change. If the API can't continue the thread, clue sends the whole conversation, as before.
+
 ## 0.13.0
 
 - Claude can run a subagent on a different model or effort, such as Haiku for a simple search. Each subagent row shows its model, its tool calls and how long it ran, with a mark when it finishes. The model is grey when the subagent uses yours. Its effort shows only when it differs from yours. A subagent that waits for the one before it says `waiting`. A tree of only subagents reads `3 subagents · 1 running`, without `Subagent:` on each row.
