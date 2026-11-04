@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildRequest, dropRejectedFeature } from "../src/agent/provider";
 import { Session } from "../src/session";
-import { requests, startMockApi } from "./mock-api";
+import { requests, startMockApi, threadFaults, wire } from "./mock-api";
 
 let server: ReturnType<typeof startMockApi>;
 const home = mkdtempSync(join(tmpdir(), "clue-test-"));
@@ -138,3 +138,48 @@ test("clue mcp passes --, --project and --all through to the command", async () 
   expect(stdout).toContain("Approved");
   expect(JSON.parse(readFileSync(join(mcpHome, "mcp-approvals.json"), "utf8"))[cwd].other).toMatch(/^approved:/);
 });
+
+test("a turn with a tool call creates a thread, then continues it with only the tool result", async () => {
+  wire.length = 0;
+  const { code, stderr } = await run(["ask", "what is this package?"]);
+  expect(code, stderr).toBe(0);
+  const [first, second] = wire as any[];
+  expect(first.thread).toEqual({ type: "create" });
+  expect(first.system).toBeDefined();
+  expect(first.tools).toBeDefined();
+  expect(first.messages).toHaveLength(1);
+  expect(second.thread.type).toBe("continue");
+  expect(second.thread.previous_message_id).toStartWith("msg_");
+  expect(second.system).toBeUndefined();
+  expect(second.tools).toBeUndefined();
+  expect(second.messages).toHaveLength(1);
+  expect(second.messages[0].content[0].type).toBe("tool_result");
+  // The mock rebuilt it as the API does, so the conversation was whole: prompt, tool call, result.
+  expect((requests.at(-1) as any).messages.map((message: any) => message.role)).toEqual(["user", "assistant", "user"]);
+}, 15_000);
+
+test("a continue that finds no thread is sent again with the whole conversation", async () => {
+  wire.length = 0;
+  threadFaults.lose = 1;
+  const { code, stderr } = await run(["ask", "what is this package?"]);
+  threadFaults.lose = 0;
+  expect(code, stderr).toBe(0);
+  const types = (wire as any[]).map((body) => body.thread.type);
+  expect(types).toEqual(["create", "continue", "create"]);
+  const replay = wire[2] as any;
+  expect(replay.system).toBeDefined();
+  expect(replay.messages.map((message: any) => message.role)).toEqual(["user", "assistant", "user"]);
+}, 15_000);
+
+test("a proxy that refuses threads without a thread code gets the request without one", async () => {
+  wire.length = 0;
+  requests.length = 0;
+  threadFaults.refuse = true;
+  const { code, stderr } = await run(["ask", "what is this package?"]);
+  threadFaults.refuse = false;
+  expect(code, stderr).toBe(0);
+  // Only the first request tried a thread. The rest went out whole, without one.
+  expect(wire).toHaveLength(1);
+  expect((requests as any[]).every((body) => body.thread === undefined)).toBe(true);
+  expect(requests.length).toBeGreaterThanOrEqual(2);
+}, 15_000);

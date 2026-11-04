@@ -30,6 +30,7 @@ import {
 } from "./models";
 import { COMPACT_PROMPT } from "./prompt";
 import { dropRejectedFeature, fastRejected, stream, summarize } from "./provider";
+import { MessageThread, threadErrorCode } from "./thread";
 import { UndoStack, type UndoResult } from "./undo";
 
 type ContentBlock = Anthropic.Beta.Messages.BetaContentBlock;
@@ -104,9 +105,12 @@ export class Agent {
   private lastContext = 0;
   // The usage the current request's stream has reported. Billed even if the request never finishes.
   private streamed: StreamUsage | null = null;
+  // Sits between this agent's requests and the SDK. Subagents have short sessions and go without.
+  readonly thread: MessageThread | undefined;
 
   constructor(private options: AgentOptions) {
     this.undo.startAt(options.session.transcript.length);
+    this.thread = options.subagent ? undefined : new MessageThread(() => options.session.revision);
   }
 
   get session() {
@@ -277,6 +281,13 @@ export class Agent {
           stop = "interrupted";
           break;
         }
+        // A thread error names fields such as `fallbacks`, and the handlers below match error
+        // text. The thread decides alone whether the request goes out again.
+        if (threadErrorCode(error) !== null) {
+          if (this.thread?.recover(error)) continue;
+          finish("error");
+          throw error;
+        }
         if (
           error instanceof Sdk.BadRequestError &&
           featureRetries < MAX_FEATURE_RETRIES &&
@@ -298,6 +309,8 @@ export class Agent {
           events.notice("A tool input arrived as broken JSON. Asking again.", "warn");
           continue;
         }
+        // A proxy or account may refuse the thread without naming it.
+        if (this.thread?.retryUnthreaded(error)) continue;
         // Earlier requests of this turn were paid for, and the session must stay findable.
         finish("error");
         throw error;
@@ -390,6 +403,7 @@ export class Agent {
     const response = await stream(
       { model, effort, fast, messages: this.session.messages, subagent: this.options.subagent },
       signal,
+      this.thread,
     );
     const blocks = new Map<number, { type: string; id?: string; name?: string; json: string }>();
     // Advisor calls waiting for their answer, by id. The answer arrives whole, after a pause.
