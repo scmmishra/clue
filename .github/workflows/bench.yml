@@ -1,0 +1,55 @@
+name: Performance
+
+# Builds the base and the head on one runner and compares their start, resume and first-token
+# waits with benchmarks/compare.ts. The runner is too slow for absolute budgets, so the job only
+# checks that the head is no slower than the base. Each run's results stay as an artifact for 90 days.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    # A push that creates the branch has no commit before it to compare with.
+    if: github.event_name == 'pull_request' || github.event.before != '0000000000000000000000000000000000000000'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: head
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          path: base
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Build the base
+        working-directory: base
+        run: bun install --frozen-lockfile && bun run build
+
+      - name: Build the head
+        working-directory: head
+        run: bun install --frozen-lockfile && bun run build
+
+      - name: Compare the head with the base
+        working-directory: head
+        run: bun benchmarks/compare.ts --base ../base/dist/clue --head dist/clue --out "$RUNNER_TEMP/performance.json"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-${{ github.sha }}
+          path: ${{ runner.temp }}/performance.json
+          retention-days: 90
+          if-no-files-found: ignore

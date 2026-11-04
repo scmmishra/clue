@@ -55,6 +55,12 @@ A larger session, 610 KB and 120 prompts with long tool results, loads in about 
 | Start to ready prompt                  | under 10 ms |
 | `clue -c` to ready prompt, 120 prompts | under 15 ms |
 
+## In CI
+
+The Performance workflow runs [`compare.ts`](compare.ts) on every pull request and every push to `main`. It builds the base and the head on one runner, and they take turns over 8 rounds of 10 runs: start to a ready prompt, resume, and clue's own time to first token. A shared runner is slower and noisier than a laptop, but it slows both builds alike, so the job compares them instead of checking budgets. A wait fails when the head is more than 15% slower and slower in at least 6 of the 8 rounds. On one Mac, a build compared with itself came within 3%.
+
+The job summary shows the table, and each run's samples stay as an artifact for 90 days. To compare two builds yourself: `bun benchmarks/compare.ts --base <binary> --head <binary>`.
+
 ## Method notes
 
 - "Inside the process" is the time from process start to the first paint of the input line, as clue reports it with `CLUE_BENCH_READY=1`.
