@@ -4,6 +4,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- Reads and searches start as soon as Claude finishes writing each call, while the rest of the reply still streams. Before, every call waited for the whole reply. In a test with three searches spaced 300 ms apart, the wait between the reply's end and the next request went from 239 ms to 88 ms. A call that writes, asks you, or needs approval still waits for the reply, and so does every call after it.
 - `/effort` says when the next request starts a fresh cache, as `/model` and `/fast` do. A new effort keeps the cache only up to Claude's first reply, so the next request writes almost the whole conversation again. The note shows only once the session has a reply and the effort changed.
 - `clue usage` reports on every session: the total cost, the median and p90 per session and per prompt, the cost per model, the share of input read from the cache, how often a gap between prompts outlived the 5-minute cache and what that cost, what compactions and resume warm-ups cost, and the five most expensive sessions. `--here` limits it to the current folder, and `--since 30d` to recent activity.
 - In a long session, each request sends only the messages since Claude's last reply, not the whole conversation. Claude's API keeps the conversation for a few minutes as a message thread, so it has less to read before the first token. Tokens and cost don't change. If the API can't continue the thread, clue sends the whole conversation, as before.

@@ -37,6 +37,19 @@ type ContentBlock = Anthropic.Beta.Messages.BetaContentBlock;
 type ToolUse = Anthropic.Beta.Messages.BetaToolUseBlock;
 type ToolResult = Anthropic.Beta.Messages.BetaToolResultBlockParam;
 
+// A call that ran, before it is recorded.
+type Executed = { output: ToolOutput; label: string; kind: string; review?: string; startedAt: number; ms: number };
+
+// Read-only calls started while the reply streams, by tool_use id. They start only until the first
+// call that can't start early, so a read after a write still waits for the write. `saved` holds the
+// read stamps and instructions from before the first one started, to restore if they are dropped.
+type EarlyRuns = {
+  runs: Map<string, Promise<Executed>>;
+  controller: AbortController;
+  open: boolean;
+  saved: { stamps: Map<string, number>; seen: Set<string> } | null;
+};
+
 export type ConfirmAnswer = "once" | "always" | "no";
 
 // What the loop tells the interface. The terminal UI and `clue ask` each implement it.
@@ -100,6 +113,8 @@ const ERROR_NOTE_CHARS = 60;
 
 export class Agent {
   readStamps = new Map<string, number>();
+  // Calls that started while the current reply streamed.
+  private early: EarlyRuns | null = null;
   seenInstructions = new Set<string>();
   undo = new UndoStack(this.readStamps);
   private lastContext = 0;
@@ -268,9 +283,17 @@ export class Agent {
       const askedFast = fastEnabled(settings);
       let message: Anthropic.Beta.Messages.BetaMessage;
       try {
-        message = await this.request(model, settings.effort, askedFast, signal, () => {
-          firstTokenMs ??= msSince(clock);
-        });
+        message = await this.request(
+          model,
+          settings.effort,
+          askedFast,
+          signal,
+          () => {
+            firstTokenMs ??= msSince(clock);
+          },
+          prompt,
+          tally,
+        );
         jsonRetries = 0;
       } catch (error) {
         events.toolsStopped?.();
@@ -327,17 +350,24 @@ export class Agent {
       });
       stop = message.stop_reason ?? "end_turn";
 
-      if (stop === "pause_turn") continue;
+      if (stop === "pause_turn") {
+        await this.dropEarly();
+        continue;
+      }
       if (stop === "refusal") {
+        await this.dropEarly();
         events.notice("Claude declined this request.", "warn");
         break;
       }
       const toolUses = message.content.filter((block): block is ToolUse => block.type === "tool_use");
       if (toolUses.length === 0) {
+        await this.dropEarly();
         if (stop === "max_tokens") events.notice("The reply hit the output limit and was cut off.", "warn");
         break;
       }
       if (stop === "max_tokens") {
+        // Calls that finished streaming are whole, but every call of a cut-off reply ends the same way.
+        await this.dropEarly();
         // A tool input cut off mid-way must not run. It is still a call, so it ends like one.
         const content = "The tool input was cut off by the output limit. Retry with smaller steps.";
         for (const use of toolUses) {
@@ -396,10 +426,82 @@ export class Agent {
     tally.minimum = true;
   }
 
-  // One streamed model request. Forwards text, progress notes and tool activity as they arrive.
-  private async request(model: string, effort: Effort, fast: boolean, signal: AbortSignal, onFirstToken: () => void) {
-    const { events } = this.options;
+  // Whether a call can start before its reply finishes: a read-only call with valid input that runs
+  // without asking. A question to the user waits for the reply, like any call that needs the user.
+  private canStartEarly(name: string, input: Record<string, unknown>) {
+    const tool = findTool(name);
+    if (!tool?.readOnly || name === "ask_user_question" || tool.validate(input)) return false;
+    return this.options.permissions.decide(tool, input).action === "run";
+  }
+
+  // The calls that started while the last reply streamed, for runTools to use. They are Claude's now.
+  private takeEarly() {
+    const runs = this.early?.runs ?? new Map<string, Promise<Executed>>();
+    this.early = null;
+    return runs;
+  }
+
+  // Stops the calls that started early and forgets them, for a reply whose calls won't run: one that
+  // failed, was cut off or made no calls. A dropped read can't have marked a file as read, or its
+  // folder's instructions as sent, since Claude never sees its result.
+  private async dropEarly() {
+    const early = this.early;
+    this.early = null;
+    if (!early?.runs.size) return;
+    early.controller.abort();
+    await Promise.allSettled(early.runs.values());
+    if (!early.saved) return;
+    // The undo stack and the tools hold these, so they change in place.
+    this.readStamps.clear();
+    for (const [file, stamp] of early.saved.stamps) this.readStamps.set(file, stamp);
+    this.seenInstructions.clear();
+    for (const path of early.saved.seen) this.seenInstructions.add(path);
+  }
+
+  // One streamed model request. Forwards text, progress notes and tool activity as they arrive, and
+  // starts read-only calls as soon as their input is complete.
+  private async request(
+    model: string,
+    effort: Effort,
+    fast: boolean,
+    signal: AbortSignal,
+    onFirstToken: () => void,
+    prompt: string,
+    tally: Tally,
+  ) {
     this.streamed = null;
+    await this.dropEarly();
+    const early: EarlyRuns = { runs: new Map(), controller: new AbortController(), open: true, saved: null };
+    this.early = early;
+    const runSignal = AbortSignal.any([signal, early.controller.signal]);
+    try {
+      return await this.streamReply(model, effort, fast, signal, onFirstToken, (use) => {
+        if (!early.open) return;
+        if (!use || !this.canStartEarly(use.name, use.input as Record<string, unknown>)) {
+          early.open = false;
+          return;
+        }
+        early.saved ??= { stamps: new Map(this.readStamps), seen: new Set(this.seenInstructions) };
+        const run = this.execute(use, prompt, runSignal, tally);
+        // Awaited later by runTools or dropEarly. Until then, a failure must not count as unhandled.
+        run.catch(() => {});
+        early.runs.set(use.id, run);
+      });
+    } catch (error) {
+      await this.dropEarly();
+      throw error;
+    }
+  }
+
+  private async streamReply(
+    model: string,
+    effort: Effort,
+    fast: boolean,
+    signal: AbortSignal,
+    onFirstToken: () => void,
+    onToolInput: (use: ToolUse | null) => void,
+  ) {
+    const { events } = this.options;
     const response = await stream(
       { model, effort, fast, messages: this.session.messages, subagent: this.options.subagent },
       signal,
@@ -474,6 +576,11 @@ export class Agent {
           events.textDone();
           inText = false;
         }
+        if (block?.type === "tool_use" && block.id) {
+          // The input is whole now. One that doesn't parse can't start early, and fails later.
+          const input = strictJson(block.json);
+          onToolInput(input && ({ type: "tool_use", id: block.id, name: block.name ?? "", input } as ToolUse));
+        }
         if (block?.type === "server_tool_use" && block.id && block.name !== "advisor" && !isCodeExecution(block.name)) {
           const record = serverToolRecord(block.id, block.name ?? "web_search", parseJson(block.json));
           this.session.append({ t: "tool", tool: record });
@@ -518,8 +625,10 @@ export class Agent {
     return record;
   }
 
-  // Runs tool calls: consecutive read-only calls in parallel, everything else in order.
+  // Runs tool calls: consecutive read-only calls in parallel, everything else in order. Calls
+  // that started while the reply streamed are the first read-only ones, so they join the first batch.
   private async runTools(uses: ToolUse[], prompt: string, signal: AbortSignal, tally: Tally): Promise<ToolResult[]> {
+    const early = this.takeEarly();
     const results: ToolResult[] = new Array(uses.length);
     let index = 0;
     while (index < uses.length) {
@@ -528,45 +637,61 @@ export class Agent {
         batch.push(index++);
       if (batch.length === 0) batch.push(index++);
       await Promise.all(
-        batch.map(async (position) => (results[position] = await this.runTool(uses[position], prompt, signal, tally))),
+        batch.map(async (position) => {
+          const use = uses[position];
+          const executed = await (early.get(use.id) ?? this.execute(use, prompt, signal, tally));
+          results[position] = this.record(use, executed);
+        }),
       );
     }
     return results;
   }
 
-  private async runTool(use: ToolUse, prompt: string, signal: AbortSignal, tally: Tally): Promise<ToolResult> {
+  // Writes a finished call to the session and the transcript, and returns its result for Claude.
+  private record(use: ToolUse, { output, label, kind, review, startedAt, ms }: Executed): ToolResult {
+    const full = output.full ?? (typeof output.content === "string" ? output.content : "");
+    const record: ToolRecord = {
+      id: use.id,
+      name: use.name,
+      input: use.input,
+      label,
+      kind,
+      output: full,
+      isError: output.isError === true,
+      diff: output.diff,
+      added: output.added,
+      removed: output.removed,
+      startedAt,
+      ms,
+      review,
+      // A failed call without its own note shows the error's first line.
+      note:
+        output.note ??
+        (output.isError && !review ? full.trim().split("\n")[0].slice(0, ERROR_NOTE_CHARS) || undefined : undefined),
+      subagent: output.subagent,
+    };
+    this.options.session.append({ t: "tool", tool: record });
+    this.options.events.toolEnd(record);
+    const content = typeof output.content === "string" ? clip(output.content, use.id) : output.content;
+    return { type: "tool_result", tool_use_id: use.id, content, is_error: output.isError || undefined };
+  }
+
+  // Runs one call and says what happened, without recording it. A call started while the reply
+  // streams can still be dropped, so recording waits for `record()`.
+  private async execute(use: ToolUse, prompt: string, signal: AbortSignal, tally: Tally): Promise<Executed> {
     const { events, permissions, session } = this.options;
     const startedAt = Date.now();
     const clock = now();
     const tool = findTool(use.name);
     const input = use.input as Record<string, unknown>;
-    const finish = (output: ToolOutput, label: string, kind: string, review?: string): ToolResult => {
-      const full = output.full ?? (typeof output.content === "string" ? output.content : "");
-      const record: ToolRecord = {
-        id: use.id,
-        name: use.name,
-        input,
-        label,
-        kind,
-        output: full,
-        isError: output.isError === true,
-        diff: output.diff,
-        added: output.added,
-        removed: output.removed,
-        startedAt,
-        ms: msSince(clock),
-        review,
-        // A failed call without its own note shows the error's first line.
-        note:
-          output.note ??
-          (output.isError && !review ? full.trim().split("\n")[0].slice(0, ERROR_NOTE_CHARS) || undefined : undefined),
-        subagent: output.subagent,
-      };
-      session.append({ t: "tool", tool: record });
-      events.toolEnd(record);
-      const content = typeof output.content === "string" ? clip(output.content, use.id) : output.content;
-      return { type: "tool_result", tool_use_id: use.id, content, is_error: output.isError || undefined };
-    };
+    const finish = (output: ToolOutput, label: string, kind: string, review?: string): Executed => ({
+      output,
+      label,
+      kind,
+      review,
+      startedAt,
+      ms: msSince(clock),
+    });
 
     if (!tool) return finish({ content: `There is no tool named ${use.name}.`, isError: true }, use.name, "mcp");
     const invalid = tool.validate(input);
@@ -767,6 +892,16 @@ export function contextTokens(usage: Anthropic.Beta.Messages.BetaUsage) {
 export function awaitsServerTool(content: ContentBlock[]) {
   const answered = new Set(content.flatMap((block) => ("tool_use_id" in block ? [block.tool_use_id] : [])));
   return content.some((block) => block.type === "server_tool_use" && !answered.has(block.id));
+}
+
+// A tool input as streamed, or null when it isn't a JSON object.
+function strictJson(text: string): Record<string, unknown> | null {
+  try {
+    const value: unknown = JSON.parse(text || "{}");
+    return isObject(value) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseJson(text: string): Record<string, unknown> {
