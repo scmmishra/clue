@@ -109,6 +109,10 @@ test("a turn the API doesn't keep is not continued", () => {
       stop_reason: "max_tokens",
       content: [{ type: "tool_use", id: "t", name: "read_file", input: {} }],
     }),
+    "cut-off server tool call": replyOf({
+      stop_reason: "max_tokens",
+      content: [{ type: "server_tool_use", id: "s", name: "web_search", input: {} }],
+    }),
   };
   for (const [name, message] of Object.entries(replies)) {
     const thread = new MessageThread();
@@ -127,7 +131,12 @@ test("a request that never got its reply leaves nothing to continue", () => {
 
 test("a refused thread request is sent again as a create", () => {
   const later = [...next, { role: "assistant" as const, content: [] }, { role: "user" as const, content: "more" }];
-  for (const code of ["thread_not_found", "thread_already_continued", "thread_continue_in_flight"]) {
+  for (const code of [
+    "thread_not_found",
+    "thread_already_continued",
+    "thread_continue_in_flight",
+    "thread_fingerprint_mismatch",
+  ]) {
     const { thread } = threaded();
     // A reply to a continue, so a lost thread later is not the API failing to store it.
     thread.prepare(buildRequest({ ...options, messages: next }));
@@ -172,6 +181,14 @@ test("a request threads can't serve turns threads off", () => {
   thread.prepare(buildRequest(options));
   expect(thread.recover(apiError(400, "thread_unsupported_request"))).toBe(true);
   expect(thread.prepare(buildRequest(options)).thread).toBeUndefined();
+});
+
+test("a thread error with no request in flight is left to the loop", () => {
+  const thread = new MessageThread();
+  expect(thread.recover(apiError(404, "thread_not_found"))).toBe(false);
+  const { thread: answered } = threaded();
+  expect(answered.recover(apiError(404, "thread_not_found"))).toBe(false);
+  expect(answered.prepare(buildRequest({ ...options, messages: next })).thread?.type).toBe("continue");
 });
 
 test("an error that isn't about the thread is left to the loop", () => {
