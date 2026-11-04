@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildRequest, dropRejectedFeature } from "../src/agent/provider";
 import { Session } from "../src/session";
-import { requests, startMockApi, wire } from "./mock-api";
+import { requests, startMockApi, threadFaults, wire } from "./mock-api";
 
 let server: ReturnType<typeof startMockApi>;
 const home = mkdtempSync(join(tmpdir(), "clue-test-"));
@@ -156,4 +156,17 @@ test("a turn with a tool call creates a thread, then continues it with only the 
   expect(second.messages[0].content[0].type).toBe("tool_result");
   // The mock rebuilt it as the API does, so the conversation was whole: prompt, tool call, result.
   expect((requests.at(-1) as any).messages.map((message: any) => message.role)).toEqual(["user", "assistant", "user"]);
+}, 15_000);
+
+test("a continue that finds no thread is sent again with the whole conversation", async () => {
+  wire.length = 0;
+  threadFaults.lose = 1;
+  const { code, stderr } = await run(["ask", "what is this package?"]);
+  threadFaults.lose = 0;
+  expect(code, stderr).toBe(0);
+  const types = (wire as any[]).map((body) => body.thread.type);
+  expect(types).toEqual(["create", "continue", "create"]);
+  const replay = wire[2] as any;
+  expect(replay.system).toBeDefined();
+  expect(replay.messages.map((message: any) => message.role)).toEqual(["user", "assistant", "user"]);
 }, 15_000);

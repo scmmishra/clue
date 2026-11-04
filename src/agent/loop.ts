@@ -30,7 +30,7 @@ import {
 } from "./models";
 import { COMPACT_PROMPT } from "./prompt";
 import { dropRejectedFeature, fastRejected, stream, summarize } from "./provider";
-import { MessageThread } from "./thread";
+import { MessageThread, threadErrorCode } from "./thread";
 import { UndoStack, type UndoResult } from "./undo";
 
 type ContentBlock = Anthropic.Beta.Messages.BetaContentBlock;
@@ -96,6 +96,8 @@ function mergeUsage(usage: StreamUsage, delta: Anthropic.Beta.Messages.BetaMessa
 
 const MAX_JSON_RETRIES = 2;
 const MAX_FEATURE_RETRIES = 3;
+// A refused thread request goes out again as a create, or without a thread. Two retries cover both.
+const MAX_THREAD_RETRIES = 2;
 const ERROR_NOTE_CHARS = 60;
 
 export class Agent {
@@ -257,6 +259,7 @@ export class Agent {
 
     let jsonRetries = 0;
     let featureRetries = 0;
+    let threadRetries = 0;
 
     while (true) {
       if (signal.aborted) {
@@ -281,7 +284,15 @@ export class Agent {
           stop = "interrupted";
           break;
         }
+        // A thread error names fields such as `fallbacks`. The feature check below would drop
+        // that feature for no reason, so a thread error never reaches it.
+        const threadError = threadErrorCode(error) !== null;
+        if (threadError && this.thread?.recover(error) && threadRetries < MAX_THREAD_RETRIES) {
+          threadRetries += 1;
+          continue;
+        }
         if (
+          !threadError &&
           error instanceof Sdk.BadRequestError &&
           featureRetries < MAX_FEATURE_RETRIES &&
           dropRejectedFeature(error)

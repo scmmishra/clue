@@ -26,6 +26,9 @@ export const wire: Body[] = [];
 const threads = new Map<string, { system: unknown; tools: unknown; messages: Body["messages"]; continued: boolean }>();
 const THREADS_BETA = "message-threads-2026-08-12";
 
+// The number of continue requests to come that find no thread, as when one expired.
+export const threadFaults = { lose: 0 };
+
 const failure = (status: number, type: string, message: string, code?: string) =>
   Response.json(
     { type: "error", error: { type, message, ...(code && { details: { error_code: code } }) } },
@@ -42,7 +45,8 @@ function threadRequest(body: Body) {
   if (body.system !== undefined || body.tools !== undefined)
     return failure(400, "invalid_request_error", "a continue request can't send system or tools");
   const held = threads.get(thread.previous_message_id ?? "");
-  if (!held) return failure(404, "not_found_error", "thread not found", "thread_not_found");
+  if (!held || (threadFaults.lose > 0 && threadFaults.lose--))
+    return failure(404, "not_found_error", "thread not found", "thread_not_found");
   if (held.continued) return failure(400, "invalid_request_error", "already continued", "thread_already_continued");
   body.system = held.system;
   body.tools = held.tools;
