@@ -227,6 +227,15 @@ function parseRecords(text: string) {
   return records;
 }
 
+// A session file's records, without replaying them into a Session. Empty if the file can't be read.
+export function readRecords(file: string): SessionRecord[] {
+  try {
+    return parseRecords(readFileSync(file, "utf8"));
+  } catch {
+    return [];
+  }
+}
+
 export class Session {
   readonly file: string;
   // What the next request sends. A compaction replaces the older ones with its summary.

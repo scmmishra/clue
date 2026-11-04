@@ -22,6 +22,18 @@ When a conversation gets long, clue replaces older turns with a summary. See [Co
 
 When you start typing in a resumed session, clue sends the history once to warm the cache, so your first reply starts sooner. Opening a session only to read it sends nothing. Typing a `/` command doesn't warm the cache either. The warm-up counts toward the session's cost.
 
+## Cost across sessions
+
+`/usage` reports on the current session. `clue usage` reports on every session:
+
+- the total cost, the median and p90 per session and per prompt, and the cost per model and in fast mode
+- the share of input read from the cache, written to it, and sent uncached
+- how many gaps between prompts were over 5 minutes, when the cache expires, and what the prompts after them wrote to the cache
+- what compactions and resume warm-ups cost, and how many advisor calls ran, whose cost is part of their prompts
+- the five most expensive sessions
+
+`clue usage --here` reports on the current folder only. `--since 30d` counts only what was paid for in the last 30 days, and also takes hours (`12h`) and weeks (`2w`). A cost with a `+` is a minimum, because an interrupted request can be billed for more than the API reported.
+
 ## Undo
 
 `/undo` restores the files that clue changed in the last turn that changed files. It stops if those files changed since, and `/undo force` overwrites them. It keeps the conversation, and it can't undo shell commands. It doesn't survive quitting clue.

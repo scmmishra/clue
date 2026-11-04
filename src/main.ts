@@ -36,6 +36,7 @@ Usage
   clue config <command>      show or change settings (show, path, edit, set, unset)
   clue upgrade               install the latest release
   clue doctor                check credentials, settings, MCP servers and the terminal
+  clue usage                 cost and cache use across sessions; --here for this folder, --since 30d
 
 Options
   --model <id>               model for this run, such as sonnet or claude-opus-5-5
@@ -53,7 +54,7 @@ type Parsed = { command: string; positional: string[]; flags: Record<string, str
 function parse(argv: string[]): Parsed {
   const flags: Record<string, string | boolean> = {};
   const positional: string[] = [];
-  const takesValue = new Set(["model", "effort", "permission-mode", "resume", "name"]);
+  const takesValue = new Set(["model", "effort", "permission-mode", "resume", "name", "since"]);
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
     // `clue mcp` and `clue config` have their own arguments, such as `--project` and `--`. They reach them untouched.
@@ -78,7 +79,18 @@ function parse(argv: string[]): Parsed {
     else if (arg === "-h") flags.help = true;
     else positional.push(arg);
   }
-  const commands = new Set(["ask", "login", "logout", "mcp", "config", "upgrade", "doctor", "help", "version"]);
+  const commands = new Set([
+    "ask",
+    "login",
+    "logout",
+    "mcp",
+    "config",
+    "upgrade",
+    "doctor",
+    "usage",
+    "help",
+    "version",
+  ]);
   const command = positional[0] && commands.has(positional[0]) ? positional.shift()! : "";
   return { command, positional, flags };
 }
@@ -150,6 +162,15 @@ async function main() {
   if (command === "doctor") {
     const { doctor } = await import("./commands/doctor");
     return doctor();
+  }
+
+  if (command === "usage") {
+    const { runUsage } = await import("./commands/usage");
+    const result = runUsage(flags, realFolder(process.cwd()));
+    if ("error" in result) fail(result.error!);
+    const text = `${result.lines.join("\n")}\n`;
+    // A report piped to a file or a pager reads better without color codes.
+    return process.stdout.write(process.stdout.isTTY ? text : Bun.stripANSI(text));
   }
 
   if (command === "login" || command === "logout") {

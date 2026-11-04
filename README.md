@@ -36,6 +36,7 @@ clue "fix the flaky spec"   # start with a prompt
 clue -c                     # continue the last session here
 clue ask "explain this"     # one request, for scripts
 clue doctor                 # check your setup
+clue usage                  # cost and cache use across sessions
 ```
 
 ## Docs

@@ -4,6 +4,7 @@ All notable changes to clue are listed here. The release workflow publishes the 
 
 ## Unreleased
 
+- `clue usage` reports on every session: the total cost, the median and p90 per session and per prompt, the cost per model, the share of input read from the cache, how often a gap between prompts outlived the 5-minute cache and what that cost, what compactions and resume warm-ups cost, and the five most expensive sessions. `--here` limits it to the current folder, and `--since 30d` to recent activity.
 - In a long session, each request sends only the messages since Claude's last reply, not the whole conversation. Claude's API keeps the conversation for a few minutes as a message thread, so it has less to read before the first token. Tokens and cost don't change. If the API can't continue the thread, clue sends the whole conversation, as before.
 
 ## 0.13.0

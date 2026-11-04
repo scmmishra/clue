@@ -22,7 +22,7 @@ Type `/` to open the list of commands. `tab` completes the one you're typing.
 | `/rename` | Shows or changes the session name. |
 | `/compact` | Replaces the conversation with a [summary](/docs/compaction). |
 | `/undo` | Restores the files the last turn changed. |
-| `/usage` | Shows how full the context is, and what the session cost. |
+| `/usage` | Shows how full the context is, and what the session cost. For every session, run [`clue usage`](/docs/sessions#cost-across-sessions). |
 | `/cost` | Same as `/usage`. |
 
 ## Other
