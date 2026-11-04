@@ -4,32 +4,36 @@ import Base from '../layouts/Base.astro';
 
 const repo = 'https://github.com/scmmishra/clue';
 const install = 'curl -fsSL https://clue.shivam.dev/install | bash';
-const title = 'clue, a fast and minimal coding agent for the terminal';
-const description = "A fast and minimal coding agent, for the terminal. clue runs on Claude's API.";
+const title = 'clue, a fast and simple coding agent for Claude';
+const description = "A fast and simple coding agent for Claude, in your terminal. clue calls Claude's API directly.";
 
 // Medians from benchmarks/README.md.
 const waits = [
-	{ label: 'Start to a ready prompt', time: '7.3 ms' },
-	{ label: 'Resume to your last session', time: '8.7 ms' },
-	{ label: "First token, clue's time", time: '5.2 ms' },
+	{ label: 'Start to a ready prompt', time: '7.5 ms' },
+	{ label: 'Resume to your last session', time: '13.8 ms' },
+	{ label: "First token, clue's time", time: '5.4 ms' },
 ];
 ---
 
 <Base title={title} description={description}>
 			<main>
 				<div class="hero">
-					<h1>A fast and minimal coding agent, for the terminal</h1>
+					<h1>A fast, simple coding agent for Claude</h1>
 
 					<div class="install">
 						<code tabindex="0" data-command><span class="prompt">$</span> {install}</code>
 					</div>
 					<div class="meta">
-						<p>v{version} (<a href="/changelog">notes</a>), macOS and Linux, status: early</p>
+						<p>v{version} (<a href="/changelog">notes</a>) · macOS and Linux · actively developed, so things may change</p>
 						<button class="copy" type="button" data-copy={install}>
 							<span aria-live="polite">copy</span>
 							<kbd aria-hidden="true">[c]</kbd>
 						</button>
 					</div>
+					<p class="note billing">
+						clue calls Claude's API through the API SDK, not the Agent SDK, so it bills per token. <code>clue usage</code> shows
+						what it has cost.
+					</p>
 
 					<section class="waits">
 						<h2>Three waits, measured</h2>
@@ -85,48 +89,87 @@ const waits = [
 				</figure>
 
 				<div class="features">
-					<section>
-						<h2>Ready before it's loaded</h2>
-						<p>clue shows the prompt first. The SDK, MCP servers and skills load while you type.</p>
-					</section>
+					<div class="feature-group">
+						<h2 class="group-title">Fast</h2>
 
-					<section>
-						<h2>Resume without the wait</h2>
-						<p>
-							<code>clue -c</code> prints only the last screen of the conversation. While you type, clue sends the
-							history to Claude ahead of your message.
-						</p>
-					</section>
+						<section>
+							<h2>You can type right away</h2>
+							<p>clue shows the prompt first. The SDK, MCP servers and skills load in the background.</p>
+						</section>
 
-					<section>
-						<h2>A prompt Claude has already seen</h2>
-						<p>The system prompt and tool list are the same bytes in every session, so Claude caches them across sessions.</p>
-					</section>
+						<section>
+							<h2>Resuming shows the last screen</h2>
+							<p>
+								<code>clue -c</code> prints only the last screen of the conversation. While you type, clue sends the
+								history to Claude, so its cache is ready when you press enter.
+							</p>
+						</section>
 
-					<section>
-						<h2>A quiet transcript</h2>
-						<p>Each run of tool calls shows as a short tree. Output, diffs and errors wait behind <code>ctrl+o</code>.</p>
-					</section>
+						<section>
+							<h2>The same system prompt every time</h2>
+							<p>The system prompt and tool list are identical in every session, so Claude reads them from its cache.</p>
+						</section>
 
-					<section>
-						<h2>Three permission modes</h2>
-						<p><code>auto</code> runs routine work and has risky actions reviewed first. <code>ask</code> asks before each action. <code>full-access</code> runs every action without checks.</p>
-					</section>
+						<section>
+							<h2>Long sessions send only what's new</h2>
+							<p>Each request carries the messages since Claude's last reply. Claude's API keeps the rest of the conversation for a few minutes.</p>
+						</section>
 
-					<section>
-						<h2>A second model for hard steps</h2>
-						<p>
-							Pick a pair in <code>/model</code>, such as <code>sonnet 5.5 + opus</code>. Sonnet does the work, and asks Opus
-							before it plans a change or when it's stuck. Each reply's cost includes both.
-						</p>
-					</section>
+						<section>
+							<h2>Reads start while Claude is still writing</h2>
+							<p>A read or search runs as soon as Claude finishes writing that call, before the rest of the reply arrives.</p>
+						</section>
+					</div>
 
-					<section>
-						<h2>Your instructions</h2>
-						<p>clue reads <code>AGENTS.md</code> and <code>CLAUDE.md</code> files. Projects set up for Claude Code work as they are.</p>
-					</section>
+					<div class="feature-group">
+						<h2 class="group-title">Simple</h2>
+
+						<section>
+							<h2>No plan mode</h2>
+							<p>Say what you want. If clue heads the wrong way, type while it works to steer it.</p>
+						</section>
+
+						<section>
+							<h2>Output goes to your scrollback</h2>
+							<p>
+								The conversation prints like any other command's output. Each batch of tool calls shows as a short tree, and
+								<code>ctrl+o</code> shows their output, diffs and errors.
+							</p>
+						</section>
+
+						<section>
+							<h2>Built for modern terminals</h2>
+							<p>
+								Redraws don't flicker in terminals with synchronized output, such as Ghostty, kitty, WezTerm, iTerm2 and
+								Alacritty. Where the terminal supports it, <code>/copy</code> works over SSH, file paths are clickable, and
+								you can jump between your prompts.
+							</p>
+						</section>
+
+						<section>
+							<h2><code>/copy</code> takes a request</h2>
+							<p><code>/copy the sql</code> copies only that part of the last reply. A small model picks the part.</p>
+						</section>
+
+						<section>
+							<h2>Three permission modes</h2>
+							<p><code>auto</code> runs routine work and has risky actions reviewed first. <code>ask</code> asks before each action. <code>full-access</code> runs every action without checks.</p>
+						</section>
+
+						<section>
+							<h2>A second model for hard steps</h2>
+							<p>
+								Pick a pair in <code>/model</code>, such as <code>sonnet 5.5 + opus</code>. Sonnet does the work, and asks Opus
+								before it plans a change or when it's stuck. Each reply's cost includes both.
+							</p>
+						</section>
+
+						<section>
+							<h2>Your existing instructions</h2>
+							<p>clue reads <code>AGENTS.md</code> and <code>CLAUDE.md</code> files, so a project set up for Claude Code works as it is.</p>
+						</section>
+					</div>
 				</div>
-
 			</main>
 
 		<script>

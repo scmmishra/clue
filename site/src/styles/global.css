@@ -217,8 +217,23 @@ section {
 	margin-block-start: 40px;
 }
 
-.features section:first-child {
-	margin-block-start: 0;
+.feature-group + .feature-group {
+	margin-block-start: 56px;
+}
+
+.group-title {
+	margin: 0;
+	color: var(--ink-faint);
+	font-size: 0.75rem;
+	font-weight: 400;
+}
+
+.group-title + section {
+	margin-block-start: 16px;
+}
+
+.note.billing {
+	margin-block-start: 12px;
 }
 
 .prose {

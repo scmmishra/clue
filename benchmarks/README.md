@@ -2,26 +2,26 @@
 
 `bun run bench` measures clue's three waits: start, resume and first token. Each case runs 30 times after 3 warmups, in a pseudo-terminal, the way a person starts clue. Times come from `Bun.nanoseconds()`.
 
-Results from 30 October 2026: an Apple silicon Mac (darwin-arm64), Bun 1.4.3, clue 0.1.0, the compiled `dist/clue` binary unless a row says otherwise.
+Results from 4 November 2026: an Apple silicon Mac (darwin-arm64), Bun 1.4.4, clue 0.14.0, the compiled `dist/clue` binary unless a row says otherwise.
 
 ## Start
 
 |                                                    | median  | p90     |
 | -------------------------------------------------- | ------- | ------- |
-| `clue --version`, start to exit                    | 8.9 ms  | 9.4 ms  |
-| `clue --version` from source (`bun src/main.ts`)   | 11.1 ms | 12.3 ms |
-| Start to ready prompt, measured inside the process | 7.3 ms  | 7.8 ms  |
-| Start to ready prompt, wall clock including exit   | 13.5 ms | 14.3 ms |
-| Start to ready prompt from source                  | 17.4 ms | 17.9 ms |
+| `clue --version`, start to exit                    | 8.8 ms  | 9.3 ms  |
+| `clue --version` from source (`bun src/main.ts`)   | 22.2 ms | 25.4 ms |
+| Start to ready prompt, measured inside the process | 7.5 ms  | 8.5 ms  |
+| Start to ready prompt, wall clock including exit   | 13.8 ms | 14.9 ms |
+| Start to ready prompt from source                  | 32.3 ms | 33.3 ms |
 
 ## Resume
 
-A seeded session of 120 prompts, each with two tool calls. The benchmark first checks that `clue -c` really shows the session.
+A seeded session of 120 prompts, each with two tool calls. The benchmark first checks that `clue -c` really shows the session. Before the prompt is ready, clue prints the whole session into the scrollback, up to its last 1 MB.
 
 |                                                                | median  | p90     |
 | -------------------------------------------------------------- | ------- | ------- |
-| `clue -c` to ready prompt, session printed, inside the process | 8.7 ms  | 10.1 ms |
-| `clue -c` wall clock including exit                            | 14.9 ms | 16.7 ms |
+| `clue -c` to ready prompt, session printed, inside the process | 13.8 ms | 14.6 ms |
+| `clue -c` wall clock including exit                            | 20.2 ms | 21.1 ms |
 
 Warming the prompt cache runs after the prompt is ready, so it is not part of these numbers.
 
@@ -31,8 +31,8 @@ These rows use a local stand-in for the API that answers at once, so they measur
 
 |                                          | median  | p90     |
 | ---------------------------------------- | ------- | ------- |
-| Prompt sent to first streamed token      | 5.2 ms  | 5.5 ms  |
-| `clue ask` with one tool call, whole run | 23.7 ms | 25.6 ms |
+| Prompt sent to first streamed token      | 5.4 ms  | 5.7 ms  |
+| `clue ask` with one tool call, whole run | 24.7 ms | 29.6 ms |
 
 With the real API, the model's own time to first token is added on top.
 
@@ -40,9 +40,9 @@ With the real API, the model's own time to first token is added on top.
 
 |                                                 | median | p90     |
 | ----------------------------------------------- | ------ | ------- |
-| Render a Markdown reply (`Bun.markdown.render`) | 9.3 µs | 13.8 µs |
-| Load a 120-prompt session file (`Bun.JSONL`)    | 39 µs  | 49 µs   |
-| Render all of it for resume                     | 52 µs  | 65 µs   |
+| Render a Markdown reply (`Bun.markdown.render`) | 9.5 µs | 13.9 µs |
+| Load a 120-prompt session file (`Bun.JSONL`)    | 41 µs  | 46 µs   |
+| Render all of it for resume                     | 66 µs  | 77 µs   |
 
 A larger session, 610 KB and 120 prompts with long tool results, loads in about 0.65 ms.
 
@@ -59,6 +59,7 @@ A larger session, 610 KB and 120 prompts with long tool results, loads in about 
 
 - "Inside the process" is the time from process start to the first paint of the input line, as clue reports it with `CLUE_BENCH_READY=1`.
 - "Wall clock" includes spawning the process, the first paint and exiting.
+- On a busy machine, the same build varies by about 10% from run to run. To compare two builds, alternate between them in several rounds.
 - The binary is built with `--bytecode`, a launch profile (`--bytecode-order`) and a lazy JIT until the first paint.
 - `hyperfine` and `mitata` are the tools Bun recommends. The start-to-ready numbers need a terminal, which `hyperfine` doesn't provide, so this runner uses Bun's own spawn, PTY and clock. For commands that run without a terminal, such as `clue --version`, `hyperfine` agrees with it within a millisecond.
 - "From source" runs the same Bun that runs the benchmark. A version-manager shim such as mise's adds about 28 ms to every `bun` start, and an earlier version of this benchmark measured that by mistake.

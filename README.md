@@ -5,13 +5,13 @@
 [![CI](https://github.com/scmmishra/clue/actions/workflows/ci.yml/badge.svg)](https://github.com/scmmishra/clue/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/scmmishra/clue)](https://github.com/scmmishra/clue/releases/latest)
 
-clue is a coding agent for the terminal. It calls Claude's API directly and ships as a single binary. The conversation prints into your terminal's scrollback, like any other command's output.
+clue is a fast, simple coding agent for Claude, in your terminal. It calls Claude's API directly and ships as a single binary. The conversation prints into your terminal's scrollback, like any other command's output.
 
-clue works to shorten three waits: starting, resuming a session, and the first word of a reply.
+clue works to shorten three waits. It's ready in 7.5 ms, resumes a session in 13.8 ms, and adds 5.4 ms of its own before the first token ([benchmarks](benchmarks/README.md)).
 
 **[Read the docs at clue.shivam.dev](https://clue.shivam.dev)**
 
-> Status: early. Expect rough edges. [CHANGELOG.md](CHANGELOG.md) lists what changed in each version.
+> clue is actively developed, so things may change. [CHANGELOG.md](CHANGELOG.md) lists what changed in each version.
 
 ## Install
 
@@ -20,6 +20,8 @@ curl -fsSL https://clue.shivam.dev/install | bash
 ```
 
 clue runs on macOS and Linux, on arm64 and x86_64. You don't need Bun to run it. `clue upgrade` installs the latest release.
+
+clue calls Claude's API through the API SDK, not the Agent SDK, so it bills per token. `clue usage` shows what it has cost.
 
 ## Start
 
