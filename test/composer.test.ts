@@ -1093,6 +1093,42 @@ test("/effort and /permissions open a list too", async () => {
   await clue.seen("Permission mode is now auto.");
 }, 25_000);
 
+test("/effort says the next request starts a fresh cache once the session has a reply", async () => {
+  const clue = await startClue();
+  // Before any prompt there is no cache to lose.
+  await clue.type("/effort high");
+  await clue.type(ENTER);
+  await clue.seen("Effort is now high.");
+  expect(clue.screen()).not.toContain("fresh cache");
+  await clue.type("hello");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  // The same effort again changes nothing.
+  await clue.type("/effort high");
+  await clue.type(ENTER);
+  await clue.type("/effort low");
+  await clue.type(ENTER);
+  await clue.seen("Effort is now low. The next request starts a fresh cache.");
+  const screen = clue.screen();
+  expect(screen.match(/Effort is now high\./g)).toHaveLength(2);
+  expect(screen.match(/starts a fresh cache/g)).toHaveLength(1);
+}, 25_000);
+
+test("/model with a new effort notes the fresh cache once", async () => {
+  const clue = await startClue();
+  await clue.type("hello");
+  await clue.type(ENTER);
+  await clue.turns(1);
+  await clue.type("/model");
+  await clue.type(ENTER);
+  await clue.seen("enter select · esc cancel");
+  // Right raises the effort of the highlighted model.
+  await clue.type("\x1b[C");
+  await clue.type(ENTER);
+  await clue.seen("Effort is now high.");
+  expect(clue.screen().match(/starts a fresh cache/g)).toHaveLength(1);
+}, 25_000);
+
 test("/fast sends fast requests, and the status line and the footer show it", async () => {
   const clue = await startClue();
   await clue.type("/fast");

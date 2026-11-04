@@ -566,7 +566,7 @@ export class App {
       `  Model is now ${style.bold(modelLabel(model))} ${style.faint(`(${modelDetail(model)}). The next request starts a fresh cache.`)}`,
       "",
     ]);
-    if (effort && effort !== this.settings.effort) this.setEffort(effort);
+    if (effort && effort !== this.settings.effort) this.setEffort(effort, { noteCache: false });
     else this.raiseEffortForPair();
     // Coming back to a fast model later must not start charging double without a word.
     if (wasFast && !fastEnabled(this.settings)) {
@@ -575,9 +575,15 @@ export class App {
     }
   }
 
-  private setEffort(effort: Effort) {
+  // `/model` prints its own cache note, so it switches effort without one.
+  private setEffort(effort: Effort, { noteCache = true } = {}) {
+    const changed = effort !== this.settings.effort;
     this.settings.effort = effort;
-    this.print([`  Effort is now ${style.bold(effort)}.`, ""]);
+    // The API reads the cache only up to Claude's first reply once effort changes, so in a session
+    // with replies the next request writes almost the whole conversation again.
+    const note =
+      noteCache && changed && !this.session.isEmpty ? ` ${style.faint("The next request starts a fresh cache.")}` : "";
+    this.print([`  Effort is now ${style.bold(effort)}.${note}`, ""]);
     this.raiseEffortForPair();
   }
 

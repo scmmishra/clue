@@ -18,7 +18,7 @@ clue --model sonnet
 
 Inside clue, `/model` and `/effort` open a list to choose from. In `/model`, `←` and `→` change the effort of the highlighted model. Effort levels are `low`, `medium`, `high`, `xhigh` and `max`. Lower effort means shorter thinking and a sooner first token.
 
-Changing the model mid-session starts a fresh cache for the rest of that session.
+Changing the model mid-session starts a fresh cache for the rest of that session. Changing the effort does too, apart from the first message: the cache holds up to Claude's first reply.
 
 ## Pairs with an advisor
 
