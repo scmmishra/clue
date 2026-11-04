@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commandIsRoutine, Permissions, ruleFor } from "../src/permissions";
 import { Session } from "../src/session";
-import { chmodSync, mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync, symlinkSync } from "node:fs";
 import { UndoStack } from "../src/agent/undo";
 import { editFile, encodeImage, globFiles, grepFiles, readFile, writeFile } from "../src/tools/files";
 import { shell, stopAllProcesses } from "../src/tools/shell";
@@ -422,6 +422,30 @@ test("grep_files keeps an explicit choice", async () => {
   expect((await run({ pattern: "alpha|beta", regex: false })).content).toBe("No matches.");
   expect((await run({ pattern: "call(one)", regex: true })).content).toBe("No matches.");
   expect((await run({ pattern: "open(", regex: true })).isError).toBe(true);
+});
+
+test("grep_files without ripgrep skips ignored folders and binary files", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "clue-grep-fallback-"));
+  for (const folder of ["src", "node_modules/pkg", ".git"]) mkdirSync(join(dir, folder), { recursive: true });
+  writeFileSync(join(dir, "src", "a.ts"), "fallback-token\n");
+  writeFileSync(join(dir, "node_modules", "pkg", "b.js"), "fallback-token\n");
+  writeFileSync(join(dir, ".git", "c"), "fallback-token\n");
+  writeFileSync(join(dir, "blob.bin"), Buffer.from("\0\0fallback-token\0"));
+  // A PATH that has grep but not rg.
+  const bin = mkdtempSync(join(tmpdir(), "clue-grep-bin-"));
+  symlinkSync(Bun.which("grep")!, join(bin, "grep"));
+  const path = process.env.PATH;
+  process.env.PATH = bin;
+  try {
+    expect(Bun.which("rg", { PATH: bin })).toBeNull();
+    const { content } = await grepFiles.run({ pattern: "fallback-token" }, { ...context(), cwd: dir });
+    expect(content).toContain("a.ts:1:fallback-token");
+    expect(content).not.toContain("node_modules");
+    expect(content).not.toContain(".git");
+    expect(content).not.toContain("blob.bin");
+  } finally {
+    process.env.PATH = path;
+  }
 });
 
 test("grep_files reports no matches for text that isn't there", async () => {

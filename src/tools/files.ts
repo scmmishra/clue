@@ -299,7 +299,7 @@ type GrepInput = { pattern: string; path?: string; glob?: string; ignore_case?: 
 const REGEX_CHARS = /[\\^$.|?*+()[\]{}]/;
 
 async function search(input: GrepInput, context: ToolContext, literal: boolean) {
-  const rg = Bun.which("rg");
+  const rg = Bun.which("rg", { PATH: process.env.PATH ?? "" });
   const target = input.path ? absolute(context.cwd, input.path) : ".";
   let args: string[];
   if (rg) {
@@ -321,7 +321,17 @@ async function search(input: GrepInput, context: ToolContext, literal: boolean) 
     if (input.glob) args.push("--glob", input.glob);
     args.push("--", input.pattern, target);
   } else {
-    args = ["grep", "-rn", literal ? "-F" : "-E", ...(input.ignore_case ? ["-i"] : []), "--", input.pattern, target];
+    // Without ripgrep there is no .gitignore, so skip the folders glob_files skips, and binary files.
+    args = [
+      "grep",
+      "-rnI",
+      literal ? "-F" : "-E",
+      ...(input.ignore_case ? ["-i"] : []),
+      ...[...IGNORED_DIRS].map((name) => `--exclude-dir=${name}`),
+      "--",
+      input.pattern,
+      target,
+    ];
   }
   const proc = Bun.spawn(args, { cwd: context.cwd, stdout: "pipe", stderr: "pipe", signal: context.signal });
   const { lines, truncated } = await readLines(proc.stdout, MAX_GREP_LINES, () => proc.kill());
