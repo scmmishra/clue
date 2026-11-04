@@ -181,6 +181,63 @@ test("an error that isn't about the thread is left to the loop", () => {
   expect(thread.recover(apiError(400, "invalid_request"))).toBe(false);
 });
 
+test("thread refusals in a row turn threads off, and a recorded reply resets the count", () => {
+  const later = [...next, { role: "assistant" as const, content: [] }, { role: "user" as const, content: "more" }];
+  const busy = threaded().thread;
+  for (let i = 0; i < 5; i++) {
+    expect(busy.prepare(buildRequest({ ...options, messages: next })).thread).toBeDefined();
+    expect(busy.recover(apiError(400, "thread_continue_in_flight"))).toBe(true);
+    busy.prepare(buildRequest({ ...options, messages: next }));
+    busy.record(replyOf({ id: `msg_${i}` }));
+  }
+  expect(busy.prepare(buildRequest({ ...options, messages: later })).thread).toBeDefined();
+
+  const stuck = threaded().thread;
+  for (let i = 0; i < 3; i++) {
+    expect(stuck.prepare(buildRequest({ ...options, messages: next })).thread).toBeDefined();
+    expect(stuck.recover(apiError(400, "thread_already_continued"))).toBe(true);
+  }
+  expect(stuck.prepare(buildRequest({ ...options, messages: next })).thread).toBeUndefined();
+});
+
+test("a thread error clue doesn't know sends the request without a thread", () => {
+  const { thread } = threaded();
+  thread.prepare(buildRequest({ ...options, messages: next }));
+  expect(thread.recover(apiError(400, "thread_something_new"))).toBe(true);
+  expect(thread.prepare(buildRequest({ ...options, messages: next })).thread).toBeUndefined();
+});
+
+test("a refusal without a thread code tests the request once without a thread", () => {
+  const plain = {
+    status: 400,
+    error: { type: "error", error: { type: "invalid_request_error", message: "unknown field" } },
+  };
+  // The request goes through without a thread, so threads turn off.
+  const refused = threaded().thread;
+  refused.prepare(buildRequest({ ...options, messages: next }));
+  expect(refused.retryUnthreaded(plain)).toBe(true);
+  const probe = refused.prepare(buildRequest({ ...options, messages: next }));
+  expect(probe.thread).toBeUndefined();
+  expect(probe.betas ?? []).not.toContain(THREADS_BETA);
+  refused.record(replyOf({ id: "msg_probe" }));
+  expect(refused.prepare(buildRequest({ ...options, messages: next })).thread).toBeUndefined();
+  // It fails without a thread too, so the thread wasn't the cause.
+  const innocent = threaded().thread;
+  innocent.prepare(buildRequest({ ...options, messages: next }));
+  expect(innocent.retryUnthreaded(plain)).toBe(true);
+  innocent.prepare(buildRequest({ ...options, messages: next }));
+  expect(innocent.retryUnthreaded(plain)).toBe(false);
+  expect(innocent.prepare(buildRequest({ ...options, messages: next })).thread).toEqual({ type: "create" });
+});
+
+test("a server error or a dropped connection is not tested without a thread", () => {
+  const { thread } = threaded();
+  thread.prepare(buildRequest({ ...options, messages: next }));
+  expect(thread.retryUnthreaded({ status: 529 })).toBe(false);
+  thread.prepare(buildRequest({ ...options, messages: next }));
+  expect(thread.retryUnthreaded(new Error("socket hang up"))).toBe(false);
+});
+
 test("a session's revision goes up for a rewind, and not for an added message", () => {
   const session = Session.create(mkdtempSync(join(tmpdir(), "clue-revision-")));
   session.appendMessage({ role: "user", content: "one" });

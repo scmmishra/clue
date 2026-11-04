@@ -26,8 +26,9 @@ export const wire: Body[] = [];
 const threads = new Map<string, { system: unknown; tools: unknown; messages: Body["messages"]; continued: boolean }>();
 const THREADS_BETA = "message-threads-2026-08-12";
 
-// The number of continue requests to come that find no thread, as when one expired.
-export const threadFaults = { lose: 0 };
+// `lose` is the number of continue requests to come that find no thread, as when one expired.
+// `refuse` rejects every thread request without a thread error code, as a proxy might.
+export const threadFaults = { lose: 0, refuse: false };
 
 const failure = (status: number, type: string, message: string, code?: string) =>
   Response.json(
@@ -40,6 +41,7 @@ function threadRequest(body: Body) {
   const thread = body.thread;
   if (!thread) return null;
   wire.push({ ...body });
+  if (threadFaults.refuse) return failure(400, "invalid_request_error", "thread: Extra inputs are not permitted");
   if (!body.betas?.includes(THREADS_BETA)) return failure(400, "invalid_request_error", "thread needs its beta header");
   if (thread.type !== "continue") return null;
   if (body.system !== undefined || body.tools !== undefined)

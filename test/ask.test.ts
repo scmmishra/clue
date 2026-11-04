@@ -170,3 +170,16 @@ test("a continue that finds no thread is sent again with the whole conversation"
   expect(replay.system).toBeDefined();
   expect(replay.messages.map((message: any) => message.role)).toEqual(["user", "assistant", "user"]);
 }, 15_000);
+
+test("a proxy that refuses threads without a thread code gets the request without one", async () => {
+  wire.length = 0;
+  requests.length = 0;
+  threadFaults.refuse = true;
+  const { code, stderr } = await run(["ask", "what is this package?"]);
+  threadFaults.refuse = false;
+  expect(code, stderr).toBe(0);
+  // Only the first request tried a thread. The rest went out whole, without one.
+  expect(wire).toHaveLength(1);
+  expect((requests as any[]).every((body) => body.thread === undefined)).toBe(true);
+  expect(requests.length).toBeGreaterThanOrEqual(2);
+}, 15_000);

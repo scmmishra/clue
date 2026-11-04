@@ -70,34 +70,38 @@ function continuable(message: Message) {
   return true;
 }
 
-// `replay` says a create stands in for a thread the API lost. `afterReplay` says a continue
-// follows that create.
+// Thread refusals in a row, without a recorded reply between them, before threads turn off. A
+// refused continue is sent again as a create, and the API refuses a create only when it can't
+// thread the request at all, so two refusals in a row mean something clue doesn't expect.
+const MAX_REFUSALS = 2;
+
+// The statuses of a refusal that may be about the thread even without a thread error code, for
+// example from a proxy that doesn't know the beta.
+const UNCODED_STATUSES = new Set([400, 403, 404]);
+
 type Sent = {
   count: number;
   revision: number;
   fingerprint: string;
   continued: boolean;
-  replay: boolean;
-  afterReplay: boolean;
+  // Sent without a thread to learn whether the thread caused an uncoded refusal.
+  probe: boolean;
 };
 
 export class MessageThread {
-  // The last reply the API stored. `count` is how many messages the thread holds with it, and
-  // `replayed` says the request for it replaced a lost thread.
-  private held: {
-    id: string;
-    count: number;
-    revision: number;
-    fingerprint: string;
-    at: number;
-    replayed: boolean;
-  } | null = null;
+  // The last reply the API stored, and how many messages the thread holds with it.
+  private held: { id: string; count: number; revision: number; fingerprint: string; at: number } | null = null;
   // The request in flight, until its reply is recorded or it fails.
   private sent: Sent | null = null;
   // Set when the API can't thread this conversation. Every later request goes out whole.
   private off = false;
-  // Set when the API lost the thread, until the create that replaces it gets its reply.
-  private replaying = false;
+  // Set when the API lost a continued thread, until a reply to a continue is recorded. A thread
+  // lost while it is set was lost right after its replay.
+  private lost = false;
+  // Thread refusals since the last recorded reply.
+  private refusals = 0;
+  // Set when the next request goes out without a thread, to test an uncoded refusal.
+  private probing = false;
 
   // `revision` goes up when the conversation changes other than by an addition at its end.
   constructor(
@@ -119,21 +123,19 @@ export class MessageThread {
       revision: this.revision(),
       fingerprint: fingerprint(request),
       continued: false,
-      replay: false,
-      afterReplay: held?.replayed ?? false,
+      probe: this.probing,
     };
     this.sent = sent;
+    this.probing = false;
+    if (sent.probe) return request;
     const betas = [...(request.betas ?? []), THREADS_BETA];
-    const fresh =
+    const canContinue =
       held !== null &&
       held.revision === sent.revision &&
       held.fingerprint === sent.fingerprint &&
       held.count <= sent.count &&
       this.now() - held.at < THREAD_IDLE_MS;
-    if (!fresh) {
-      sent.replay = this.replaying;
-      return { ...request, betas, thread: { type: "create" } };
-    }
+    if (!canContinue) return { ...request, betas, thread: { type: "create" } };
     sent.continued = true;
     const { system: _system, tools: _tools, ...rest } = request;
     return {
@@ -150,7 +152,13 @@ export class MessageThread {
     const sent = this.sent;
     this.sent = null;
     if (!sent) return;
-    if (!sent.continued) this.replaying = false;
+    this.refusals = 0;
+    // The request went through without a thread after the threaded one was refused.
+    if (sent.probe) {
+      this.off = true;
+      return;
+    }
+    if (sent.continued) this.lost = false;
     if (!continuable(message)) return;
     this.held = {
       id: message.id,
@@ -158,24 +166,37 @@ export class MessageThread {
       revision: sent.revision,
       fingerprint: sent.fingerprint,
       at: this.now(),
-      replayed: sent.replay,
     };
   }
 
-  // Whether the loop should send a failed request again. `prepare()` already dropped the reply,
-  // so the request it sends again creates a new thread, or goes out without one.
+  // Whether the loop should send a request the API refused with a thread error again.
+  // `prepare()` already dropped the reply, so the request goes out again as a create, or
+  // without a thread once threads are off. Once off, no request can be refused for its thread.
   recover(error: unknown) {
     const sent = this.sent;
     this.sent = null;
     const code = threadErrorCode(error);
     if (!sent || !code) return false;
-    // A thread lost again right after a replay: the API may be unable to store this conversation,
-    // so creating it again would only fail again.
-    if (code === "thread_unsupported_request" || (code === "thread_not_found" && sent.continued && sent.afterReplay)) {
+    this.refusals += 1;
+    const lostAgain = code === "thread_not_found" && sent.continued && this.lost;
+    if (code === "thread_not_found" && sent.continued) this.lost = true;
+    // The API can't thread this conversation, or refuses it in a way clue doesn't know. Creating
+    // the thread again would only fail again.
+    if (code === "thread_unsupported_request" || lostAgain || !REPLAY_CODES.has(code) || this.refusals > MAX_REFUSALS)
       this.off = true;
-      return true;
-    }
-    if (code === "thread_not_found" && sent.continued) this.replaying = true;
-    return REPLAY_CODES.has(code);
+    return true;
+  }
+
+  // Whether the loop should send a refused request again without a thread. A refusal without a
+  // thread error code may still be about the thread, so the next request tests it once. If that
+  // request goes through, threads turn off. If it fails too, the thread wasn't the cause.
+  retryUnthreaded(error: unknown) {
+    const sent = this.sent;
+    this.sent = null;
+    if (!sent || sent.probe) return false;
+    const status = (error as { status?: unknown })?.status;
+    if (typeof status !== "number" || !UNCODED_STATUSES.has(status)) return false;
+    this.probing = true;
+    return true;
   }
 }
