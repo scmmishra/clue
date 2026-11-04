@@ -16,7 +16,7 @@ clue works to shorten three waits: starting, resuming a session, and the first w
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/scmmishra/clue/main/install.sh | bash
+curl -fsSL https://clue.shivam.dev/install | bash
 ```
 
 clue runs on macOS and Linux, on arm64 and x86_64. You don't need Bun to run it. `clue upgrade` installs the latest release.

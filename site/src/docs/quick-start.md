@@ -7,7 +7,7 @@ clue is a coding agent for the terminal. It runs on Claude's API.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/scmmishra/clue/main/install.sh | bash
+curl -fsSL https://clue.shivam.dev/install | bash
 ```
 
 clue runs on macOS and Linux, on arm64 and x86_64. Run `clue upgrade` to update. Set `CLUE_INSTALL_DIR` to choose the folder, or `CLUE_VERSION` to install a specific tag.

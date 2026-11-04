@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/install",
+      "destination": "https://raw.githubusercontent.com/scmmishra/clue/main/install.sh",
+      "permanent": false
+    }
+  ]
+}
