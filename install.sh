@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs clue from the latest GitHub release, or updates an existing install.
 #
-#   curl -fsSL https://raw.githubusercontent.com/scmmishra/clue/main/install.sh | bash
+#   curl -fsSL https://clue.shivam.dev/install | bash
 #
 # Set CLUE_INSTALL_DIR to install somewhere other than ~/.local/bin.
 # `clue upgrade` runs this script after it checks for a newer release.
