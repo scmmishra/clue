@@ -401,14 +401,20 @@ export class Session {
     return lastContextSize(this.turns, this.compactions);
   }
 
-  // The turn a prompt started. In an older session turns have no position, so the Nth prompt
-  // pairs with the Nth turn.
-  turnOfPrompt(transcript: number, prompt: number) {
-    const turn = this.turns[prompt];
-    return (
-      this.turns.find((candidate) => candidate.transcript === transcript) ??
-      (turn?.transcript === undefined ? turn : undefined)
-    );
+  // Finds the turn a prompt started. In an older session turns have no position, so the Nth
+  // prompt pairs with the Nth turn. Make one finder per pass over the transcript: resume walks
+  // every prompt while the JIT is still off, and a search per prompt grows with the square.
+  turnFinder() {
+    const turns = this.turns;
+    const byPosition = new Map<number, TurnRecord>();
+    for (let index = 0; index < turns.length; index++) {
+      const position = turns[index].transcript;
+      if (position !== undefined && !byPosition.has(position)) byPosition.set(position, turns[index]);
+    }
+    return (transcript: number, prompt: number) => {
+      const turn = turns[prompt];
+      return byPosition.get(transcript) ?? (turn?.transcript === undefined ? turn : undefined);
+    };
   }
 
   private turnsBefore(transcript: number, prompt: number) {
@@ -426,6 +432,7 @@ export class Session {
     const sent = this.messages.length - (this.summarized ? 1 : 0);
     const points: RewindPoint[] = [];
     let prompt = 0;
+    const turnOfPrompt = this.turnFinder();
     this.transcript.forEach((message, index) => {
       const text = promptText(message);
       if (text === null) return;
@@ -434,7 +441,7 @@ export class Session {
           text,
           transcript: index,
           turns: this.turnsBefore(index, prompt),
-          at: this.turnOfPrompt(index, prompt)?.startedAt,
+          at: turnOfPrompt(index, prompt)?.startedAt,
         });
       }
       prompt += 1;

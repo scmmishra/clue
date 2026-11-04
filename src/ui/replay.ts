@@ -17,6 +17,7 @@ export function sessionEntries(session: Session): Entry[] {
   let prompt = 0;
   let turn: TurnRecord | undefined;
   let group: ToolRecord[] = [];
+  const turnOfPrompt = session.turnFinder();
   const flush = () => {
     if (group.length) entries.push({ type: "tools", tools: group });
     group = [];
@@ -35,7 +36,7 @@ export function sessionEntries(session: Session): Entry[] {
       }
       flush();
       if (turn) entries.push({ type: "footer", turn });
-      turn = session.turnOfPrompt(index, prompt);
+      turn = turnOfPrompt(index, prompt);
       entries.push({ type: "prompt", text, at: turn?.startedAt });
       prompt += 1;
       continue;
