@@ -50,10 +50,16 @@ async function readyMs(command: string[]) {
   const decoder = new TextDecoder();
   const terminal = new Bun.Terminal({ cols: 120, rows: 40, data: (_t, data) => (output += decoder.decode(data)) });
   const proc = Bun.spawn(command, { cwd: project, env: { ...env, CLUE_BENCH_READY: "1" }, terminal });
-  await proc.exited;
+  const code = await proc.exited;
+  // On Linux the output can land just after the process exits, so wait for it before closing the PTY.
+  const ready = /ready ([\d.]+)ms/;
+  for (let waited = 0; !ready.test(output) && waited < 2000; waited += 10) await Bun.sleep(10);
   terminal.close();
-  const match = output.match(/ready ([\d.]+)ms/);
-  if (!match) throw new Error(`${command.join(" ")} never reported a ready prompt`);
+  const match = output.match(ready);
+  if (!match) {
+    const tail = Bun.stripANSI(output).trim().slice(-500);
+    throw new Error(`${command.join(" ")} never reported a ready prompt (exit ${code}):\n${tail}`);
+  }
   return Number(match[1]);
 }
 
