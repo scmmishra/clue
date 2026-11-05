@@ -29,7 +29,7 @@ import {
   responseUsage,
 } from "./models";
 import { COMPACT_PROMPT } from "./prompt";
-import { dropRejectedFeature, fastRejected, stream, summarize } from "./provider";
+import { dropRejectedFeature, fastRejected, stream, summarize, toolInputBroken } from "./provider";
 import { MessageThread, threadErrorCode } from "./thread";
 import { UndoStack, type UndoResult } from "./undo";
 
@@ -327,7 +327,7 @@ export class Agent {
           this.turnOffFast();
           continue;
         }
-        if (!(error instanceof Sdk.APIError) && error instanceof SyntaxError && jsonRetries < MAX_JSON_RETRIES) {
+        if (toolInputBroken(error) && jsonRetries < MAX_JSON_RETRIES) {
           jsonRetries += 1;
           events.notice("A tool input arrived as broken JSON. Asking again.", "warn");
           continue;

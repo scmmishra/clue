@@ -2,6 +2,10 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- When Claude writes a tool call that isn't valid JSON, such as one with a raw tab inside a string, clue asks again instead of ending the turn with `Unable to parse tool parameter JSON`. clue had this retry before, but it never matched the error the SDK throws.
+
 ## 0.14.2
 
 - `clue doctor` names the models that review actions in `auto` mode and pick what `/copy` copies. Without `OPENROUTER_API_KEY`, it says the key would switch them from Haiku to Jev and Decider. A `review` or `copy` setting that can't work shows as a warning.

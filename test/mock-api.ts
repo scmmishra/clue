@@ -70,8 +70,14 @@ function replyOf(events: Record<string, unknown>[]) {
       else if (delta.type === "signature_delta") block.signature = delta.signature;
       else if (delta.type === "input_json_delta")
         json.set(event.index, (json.get(event.index) ?? "") + delta.partial_json);
-    } else if (event.type === "content_block_stop" && json.has(event.index))
-      blocks[event.index].input = JSON.parse(json.get(event.index) || "{}");
+    } else if (event.type === "content_block_stop" && json.has(event.index)) {
+      // A broken input, from brokenToolInputs, is held as an empty one.
+      try {
+        blocks[event.index].input = JSON.parse(json.get(event.index) || "{}");
+      } catch {
+        blocks[event.index].input = {};
+      }
+    }
   }
   return blocks.filter(Boolean);
 }
@@ -81,6 +87,9 @@ let current: Body | null = null;
 
 // Fast requests whose first message holds this text get a 400. An empty string matches every fast request.
 export const fastMode = { rejectedFor: null as string | null, rejectedFromRequest: Infinity };
+
+// The number of tool calls to come whose input has a raw tab inside a string, which isn't valid JSON.
+export const brokenToolInputs = { remaining: 0 };
 
 // How the reviewers answer. Tests change this to force each failure.
 export const reviewers = {
@@ -329,6 +338,9 @@ export function startMockApi(port = 0, delay = DELAY) {
                   }
                 : { path: "package.json" },
         );
+        const broken = brokenToolInputs.remaining > 0;
+        if (broken) brokenToolInputs.remaining -= 1;
+        const sent = broken ? input.replace(':"', ':"\t') : input;
         const toolName = wantsPush ? "shell" : wantsWrite ? "write_file" : wantsSubagent ? "subagent" : "read_file";
         return sse(
           [
@@ -350,12 +362,12 @@ export function startMockApi(port = 0, delay = DELAY) {
             {
               type: "content_block_delta",
               index: 2,
-              delta: { type: "input_json_delta", partial_json: input.slice(0, 8) },
+              delta: { type: "input_json_delta", partial_json: sent.slice(0, 8) },
             },
             {
               type: "content_block_delta",
               index: 2,
-              delta: { type: "input_json_delta", partial_json: input.slice(8) },
+              delta: { type: "input_json_delta", partial_json: sent.slice(8) },
             },
             { type: "content_block_stop", index: 2 },
             {

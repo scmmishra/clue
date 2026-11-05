@@ -4,7 +4,7 @@ import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { projectKey } from "../src/session";
 import { statusReport, type ProgramStatus } from "../src/ui/status";
-import { compactions, compactionStop, fastMode, requests, startMockApi, usage } from "./mock-api";
+import { brokenToolInputs, compactions, compactionStop, fastMode, requests, startMockApi, usage } from "./mock-api";
 
 // A 1×1 PNG.
 const PNG = Buffer.from(
@@ -1205,6 +1205,22 @@ test("when the API rejects fast mode, clue turns it off, says so and finishes th
     expect(clue.screen().split("Fast mode isn't available now").at(-1)).not.toContain("out · fast");
   } finally {
     fastMode.rejectedFor = null;
+  }
+}, 25_000);
+
+test("when a tool input arrives as broken JSON, clue says so and asks again", async () => {
+  brokenToolInputs.remaining = 1;
+  try {
+    const clue = await startClue();
+    await clue.type("read it");
+    await clue.type(ENTER);
+    await clue.turns(1);
+    await clue.seen("A tool input arrived as broken JSON. Asking again.");
+    expect(clue.screen()).not.toContain("Unable to parse tool parameter JSON");
+    expect(clue.screen()).toContain("The package is called");
+    expect(brokenToolInputs.remaining).toBe(0);
+  } finally {
+    brokenToolInputs.remaining = 0;
   }
 }, 25_000);
 

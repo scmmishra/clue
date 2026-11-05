@@ -136,6 +136,11 @@ export function dropRejectedFeature(error: unknown) {
 // user chose this one and the status line shows it, so the loop turns the setting off instead.
 export const fastRejected = (error: unknown) => /\bspeed\b|fast.mode/i.test(String((error as Error)?.message ?? ""));
 
+// A tool input that isn't valid JSON, such as one with a raw tab inside a string. The SDK parses
+// each input when its block ends, and wraps the SyntaxError in an error that only names it in text.
+export const toolInputBroken = (error: unknown) =>
+  String((error as Error)?.message ?? "").startsWith("Unable to parse tool parameter JSON");
+
 export async function stream(options: RequestOptions, signal: AbortSignal, thread?: MessageThread) {
   const client = await getClient();
   const request = buildRequest(options);
