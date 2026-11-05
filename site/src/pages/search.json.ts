@@ -15,7 +15,7 @@ const plain = (markdown: string) =>
 		.replace(/^```.*$/gm, '')
 		.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
 		.replace(/^\s*\|?\s*-{3}.*$/gm, '')
-		.replace(/^>\s?/gm, '')
+		.replace(/^>\s?(\[!\w+\]\s*$)?/gm, '')
 		.replace(/[`*|#]/g, ' ')
 		.replace(/\s+/g, ' ')
 		.trim();

@@ -15,9 +15,11 @@ type Props = {
 	noindex?: boolean;
 	// Structured data for search engines, written as JSON-LD.
 	schema?: Record<string, unknown>;
+	// When an article last changed, in ISO 8601.
+	modified?: string;
 };
 
-const { title, description, type = 'website', noindex = false, schema } = Astro.props;
+const { title, description, type = 'website', noindex = false, schema, modified } = Astro.props;
 const repo = 'https://github.com/scmmishra/clue';
 const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
 const canonical = new URL(path, Astro.site).href;
@@ -46,6 +48,7 @@ const image = new URL(ogImageFor(path), Astro.site).href;
 		<meta property="og:image:height" content={String(HEIGHT)} />
 		<meta property="og:image:alt" content={title} />
 		<meta property="og:locale" content="en_US" />
+		{modified && <meta property="article:modified_time" content={modified} />}
 		<meta name="twitter:card" content="summary_large_image" />
 		<meta name="twitter:title" content={title} />
 		<meta name="twitter:description" content={description} />

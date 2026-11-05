@@ -25,7 +25,7 @@ clue warns at startup if the file has a problem. If the JSON is broken, clue use
 | `copy` | automatic | Who picks what `/copy <request>` copies. See below. |
 | `bell` | `true` | Rings the terminal bell when clue needs you. |
 
-```json
+```json title="~/.clue/settings.json"
 {
   "model": "claude-sonnet-5-5",
   "effort": "high",
@@ -35,7 +35,7 @@ clue warns at startup if the file has a problem. If the JSON is broken, clue use
 
 ## Choose the reviewer
 
-```json
+```json title="~/.clue/settings.json"
 {
   "review": { "provider": "anthropic", "model": "haiku" }
 }
@@ -56,7 +56,7 @@ If the reviewer fails or the setting can't work, Claude Haiku at low effort revi
 
 `copy` picks the model that chooses what `/copy <request>` copies. It takes the same keys and models as `review`.
 
-```json
+```json title="~/.clue/settings.json"
 {
   "copy": { "provider": "anthropic", "model": "sonnet" }
 }

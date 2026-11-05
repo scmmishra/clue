@@ -38,11 +38,15 @@ markdownButton.addEventListener('click', async () => {
 });
 
 // Code blocks get a copy button. If the clipboard is refused, select the code so it can be copied by hand.
+// The build wraps each block in <div class="code">; see src/markdown/plugins.ts.
 for (const pre of article.querySelectorAll('pre')) {
-	const wrap = document.createElement('div');
-	wrap.className = 'code';
-	pre.replaceWith(wrap);
-	wrap.append(pre);
+	let wrap = pre.parentElement!;
+	if (!wrap.classList.contains('code')) {
+		wrap = document.createElement('div');
+		wrap.className = 'code';
+		pre.replaceWith(wrap);
+		wrap.append(pre);
+	}
 
 	const button = document.createElement('button');
 	button.type = 'button';

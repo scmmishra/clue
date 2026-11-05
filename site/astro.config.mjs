@@ -1,6 +1,8 @@
 // @ts-check
+import { satteri } from '@astrojs/markdown-satteri';
 import sitemap from '@astrojs/sitemap';
 import { defineConfig } from 'astro/config';
+import { callouts, codeLabels, codeTitle, keys, lastUpdated } from './src/markdown/plugins';
 
 // https://astro.build/config
 export default defineConfig({
@@ -8,6 +10,10 @@ export default defineConfig({
 	// Links on the site have no trailing slash. This makes the sitemap match them and the canonical URLs.
 	trailingSlash: 'never',
 	integrations: [sitemap()],
+	markdown: {
+		processor: satteri({ mdastPlugins: [callouts, keys, lastUpdated], hastPlugins: [codeLabels] }),
+		shikiConfig: { transformers: [codeTitle] },
+	},
 	// The pages these replaced were merged, and old links should keep working.
 	redirects: {
 		'/docs/steer-a-run': '/docs/prompts',

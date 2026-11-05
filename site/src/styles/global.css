@@ -14,6 +14,7 @@
 	--blue: #74ade8;
 	--green: #a1c181;
 	--red: #d07277;
+	--yellow: #dec184;
 
 	--mono: 'Martian Mono Variable', ui-monospace, Menlo, monospace;
 
@@ -744,6 +745,79 @@ section p {
 	.code-copy {
 		opacity: 1;
 	}
+}
+
+/* A block's title or language sits in a strip above the code. The copy button moves into the strip. */
+.code[data-label]::before {
+	content: attr(data-label);
+	display: block;
+	padding: 4px 16px;
+	border: 1px solid var(--edge);
+	border-block-end: 0;
+	background: var(--window);
+	color: var(--ink-faint);
+	font-size: 0.75rem;
+}
+
+.code[data-label] .code-copy {
+	inset-block-start: 3px;
+}
+
+/* Callouts, from > [!NOTE] and the like. See src/markdown/plugins.ts. */
+
+.callout {
+	--callout: var(--blue);
+	margin: 16px 0 0;
+	padding: 8px 16px;
+	border-inline-start: 2px solid var(--callout);
+	background: var(--window);
+}
+
+.callout::before {
+	content: attr(data-kind);
+	display: block;
+	color: var(--callout);
+	font-size: 0.75rem;
+}
+
+.callout > :first-child {
+	margin-block-start: 0;
+}
+
+.callout[data-kind='tip'] {
+	--callout: var(--green);
+}
+
+.callout[data-kind='warning'] {
+	--callout: var(--yellow);
+}
+
+.callout[data-kind='caution'] {
+	--callout: var(--red);
+}
+
+/* Keys, from inline code such as `shift+tab`. See src/markdown/plugins.ts. */
+
+.keys {
+	white-space: nowrap;
+}
+
+.prose kbd {
+	padding: 0 5px;
+	border: 1px solid var(--edge);
+	border-block-end-width: 2px;
+	border-radius: 4px;
+	background: var(--window);
+	color: var(--ink);
+	font-size: 0.85em;
+}
+
+/* Last updated */
+
+.docs-updated {
+	margin-block-start: 40px !important;
+	color: var(--ink-faint);
+	font-size: 0.75rem;
 }
 
 /* Previous and next */

@@ -12,11 +12,16 @@
     "astro": "astro"
   },
   "dependencies": {
+    "@astrojs/markdown-satteri": "0.4.6",
     "@astrojs/sitemap": "^3.7.4",
     "@fontsource/martian-mono": "^5.3.0",
     "astro": "^7.4.4",
     "minisearch": "^7.2.0",
     "satori": "^0.63.2",
+    "satteri": "0.10.5",
     "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "shiki": "4.5.0"
   }
 }

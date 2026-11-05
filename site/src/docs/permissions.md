@@ -33,7 +33,10 @@ A review sends the exact action to a review model, which checks it for prompt in
 
 ## Rules
 
-Rules in `settings.json` skip the review. The last match wins. In a shell chain, a deny on one command denies the chain, and an allow needs every command to match. A command clue can't parse never matches an allow rule. Deny and ask rules also match the command after `time`, `timeout <duration>`, `env` and variable assignments, so `git push *` blocks `time git push` and `CI=1 git push`. A pattern that ends in ` *` also matches the bare command, so `git push *` blocks `git push`. Deny rules don't see inside `bash -c "..."` or a full program path such as `/usr/bin/git`. A file rule for a path inside the project also matches it with a leading `./` or as an absolute path, so `src/gen/*` also matches `./src/gen/a.ts`. File rules are case-sensitive. Deny rules also apply to read-only tools.
+Rules in `settings.json` skip the review. The last match wins. In a shell chain, a deny on one command denies the chain, and an allow needs every command to match. A command clue can't parse never matches an allow rule. Deny and ask rules also match the command after `time`, `timeout <duration>`, `env` and variable assignments, so `git push *` blocks `time git push` and `CI=1 git push`. A pattern that ends in ` *` also matches the bare command, so `git push *` blocks `git push`. A file rule for a path inside the project also matches it with a leading `./` or as an absolute path, so `src/gen/*` also matches `./src/gen/a.ts`. File rules are case-sensitive. Deny rules also apply to read-only tools.
+
+> [!WARNING]
+> Deny rules don't see inside `bash -c "..."` or a full program path such as `/usr/bin/git`.
 
 ```json
 {

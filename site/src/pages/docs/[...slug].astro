@@ -23,6 +23,13 @@ const next = pages[index + 1];
 
 const description = docsDescription(current);
 
+// The date of the last commit that changed this page, from src/markdown/plugins.ts. Missing in a shallow clone.
+const updated: string | undefined = file.frontmatter?.lastUpdated;
+const updatedLabel = updated
+	? // The calendar date as the commit wrote it, so a time zone can't move it a day.
+		new Date(updated.slice(0, 10)).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
+	: undefined;
+
 // The page's place in the docs, for search results.
 const schema = {
 	'@context': 'https://schema.org',
@@ -36,7 +43,7 @@ const schema = {
 const toc = file.getHeadings().filter(({ depth }) => depth === 2 || depth === 3);
 ---
 
-<Base title={`${title}, clue docs`} description={description} type="article" schema={schema}>
+<Base title={`${title}, clue docs`} description={description} type="article" modified={updated} schema={schema}>
 	<main class="docs">
 		<div class="docs-side">
 			<button type="button" class="docs-search-open" data-search-open>
@@ -68,6 +75,14 @@ const toc = file.getHeadings().filter(({ depth }) => depth === 2 || depth === 3)
 				<button type="button" data-markdown-link={markdownPath(current)}>copy markdown link</button>
 			</div>
 			<Content />
+
+			{
+				updated && (
+					<p class="docs-updated">
+						updated <time datetime={updated}>{updatedLabel}</time>
+					</p>
+				)
+			}
 
 			<nav class="pager" aria-label="Previous and next">
 				{
