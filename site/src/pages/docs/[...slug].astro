@@ -14,50 +14,93 @@ export function getStaticPaths() {
 const { title, file } = Astro.props;
 const { Content } = file;
 const current = Astro.params.slug ?? '';
+const href = (slug: string) => (slug ? `/docs/${slug}` : '/docs');
+
+const pages = NAV.flatMap(({ pages }) => pages);
+const index = pages.findIndex(({ slug }) => slug === current);
+const prev = pages[index - 1];
+const next = pages[index + 1];
+
+const toc = file.getHeadings().filter(({ depth }) => depth === 2 || depth === 3);
 ---
 
 <Base title={`${title}, clue docs`} description={`${title} in the clue docs.`}>
 	<main class="docs">
-		<nav class="docs-nav" aria-label="Docs">
-			{
-				NAV.map(({ group, pages }) => (
-					<div>
-						<p>{group}</p>
-						{pages.map(({ title, slug }) => (
-							<a href={slug ? `/docs/${slug}` : '/docs'} aria-current={slug === current ? 'page' : undefined}>
-								{title}
-							</a>
-						))}
-					</div>
-				))
-			}
-		</nav>
+		<div class="docs-side">
+			<button type="button" class="docs-search-open" data-search-open>
+				<span>search</span><kbd>/</kbd>
+			</button>
+			<button type="button" class="docs-menu" aria-expanded="false" aria-controls="docs-nav" hidden>
+				<span aria-hidden="true">≡</span>
+				{title}
+			</button>
+			<nav class="docs-nav" id="docs-nav" aria-label="Docs">
+				{
+					NAV.map(({ group, pages }) => (
+						<div>
+							<p>{group}</p>
+							{pages.map(({ title, slug }) => (
+								<a href={href(slug)} aria-current={slug === current ? 'page' : undefined}>
+									{title}
+								</a>
+							))}
+						</div>
+					))
+				}
+			</nav>
+		</div>
+
 		<article class="prose">
 			<div class="docs-title">
 				<h1>{title}</h1>
 				<button type="button" data-markdown-link={markdownPath(current)}>copy markdown link</button>
 			</div>
 			<Content />
-		</article>
-	</main>
-	<script slot="scripts">
-		const COPIED_MS = 1500;
-		const button = document.querySelector('[data-markdown-link]');
-		const label = button.textContent;
-		let reset = 0;
 
-		button.addEventListener('click', async () => {
-			const link = new URL(button.dataset.markdownLink, location.origin).href;
-			try {
-				await navigator.clipboard.writeText(link);
-				button.textContent = 'copied';
-			} catch {
-				// The browser refused, so show the Markdown instead.
-				location.href = link;
-				return;
-			}
-			clearTimeout(reset);
-			reset = window.setTimeout(() => (button.textContent = label), COPIED_MS);
-		});
+			<nav class="pager" aria-label="Previous and next">
+				{
+					prev && (
+						<a href={href(prev.slug)} rel="prev">
+							<span>previous</span>
+							{prev.title}
+						</a>
+					)
+				}
+				{
+					next && (
+						<a href={href(next.slug)} rel="next">
+							<span>next</span>
+							{next.title}
+						</a>
+					)
+				}
+			</nav>
+		</article>
+
+		{
+			toc.length > 0 && (
+				<nav class="toc" aria-label="On this page">
+					<p>on this page</p>
+					{toc.map(({ depth, slug, text }) => (
+						<a href={`#${slug}`} data-depth={depth}>
+							{text}
+						</a>
+					))}
+				</nav>
+			)
+		}
+	</main>
+
+	<dialog class="search" aria-label="Search the docs">
+		<form method="dialog" role="search">
+			<input type="search" placeholder="search the docs" aria-label="Search" autocomplete="off" spellcheck="false" />
+			<button type="submit" class="search-close">esc</button>
+		</form>
+		<ul role="listbox" aria-label="Results"></ul>
+		<p class="search-empty" hidden>No results.</p>
+	</dialog>
+
+	<script>
+		import '../../scripts/docs';
 	</script>
 </Base>

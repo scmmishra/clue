@@ -66,4 +66,17 @@ With no `copy`, clue uses Decider if `OPENROUTER_API_KEY` is set, and Haiku if i
 
 A decision model picks a code block when its probability is at least 0.6, and any other block at 0.85. clue set those cutoffs from benchmarks of Jev and Decider, so another decision model may pick more or fewer blocks.
 
-`CLUE_MODEL`, `CLUE_EFFORT` and `CLUE_PERMISSION_MODE` override the file for one process. Command-line flags override both.
+## Environment variables
+
+| Variable | What it does |
+| --- | --- |
+| `CLUE_HOME` | The folder for settings, sessions, MCP servers, skills, prompt history and your own `AGENTS.md`. The default is `~/.clue`. |
+| `CLUE_MODEL` | Overrides `model` for one process. |
+| `CLUE_EFFORT` | Overrides `effort` for one process. |
+| `CLUE_PERMISSION_MODE` | Overrides `permission_mode` for one process. |
+| `ANTHROPIC_BASE_URL` | Sends Claude API requests to another address, such as a proxy. |
+| `OPENROUTER_BASE_URL` | Sends OpenRouter requests to another address. The default is `https://openrouter.ai`. |
+| `NO_COLOR` | Turns off colors. `TERM=dumb` does the same. |
+| `COLORFGBG` | Light terminals set it. When it names a light background, clue uses darker text colors. |
+
+Command-line flags override the environment, and the environment overrides the file. For credentials, see [Sign in](/docs#sign-in).

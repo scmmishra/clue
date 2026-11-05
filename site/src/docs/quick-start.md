@@ -18,8 +18,8 @@ clue runs on macOS and Linux, on arm64 and x86_64. Run `clue upgrade` to update.
 clue reads your credentials in this order:
 
 1. `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` in the environment.
-2. The profile saved by `ant auth login`.
-3. A key saved by `clue login`.
+2. The profile saved by `ant auth login`. clue looks for it in `~/.config/anthropic`, or in `ANTHROPIC_CONFIG_DIR` if you set it.
+3. A key saved by `clue login`. clue keeps it in the macOS Keychain or the system keyring. Without one, it keeps it in a private file in `~/.clue`.
 
 `clue logout` removes a saved key.
 
@@ -36,6 +36,8 @@ clue
 ```
 
 Type what you want done and press Enter. You can also pass the first prompt: `clue "fix the flaky spec"`.
+
+`clue help` lists every command and option. `clue --version` prints the version.
 
 ## If something looks wrong
 

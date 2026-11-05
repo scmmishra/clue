@@ -10,7 +10,7 @@ git diff | clue ask "review this diff"
 clue ask --json "summarize the failing tests" | jq -r .final_output
 ```
 
-The answer goes to stdout, and progress goes to stderr. clue exits with a nonzero status if the request fails, is interrupted or is refused.
+The answer goes to stdout. Progress goes to stderr when stderr is a terminal. To get progress when stderr is a file or a pipe, set `CLUE_PROGRESS=1`. clue exits with a nonzero status if the request fails, is interrupted or is refused.
 
 ## JSON output
 
