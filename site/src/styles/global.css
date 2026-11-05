@@ -746,6 +746,7 @@ section p {
 @media (min-width: 1200px) {
 	.docs {
 		grid-template-columns: 200px minmax(0, 640px) minmax(0, 200px);
+		justify-content: space-between;
 	}
 
 	.toc {
