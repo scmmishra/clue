@@ -1,10 +1,27 @@
 ---
 // The core font has every character the site uses. The extended file loads only where a page needs it.
 import martianMono from '../fonts/martian-mono-core.woff2?url';
+import { ogImageFor } from '../og/pages';
+import { HEIGHT, WIDTH } from '../og/size';
+import { SITE_NAME } from '../site';
 import '../styles/global.css';
 
-const { title, description } = Astro.props;
+type Props = {
+	title: string;
+	description: string;
+	// `article` for docs pages. Everything else is a `website`.
+	type?: 'website' | 'article';
+	// Keeps the page out of search results, such as the 404 page.
+	noindex?: boolean;
+	// Structured data for search engines, written as JSON-LD.
+	schema?: Record<string, unknown>;
+};
+
+const { title, description, type = 'website', noindex = false, schema } = Astro.props;
 const repo = 'https://github.com/scmmishra/clue';
+const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
+const canonical = new URL(path, Astro.site).href;
+const image = new URL(ogImageFor(path), Astro.site).href;
 ---
 
 <html lang="en">
@@ -14,14 +31,31 @@ const repo = 'https://github.com/scmmishra/clue';
 		<meta name="theme-color" content="#0e0f12" />
 		<meta name="generator" content={Astro.generator} />
 		<meta name="color-scheme" content="dark" />
+		<title>{title}</title>
 		<meta name="description" content={description} />
+		{noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={canonical} />}
+
+		<meta property="og:site_name" content={SITE_NAME} />
+		<meta property="og:type" content={type} />
 		<meta property="og:title" content={title} />
 		<meta property="og:description" content={description} />
-		<meta property="og:type" content="website" />
+		<meta property="og:url" content={canonical} />
+		<meta property="og:image" content={image} />
+		<meta property="og:image:type" content="image/png" />
+		<meta property="og:image:width" content={String(WIDTH)} />
+		<meta property="og:image:height" content={String(HEIGHT)} />
+		<meta property="og:image:alt" content={title} />
+		<meta property="og:locale" content="en_US" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content={title} />
+		<meta name="twitter:description" content={description} />
+		<meta name="twitter:image" content={image} />
+
 		<link rel="preload" href={martianMono} as="font" type="font/woff2" crossorigin />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<link rel="sitemap" href="/sitemap-index.xml" />
-		<title>{title}</title>
+		<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
+		{schema && <script type="application/ld+json" set:html={JSON.stringify(schema)} />}
 	</head>
 	<body>
 		<div class="page">

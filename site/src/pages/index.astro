@@ -1,11 +1,26 @@
 ---
 import { version } from '../../../package.json';
 import Base from '../layouts/Base.astro';
+import { HOME } from '../site';
 
 const repo = 'https://github.com/scmmishra/clue';
 const install = 'curl -fsSL https://clue.shivam.dev/install | bash';
-const title = 'clue, a fast and simple coding agent for Claude';
-const description = "A fast and simple coding agent for Claude, in your terminal. clue calls Claude's API directly.";
+const { title, description } = HOME;
+
+// Tells search engines that this page is about a piece of software.
+const schema = {
+	'@context': 'https://schema.org',
+	'@type': 'SoftwareApplication',
+	name: 'clue',
+	description,
+	url: Astro.site?.href,
+	applicationCategory: 'DeveloperApplication',
+	operatingSystem: 'macOS, Linux',
+	softwareVersion: version,
+	license: 'https://www.apache.org/licenses/LICENSE-2.0',
+	codeRepository: repo,
+	offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+};
 
 // Medians from benchmarks/README.md.
 const waits = [
@@ -15,7 +30,7 @@ const waits = [
 ];
 ---
 
-<Base title={title} description={description}>
+<Base title={title} description={description} schema={schema}>
 			<main>
 				<div class="hero">
 					<h1>A fast, simple coding agent for Claude</h1>

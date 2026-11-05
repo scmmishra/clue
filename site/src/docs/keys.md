@@ -1,5 +1,6 @@
 ---
 title: Keys
+description: Every key clue responds to, from sending and steering a message to editing the prompt.
 ---
 
 | Key | What it does |

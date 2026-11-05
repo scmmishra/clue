@@ -5,6 +5,8 @@ import { defineConfig } from 'astro/config';
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://clue.shivam.dev',
+	// Links on the site have no trailing slash. This makes the sitemap match them and the canonical URLs.
+	trailingSlash: 'never',
 	integrations: [sitemap()],
 	// The pages these replaced were merged, and old links should keep working.
 	redirects: {

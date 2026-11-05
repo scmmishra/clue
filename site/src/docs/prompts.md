@@ -1,5 +1,6 @@
 ---
 title: Prompts
+description: Mention files, add images and steer clue while it works.
 ---
 
 ## Mention a file

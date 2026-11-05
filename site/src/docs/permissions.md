@@ -1,5 +1,6 @@
 ---
 title: Permissions
+description: The ask, auto and full-access modes, and the rules that decide which actions clue runs.
 ---
 
 | Mode | Behavior |

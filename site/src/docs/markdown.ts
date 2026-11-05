@@ -13,4 +13,34 @@ export function markdownResponse(slug: string) {
 	return new Response(`# ${title}\n\n${body}\n`, { headers: { 'Content-Type': 'text/markdown; charset=utf-8' } });
 }
 
+// Search engines show about this many characters of a description.
+const DESCRIPTION_CHARS = 160;
+
+// A docs page's description, for search results and link previews. In order: the `description` in the
+// frontmatter, the paragraph before the first heading, or a line built from the title. A paragraph is cut to the
+// whole sentences that fit.
+export function docsDescription(slug: string) {
+	const source = sources[`./${slug || 'quick-start'}.md`];
+	const frontmatter = source.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? '';
+	const set = frontmatter.match(/^description:\s*(.+)$/m)?.[1].trim().replace(/^(['"])(.*)\1$/, '$2');
+	if (set) return set;
+
+	const intro = source.slice(source.indexOf('\n---\n', 4) + 5).split(/^#/m)[0];
+	const paragraph = intro.split(/\n\s*\n/).find((block) => /^[A-Za-z`*\[]/.test(block.trim()));
+	if (!paragraph) return `${PAGES.find((page) => page.slug === slug)!.title} in the clue docs.`;
+
+	const text = paragraph
+		.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+		.replace(/[`*_]/g, '')
+		.replace(/\s+/g, ' ')
+		.trim();
+	let description = '';
+	// A sentence ends at . ! or ? before a space, so paths such as ~/.clue stay whole.
+	for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+		if (description && description.length + sentence.length + 1 > DESCRIPTION_CHARS) break;
+		description += (description ? ' ' : '') + sentence;
+	}
+	return description;
+}
+
 export const markdownSlugs = PAGES.flatMap(({ slug }) => (slug ? [slug] : []));

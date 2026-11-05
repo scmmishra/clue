@@ -3,7 +3,7 @@ import Base from '../layouts/Base.astro';
 import { staticFrame } from '../scripts/logo-ascii';
 ---
 
-<Base title="Not found, clue" description="There is no page at this address.">
+<Base title="Not found, clue" description="There is no page at this address." noindex>
 	<main class="notfound">
 		<pre class="logo-ascii" aria-hidden="true">{staticFrame()}</pre>
 		<div class="notfound-text">
