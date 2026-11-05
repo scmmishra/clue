@@ -219,6 +219,10 @@ input.addEventListener('keydown', (event) => {
 	} else if (event.key === 'Enter') {
 		event.preventDefault();
 		results[selected]?.click();
+	} else if (event.key === 'Escape') {
+		// A search field clears itself on the first esc. Close search instead, as the esc button says.
+		event.preventDefault();
+		dialog.close();
 	}
 });
 

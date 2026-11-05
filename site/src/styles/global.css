@@ -1,4 +1,4 @@
-@import '@fontsource-variable/geist-mono/wght.css';
+@import '@fontsource-variable/martian-mono/wght.css';
 
 :root {
 	color-scheme: dark;
@@ -14,9 +14,14 @@
 	--green: #a1c181;
 	--red: #d07277;
 
-	--mono: 'Geist Mono Variable', ui-monospace, Menlo, monospace;
+	--mono: 'Martian Mono Variable', ui-monospace, Menlo, monospace;
 
 	--quick: 120ms ease-out;
+
+	/* Martian Mono has heavy strokes, so the site uses lighter weights than the usual 400, 600 and 700. */
+	--weight-regular: 290;
+	--weight-semibold: 540;
+	--weight-bold: 650;
 }
 
 *,
@@ -25,7 +30,10 @@
 	box-sizing: border-box;
 }
 
+/* Martian Mono is wide, at 0.7em per character. At 6/7 of the usual size, a line holds as many characters as a
+   0.6em font does. Every font size on the site is in rem, so they all scale from here. */
 html {
+	font-size: calc(100% * 6 / 7);
 	-webkit-text-size-adjust: 100%;
 }
 
@@ -39,6 +47,7 @@ body {
 	color: var(--ink-soft);
 	font-family: var(--mono);
 	font-size: 0.875rem;
+	font-weight: var(--weight-regular);
 	line-height: 1.6;
 	text-wrap: pretty;
 	-webkit-font-smoothing: antialiased;
@@ -61,6 +70,13 @@ a:hover {
 	outline: 2px solid var(--blue);
 	outline-offset: 3px;
 	border-radius: 2px;
+}
+
+/* Table headers and <strong> are bold by default. */
+th,
+strong,
+b {
+	font-weight: var(--weight-bold);
 }
 
 code,
@@ -91,7 +107,7 @@ p code {
 	align-items: center;
 	gap: 8px;
 	color: var(--ink);
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 	text-decoration: none;
 }
 
@@ -139,7 +155,7 @@ h1 {
 	margin: 0;
 	color: var(--ink);
 	font-size: 1.375rem;
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 	line-height: 1.3;
 	letter-spacing: -0.02em;
 	text-wrap: balance;
@@ -225,7 +241,7 @@ section {
 	margin: 0;
 	color: var(--ink-faint);
 	font-size: 0.75rem;
-	font-weight: 400;
+	font-weight: var(--weight-regular);
 }
 
 .group-title + section {
@@ -249,7 +265,7 @@ section {
 	margin: 24px 0 4px;
 	color: var(--ink);
 	font-size: inherit;
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 }
 
 .prose p,
@@ -307,7 +323,7 @@ h2 {
 	margin: 0 0 4px;
 	color: var(--ink);
 	font-size: inherit;
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 }
 
 section p {
@@ -455,7 +471,7 @@ section p {
 
 .docs-nav a[aria-current='page'] {
 	color: var(--ink);
-	font-weight: 600;
+	font-weight: var(--weight-semibold);
 }
 
 .docs-search-open,
@@ -634,7 +650,7 @@ section p {
 .anchor {
 	margin-inline-start: 1ch;
 	color: var(--ink-faint);
-	font-weight: 400;
+	font-weight: var(--weight-regular);
 	text-decoration: none;
 	opacity: 0;
 	transition: opacity var(--quick), color var(--quick);

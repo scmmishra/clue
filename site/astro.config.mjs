@@ -12,5 +12,9 @@ export default defineConfig({
 		'/docs/images-and-files': '/docs/prompts',
 	},
 	// The site reads CHANGELOG.md and package.json from the repository root.
-	vite: { server: { fs: { allow: ['..'] } } },
+	vite: {
+		server: { fs: { allow: ['..'] } },
+		// Keep fonts as files. Inlined into CSS, every subset downloads, even ones a page never uses.
+		build: { assetsInlineLimit: (file) => (file.endsWith('.woff2') ? false : undefined) },
+	},
 });
