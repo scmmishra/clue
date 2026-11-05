@@ -274,10 +274,13 @@ section {
 	font-weight: var(--weight-semibold);
 }
 
-.prose p,
 .prose pre,
 .prose ol {
 	margin-block: 8px 0;
+}
+
+.prose p {
+	margin-block: 8.8px 0;
 }
 
 .prose pre {
@@ -300,9 +303,14 @@ section {
 
 .prose th,
 .prose td {
-	padding: 2px 16px 2px 0;
+	padding: 6px 12px;
+	border: 1px solid var(--edge);
 	text-align: start;
 	vertical-align: top;
+}
+
+.prose th {
+	background: var(--window);
 }
 
 /* A command or key such as `/undo force` stays on one line. */
@@ -313,7 +321,7 @@ section {
 /* Tables under one page line up, whatever their first column holds. */
 .prose td:first-child,
 .prose th:first-child {
-	min-width: 16ch;
+	min-width: calc(16ch + 24px);
 }
 
 .prose ul {
