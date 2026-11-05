@@ -7,11 +7,14 @@ const sources = import.meta.glob<string>('./*.md', { eager: true, query: '?raw',
 export const markdownPath = (slug: string) => (slug ? `/docs/${slug}.md` : '/docs.md');
 
 // A docs page as plain Markdown: its title, then the file without the frontmatter.
-export function markdownResponse(slug: string) {
+export function pageMarkdown(slug: string) {
 	const { title } = PAGES.find((page) => page.slug === slug)!;
 	const body = sources[`./${slug || 'quick-start'}.md`].replace(/^---\n[\s\S]*?\n---\n/, '').trim();
-	return new Response(`# ${title}\n\n${body}\n`, { headers: { 'Content-Type': 'text/markdown; charset=utf-8' } });
+	return `# ${title}\n\n${body}\n`;
 }
+
+export const markdownResponse = (slug: string) =>
+	new Response(pageMarkdown(slug), { headers: { 'Content-Type': 'text/markdown; charset=utf-8' } });
 
 // Search engines show about this many characters of a description.
 const DESCRIPTION_CHARS = 160;
