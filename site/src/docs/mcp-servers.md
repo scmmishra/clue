@@ -10,9 +10,12 @@ MCP servers give clue more tools. Servers start in the background, so they never
 clue mcp add docs https://example.com/mcp
 clue mcp add local -- npx -y some-mcp-server
 clue mcp add --project tools https://example.com/mcp
+clue mcp add --env API_KEY=secret local -- npx -y some-mcp-server
 ```
 
 Each command also works inside clue as `/mcp add`.
+
+`--env KEY=VALUE` sets an environment variable for a local server. Repeat it for more variables. Put it before the server name, and after `--project` if you use both. A local server also gets clue's own environment, and starts in the project folder.
 
 ## Config files
 
@@ -22,12 +25,30 @@ Servers are stored in `~/.clue/mcp.json`, or in `.mcp.json` for one project. If 
 {
   "mcpServers": {
     "docs": { "type": "http", "url": "https://example.com/mcp" },
-    "local": { "command": "npx", "args": ["-y", "some-mcp-server"] }
+    "events": { "type": "sse", "url": "https://example.com/sse" },
+    "tickets": {
+      "url": "https://example.com/mcp",
+      "headers": { "X-Team": "support" },
+      "bearer_token_env": "TICKETS_TOKEN"
+    },
+    "local": {
+      "command": "npx",
+      "args": ["-y", "some-mcp-server"],
+      "env": { "API_KEY": "secret" }
+    }
   }
 }
 ```
 
-Set `"enabled": false` to turn a server off without removing it.
+| Field | What it does |
+| --- | --- |
+| `type` | `http`, `sse` or `stdio`. Without it, a server with a `url` uses `http`, and a server with a `command` uses `stdio`. |
+| `url` | The address of a remote server. |
+| `headers` | Headers that clue sends with each request to a remote server. |
+| `bearer_token_env` | The name of an environment variable that holds a token. clue sends the token as `Authorization: Bearer <token>`, and doesn't offer browser sign-in for that server. |
+| `command`, `args` | The program that runs a local server, and its arguments. |
+| `env` | Environment variables for a local server. |
+| `enabled` | Set it to `false` to turn a server off without removing it. |
 
 ## Manage servers
 
