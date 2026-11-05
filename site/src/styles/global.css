@@ -566,12 +566,44 @@ section p {
 .docs-title {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: baseline;
+	align-items: center;
 	justify-content: space-between;
-	gap: 4px 16px;
+	gap: 8px 16px;
 }
 
-.docs-title button,
+/* A terminal-style button: [ copy markdown link ]. The brackets sit at the edges, so they stay put when the label
+   changes to `copied`. */
+.docs-title button {
+	flex: none;
+	display: inline-flex;
+	justify-content: space-between;
+	gap: 1ch;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--ink-faint);
+	font: inherit;
+	font-size: 0.75rem;
+	cursor: pointer;
+	transition: color var(--quick);
+}
+
+.docs-title button::before {
+	content: '[';
+}
+
+.docs-title button::after {
+	content: ']';
+}
+
+.docs-title button:hover {
+	color: var(--ink);
+}
+
+.docs-title button[data-copied] {
+	color: var(--green);
+}
+
 .code-copy {
 	padding: 0;
 	border: 0;
@@ -583,12 +615,10 @@ section p {
 	transition: color var(--quick);
 }
 
-.docs-title button:hover,
 .code-copy:hover {
 	color: var(--ink);
 }
 
-.docs-title button[data-copied],
 .code-copy[data-copied] {
 	color: var(--green);
 }
@@ -833,6 +863,7 @@ section p {
 @media (prefers-reduced-motion: reduce) {
 	.anchor,
 	.code-copy,
+	.docs-title button,
 	.docs-search-open,
 	.docs-menu {
 		transition: none;

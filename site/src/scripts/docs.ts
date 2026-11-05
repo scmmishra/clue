@@ -11,6 +11,8 @@ const article = document.querySelector<HTMLElement>('.prose')!;
 
 // Shows `copied` on a button for a moment.
 function flash(button: HTMLButtonElement, label: string) {
+	// Keep the width, so the shorter label doesn't move the button's edge.
+	button.style.minWidth = `${button.offsetWidth}px`;
 	button.textContent = 'copied';
 	button.dataset.copied = '';
 	clearTimeout(Number(button.dataset.reset));
