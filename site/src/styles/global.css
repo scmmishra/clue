@@ -313,9 +313,14 @@ section {
 	background: var(--window);
 }
 
-/* A command or key such as `/undo force` stays on one line. */
-.prose td code {
+/* A command or key such as `/undo force` stays on one line in the first column. Code in other columns wraps, so a
+   table never grows wider than the text column. */
+.prose td:first-child code {
 	white-space: nowrap;
+}
+
+.prose td:not(:first-child) code {
+	overflow-wrap: anywhere;
 }
 
 /* Tables under one page line up, whatever their first column holds. */
