@@ -439,6 +439,46 @@ section p {
 	margin: 0;
 }
 
+/* Not found */
+
+.notfound {
+	grid-template-columns: minmax(0, 1fr);
+	justify-items: center;
+	gap: 32px;
+	text-align: center;
+}
+
+/* Lines are as tall as characters are wide, so the dots form a square grid. Martian Mono is 0.7em wide. */
+.logo-ascii {
+	margin: 0;
+	font-size: clamp(6px, 1.9vw, 10px);
+	line-height: 0.7;
+	letter-spacing: 0;
+	user-select: none;
+	background: linear-gradient(160deg, #d3e2ff, #82aaff 45%, #5787ea);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+}
+
+.notfound h1 {
+	margin: 0;
+	color: var(--ink);
+	font-size: 1.5rem;
+	font-weight: var(--weight-semibold);
+}
+
+.notfound-text p {
+	margin: 8px 0 0;
+}
+
+.notfound-links {
+	display: flex;
+	justify-content: center;
+	gap: 24px;
+	padding-block-start: 16px;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	a,
 	.copy {

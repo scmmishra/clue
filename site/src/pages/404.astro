@@ -1,0 +1,40 @@
+---
+import Base from '../layouts/Base.astro';
+import { staticFrame } from '../scripts/logo-ascii';
+---
+
+<Base title="Not found, clue" description="There is no page at this address.">
+	<main class="notfound">
+		<pre class="logo-ascii" aria-hidden="true">{staticFrame()}</pre>
+		<div class="notfound-text">
+			<h1>404</h1>
+			<p>Nothing at <code data-path>this address</code>.</p>
+			<p class="notfound-links"><a href="/">home</a><a href="/docs">docs</a><a href="/changelog">changelog</a></p>
+		</div>
+	</main>
+
+	<script>
+		import { frame } from '../scripts/logo-ascii';
+
+		// Frames per second. A low rate keeps the terminal feel and the cost small.
+		const FPS = 20;
+
+		const path = document.querySelector<HTMLElement>('[data-path]')!;
+		path.textContent = location.pathname;
+
+		const art = document.querySelector<HTMLElement>('.logo-ascii')!;
+		if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+			let start = 0;
+			let last = -Infinity;
+			const tick = (now: number) => {
+				start ||= now;
+				if (now - last >= 1000 / FPS) {
+					last = now;
+					art.textContent = frame(now - start);
+				}
+				requestAnimationFrame(tick);
+			};
+			requestAnimationFrame(tick);
+		}
+	</script>
+</Base>
