@@ -161,17 +161,30 @@ h1 {
 	text-wrap: balance;
 }
 
+/* The install command and its copy hint, as one button across the column. The hint sits at the far end. */
 .install {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 3ch;
+	width: 100%;
 	margin-block-start: 28px;
+	padding: 0;
+	border: 0;
+	background: none;
 	color: var(--ink);
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
 }
 
 .install code {
-	display: block;
+	min-width: 0;
 	font-size: 0.75rem;
-	overflow-x: auto;
-	white-space: nowrap;
-	scrollbar-width: none;
+	/* So the command can be selected by hand if the clipboard is refused. */
+	user-select: text;
+	/* On a narrow screen the command wraps, so all of it shows. */
+	overflow-wrap: anywhere;
 }
 
 .prompt {
@@ -180,28 +193,19 @@ h1 {
 
 .copy {
 	flex: none;
-	padding: 0;
-	border: 0;
-	background: none;
+	display: inline-flex;
+	gap: 1ch;
 	color: var(--ink-soft);
-	font-family: inherit;
-	font-size: inherit;
-	cursor: pointer;
+	font-size: 0.75rem;
 	transition: color var(--quick);
 }
 
-.copy:hover {
+.install:hover .copy {
 	color: var(--ink);
 }
 
-.copy[data-copied] {
+.install[data-copied] .copy {
 	color: var(--green);
-}
-
-.copy span {
-	display: inline-block;
-	min-width: 6ch;
-	text-align: start;
 }
 
 .copy kbd {

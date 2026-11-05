@@ -20,15 +20,16 @@ const waits = [
 				<div class="hero">
 					<h1>A fast, simple coding agent for Claude</h1>
 
-					<div class="install">
-						<code tabindex="0" data-command><span class="prompt">$</span> {install}</code>
-					</div>
-					<div class="meta">
-						<p>v{version} (<a href="/changelog">notes</a>) · macOS and Linux · actively developed, so things may change</p>
-						<button class="copy" type="button" data-copy={install}>
+					<!-- The whole line copies the command. -->
+					<button class="install" type="button" data-copy={install}>
+						<code data-command><span class="prompt" aria-hidden="true">$</span> {install}</code>
+						<span class="copy">
 							<span aria-live="polite">copy</span>
 							<kbd aria-hidden="true">[c]</kbd>
-						</button>
+						</span>
+					</button>
+					<div class="meta">
+						<p>v{version} (<a href="/changelog">notes</a>) · macOS and Linux · actively developed, so things may change</p>
 					</div>
 					<p class="note billing">
 						clue calls Claude's API through the API SDK, not the Agent SDK, so it bills per token. <code>clue usage</code> shows
@@ -175,7 +176,7 @@ const waits = [
 		<script>
 			const COPIED_MS = 1500;
 			const button = document.querySelector<HTMLButtonElement>('[data-copy]')!;
-			const label = button.querySelector('span')!;
+			const label = button.querySelector('.copy span')!;
 			const command = document.querySelector<HTMLElement>('[data-command]')!;
 			let reset = 0;
 
