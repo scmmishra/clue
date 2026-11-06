@@ -19,6 +19,7 @@ export const paths = {
   credentials: join(CLUE_HOME, "credentials"),
   skills: join(CLUE_HOME, "skills"),
   agents: join(CLUE_HOME, "AGENTS.md"),
+  dreams: join(CLUE_HOME, "dreams"),
 };
 
 export function ensureDir(path: string) {

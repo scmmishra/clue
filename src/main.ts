@@ -37,6 +37,7 @@ Usage
   clue upgrade               install the latest release
   clue doctor                check credentials, settings, MCP servers and the terminal
   clue usage                 cost and cache use across sessions; --here for this folder, --since 30d
+  clue dream                 propose memories from this repo's sessions; --include-cc reads Claude Code's too
 
 Options
   --model <id>               model for this run, such as sonnet or claude-opus-5-5
@@ -88,6 +89,7 @@ function parse(argv: string[]): Parsed {
     "upgrade",
     "doctor",
     "usage",
+    "dream",
     "help",
     "version",
   ]);
@@ -171,6 +173,11 @@ async function main() {
     const text = `${result.lines.join("\n")}\n`;
     // A report piped to a file or a pager reads better without color codes.
     return process.stdout.write(process.stdout.isTTY ? text : Bun.stripANSI(text));
+  }
+
+  if (command === "dream") {
+    const { runDream } = await import("./commands/dream");
+    return runDream(process.cwd(), { includeClaudeCode: flags["include-cc"] === true });
   }
 
   if (command === "login" || command === "logout") {

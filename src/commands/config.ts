@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { openEditor } from "../ui/open-editor";
 import {
   checkSetting,
   isObject,
@@ -137,20 +138,12 @@ function unset(args: string[]) {
 }
 
 async function edit(chosen?: string) {
-  const editor = chosen ?? process.env.VISUAL ?? process.env.EDITOR ?? "vi";
   if (!existsSync(paths.settings)) {
     mkdirSync(dirname(paths.settings), { recursive: true });
     writeFileSync(paths.settings, "{}\n");
   }
-  let code: number;
-  try {
-    const proc = Bun.spawn([...editor.trim().split(/\s+/), paths.settings], {
-      stdio: ["inherit", "inherit", "inherit"],
-    });
-    code = await proc.exited;
-  } catch {
-    stop(`Could not open ${editor}.`, 1);
-  }
+  const { editor, code } = await openEditor(paths.settings, chosen);
+  if (code === null) stop(`Could not open ${editor}.`, 1);
   if (code !== 0) stop(`${editor} exited with status ${code}.`, 1);
   const problems = fileProblems();
   if (problems.length) stop(problems.join("\nclue: "), 1);
