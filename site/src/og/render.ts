@@ -18,21 +18,20 @@ const INK_SOFT = '#a2a6af';
 const INK_FAINT = '#858a95';
 const LOGO_GRADIENT = 'linear-gradient(160deg, #d3e2ff, #82aaff 45%, #5787ea)';
 
-// The logo as ASCII, in the same frame the 404 page settles on. Martian Mono is 0.7em wide, so lines 0.7em tall
-// make square cells. At 11px the art is about 370px wide.
-const ART_SIZE = 11;
+// The logo as ASCII, in the same frame the 404 page settles on. Geist Mono is 0.6em wide, so lines 0.6em tall
+// make square cells. At 13px the art is about 375px wide.
+const ART_SIZE = 13;
 
-// satori reads woff but not woff2. @fontsource ships static weights as woff. The site uses weights near 290 and
-// 540, so 300 and 500 are the closest.
+// satori reads woff but not woff2. @fontsource ships static weights as woff. The site uses weights 400 and 600.
 const require = createRequire(import.meta.url);
 const fontFile = (weight: number) =>
-	readFile(require.resolve(`@fontsource/martian-mono/files/martian-mono-latin-${weight}-normal.woff`));
+	readFile(require.resolve(`@fontsource/geist-mono/files/geist-mono-latin-${weight}-normal.woff`));
 
-let fonts: Promise<{ name: string; data: Buffer; weight: 300 | 500; style: 'normal' }[]> | undefined;
+let fonts: Promise<{ name: string; data: Buffer; weight: 400 | 600; style: 'normal' }[]> | undefined;
 const loadFonts = () =>
-	(fonts ??= Promise.all([fontFile(300), fontFile(500)]).then(([light, medium]) => [
-		{ name: 'Martian Mono', data: light, weight: 300, style: 'normal' },
-		{ name: 'Martian Mono', data: medium, weight: 500, style: 'normal' },
+	(fonts ??= Promise.all([fontFile(400), fontFile(600)]).then(([regular, semibold]) => [
+		{ name: 'Geist Mono', data: regular, weight: 400, style: 'normal' },
+		{ name: 'Geist Mono', data: semibold, weight: 600, style: 'normal' },
 	]));
 
 let mark: Promise<string> | undefined;
@@ -65,18 +64,18 @@ export async function renderOgImage(page: OgPage): Promise<Buffer> {
 			alignItems: 'center',
 			padding: '72px 72px 72px 80px',
 			background: BG,
-			fontFamily: 'Martian Mono',
-			fontWeight: 300,
+			fontFamily: 'Geist Mono',
+			fontWeight: 400,
 		},
 		[
 			h('div', { display: 'flex', flexDirection: 'column', justifyContent: 'space-between', width: 600, height: '100%' }, [
 				h('div', { display: 'flex', alignItems: 'center', gap: 16 }, [
 					h('img', {}, undefined, { src: markUri, width: 44, height: 44 }),
-					h('div', { color: INK, fontSize: 30, fontWeight: 500 }, 'clue'),
+					h('div', { color: INK, fontSize: 30, fontWeight: 600 }, 'clue'),
 				]),
 				h('div', { display: 'flex', flexDirection: 'column', gap: 24 }, [
 					...(page.kicker ? [h('div', { color: INK_FAINT, fontSize: 22 }, page.kicker)] : []),
-					h('div', { color: INK, fontSize: page.heading.length > 24 ? 44 : 56, fontWeight: 500, lineHeight: 1.2 }, page.heading),
+					h('div', { color: INK, fontSize: page.heading.length > 24 ? 44 : 56, fontWeight: 600, lineHeight: 1.2 }, page.heading),
 					h('div', { color: INK_SOFT, fontSize: 22, lineHeight: 1.6, lineClamp: 3 }, page.description),
 				]),
 				h('div', { color: INK_FAINT, fontSize: 20 }, url),
@@ -87,7 +86,7 @@ export async function renderOgImage(page: OgPage): Promise<Buffer> {
 					display: 'flex',
 					flexShrink: 0,
 					fontSize: ART_SIZE,
-					lineHeight: 0.7,
+					lineHeight: 0.6,
 					whiteSpace: 'pre',
 					backgroundImage: LOGO_GRADIENT,
 					backgroundClip: 'text',
