@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { paths } from "../src/config";
 import { keepGuidance } from "../src/dream/filter";
 import { collectMoments, repoRoot, type Moment } from "../src/dream/moments";
-import { decide, loadDream, saveDream, type Dream } from "../src/dream/store";
+import { loadDream, saveDream, settle, type Dream, type Verdict } from "../src/dream/store";
 import { propose } from "../src/dream/synthesize";
 import { projectKey } from "../src/session";
 
@@ -111,7 +111,7 @@ test("Claude Code transcripts are read only with the flag, without tool results 
   expect(moment.at).toBe(Date.parse("2026-10-21T10:05:00Z"));
 });
 
-test("approving a proposal replaces the memory it names, and rejecting one remembers it", () => {
+test("approving a proposal replaces the memory it names, rejecting one remembers it, and the rest stay pending", () => {
   const dream: Dream = {
     repo,
     memories: [{ text: "Commit only when asked.", evidence: [], approvedAt: 0 }],
@@ -119,16 +119,26 @@ test("approving a proposal replaces the memory it names, and rejecting one remem
       { text: "Commit or push only when the user asks.", evidence: [], replaces: "Commit only when asked." },
       { text: "Keep abstractions clean.", evidence: [], replaces: null },
       { text: "Stay on the current branch.", evidence: [], replaces: null },
+      { text: "Skip hooks in worktrees.", evidence: [], replaces: null },
     ],
     rejected: [],
     read: {},
   };
-  decide(dream, "approve");
-  decide(dream, "reject");
-  decide(dream, "skip");
+  const [approved, rejected, skipped] = dream.pending;
+  settle(
+    dream,
+    new Map<(typeof dream.pending)[number], Verdict>([
+      [approved, "approve"],
+      [rejected, "reject"],
+      [skipped, "skip"],
+    ]),
+  );
   expect(dream.memories.map((memory) => memory.text)).toEqual(["Commit or push only when the user asks."]);
   expect(dream.rejected).toEqual(["Keep abstractions clean."]);
-  expect(dream.pending.map((proposal) => proposal.text)).toEqual(["Stay on the current branch."]);
+  expect(dream.pending.map((proposal) => proposal.text)).toEqual([
+    "Stay on the current branch.",
+    "Skip hooks in worktrees.",
+  ]);
   const markdown = saveDream(dream);
   expect(readFileSync(markdown, "utf8")).toBe(`# Dream for ${repo}\n\n- Commit or push only when the user asks.\n`);
   expect(loadDream(repo)).toEqual(dream);
@@ -227,11 +237,15 @@ test("proposals carry the evidence they name and replace only approved memories"
       text: "Don't add handling for cases the user didn't raise.",
       replaces: null,
       evidence: [
-        { at: moments[1].at, text: moments[1].text },
-        { at: moments[0].at, text: moments[0].text },
+        { at: moments[1].at, text: moments[1].text, before: moments[1].before },
+        { at: moments[0].at, text: moments[0].text, before: moments[0].before },
       ],
     },
-    { text: "Stay on the branch.", replaces: null, evidence: [{ at: moments[0].at, text: moments[0].text }] },
+    {
+      text: "Stay on the branch.",
+      replaces: null,
+      evidence: [{ at: moments[0].at, text: moments[0].text, before: moments[0].before }],
+    },
   ]);
   expect(cost).toBeGreaterThan(0);
   const sent = JSON.parse((api.claudeBody as { messages: { content: string }[] }).messages[0].content);

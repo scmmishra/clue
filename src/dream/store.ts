@@ -8,8 +8,9 @@ import { projectKey } from "../session";
 // how far each session was read. The Markdown file lists only the approved memories, and clue
 // writes it from the JSON file. Nothing loads either file into a session yet.
 
-// A message that supports a memory, as the review screen shows it.
-export type Evidence = { at: number | null; text: string };
+// A message that supports a memory, as the review screen shows it, with the end of what the
+// agent said before it. Dreams before the review screen showed it have no `before`.
+export type Evidence = { at: number | null; text: string; before?: string };
 
 export type Memory = { text: string; evidence: Evidence[]; approvedAt: number };
 
@@ -51,12 +52,20 @@ export function saveDream(dream: Dream) {
   return markdown;
 }
 
-// Applies the user's verdict on the first pending proposal.
-export function decide(dream: Dream, verdict: "approve" | "reject" | "skip", text?: string) {
-  const proposal = dream.pending.shift();
-  if (!proposal) return;
-  if (verdict === "skip") return dream.pending.push(proposal);
-  if (verdict === "reject") return dream.rejected.push(proposal.text);
-  if (proposal.replaces) dream.memories = dream.memories.filter((memory) => memory.text !== proposal.replaces);
-  dream.memories.push({ text: text ?? proposal.text, evidence: proposal.evidence, approvedAt: Date.now() });
+export type Verdict = "approve" | "reject" | "skip";
+
+// Applies the user's verdicts on pending proposals. A skipped proposal, or one with no verdict,
+// stays pending for the next review.
+export function settle(dream: Dream, verdicts: Map<Proposal, Verdict>) {
+  const pending: Proposal[] = [];
+  for (const proposal of dream.pending) {
+    const verdict = verdicts.get(proposal);
+    if (verdict === "reject") dream.rejected.push(proposal.text);
+    else if (verdict !== "approve") pending.push(proposal);
+    else {
+      if (proposal.replaces) dream.memories = dream.memories.filter((memory) => memory.text !== proposal.replaces);
+      dream.memories.push({ text: proposal.text, evidence: proposal.evidence, approvedAt: Date.now() });
+    }
+  }
+  dream.pending = pending;
 }

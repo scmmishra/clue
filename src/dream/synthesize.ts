@@ -75,7 +75,7 @@ export async function propose(
       evidence: proposal.evidence
         .flatMap((id) => {
           const moment = byId.get(id);
-          return moment ? [{ at: moment.at, text: moment.text }] : [];
+          return moment ? [{ at: moment.at, text: moment.text, before: moment.before }] : [];
         })
         .slice(0, MAX_EVIDENCE),
     }))

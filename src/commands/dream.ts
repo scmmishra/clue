@@ -28,16 +28,19 @@ function readUpTo(dream: Dream, latest: Record<string, number>, failed: Moment[]
   return read;
 }
 
+const count = (number: number, one: string, many = `${one}s`) => `${number} ${number === 1 ? one : many}`;
+
 async function review(dream: Dream) {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    say(`${dream.pending.length} proposals wait for review. Run clue dream in a terminal to review them.`);
+    say(`Run clue dream in a terminal to review ${count(dream.pending.length, "proposal")}.`);
     return;
   }
-  const reviewed = await reviewProposals(dream);
-  const left = dream.pending.length;
+  const result = await reviewProposals(dream);
+  const file = homePath(saveDream(dream));
   say("");
-  say(`Reviewed ${reviewed}. ${dream.memories.length} memories approved in ${homePath(saveDream(dream))}.`);
-  if (left) say(style.muted(`${left} proposals wait for the next review.`));
+  say(`Approved ${result.approve}, rejected ${result.reject}, skipped ${result.skip}.`);
+  say(style.muted(`The dream holds ${count(dream.memories.length, "memory", "memories")}: ${file}`));
+  if (dream.pending.length) say(style.muted(`Left for the next review: ${count(dream.pending.length, "proposal")}.`));
 }
 
 export async function runDream(cwd: string, { includeClaudeCode }: { includeClaudeCode: boolean }) {
@@ -47,7 +50,7 @@ export async function runDream(cwd: string, { includeClaudeCode }: { includeClau
 
   // Proposals from an earlier dream come first, so no paid work is lost.
   if (dream.pending.length) {
-    say(`${dream.pending.length} proposals from an earlier dream wait for review.`);
+    say(`Reviewing ${count(dream.pending.length, "proposal")} from an earlier dream.`);
     return review(dream);
   }
 
@@ -92,6 +95,6 @@ export async function runDream(cwd: string, { includeClaudeCode }: { includeClau
   dream.pending = result.proposals;
   dream.read = readUpTo(dream, collected.latest, failed);
   saveDream(dream);
-  say(`${result.proposals.length} proposals for ${money(result.cost)}.`);
+  say(`${count(result.proposals.length, "proposal")} for ${money(result.cost)}.`);
   if (result.proposals.length) await review(dream);
 }
