@@ -2,8 +2,9 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
-## Unreleased
+## 0.15.0
 
+- `clue dream` is an experiment that proposes memories from this repository's past sessions. It reads the messages you typed after each session's first prompt. Jev keeps the ones that guide the agent, such as corrections, and Sonnet turns them into at most 10 proposals, each with your quotes as evidence. You review them in a list: `space` approves, rejects or skips, `e` edits, `s` splits a proposal into one per sentence, and `→` shows the quotes with what the agent said before each one. Approved memories go to `~/.clue/dreams/`. Nothing loads them into a session yet. A later dream reads only new messages, and doesn't propose what you rejected. `--include-cc` also reads Claude Code's transcripts for the repository. It needs `OPENROUTER_API_KEY`.
 - When Claude writes a tool call that isn't valid JSON, such as one with a raw tab inside a string, clue asks again instead of ending the turn with `Unable to parse tool parameter JSON`. clue had this retry before, but it never matched the error the SDK throws.
 
 ## 0.14.2
