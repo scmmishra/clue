@@ -1,6 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { paths } from "../config";
+import { dreamMemories } from "../dream/store";
 import type { Skill } from "../tools/skills";
 
 const INSTRUCTION_FILES = ["AGENTS.md", "CLAUDE.md"];
@@ -32,6 +33,27 @@ export function gitRoot(cwd: string): string | null {
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
+  }
+}
+
+// The main worktree of the repo a folder is in, so every worktree of a repo maps to one folder.
+// It reads files instead of running git, like gitBranch. In a linked worktree, .git is a file
+// that points at the worktree's folder inside the main repo's .git, and that folder's commondir
+// file points back at the main .git.
+export function mainWorktree(cwd: string): string | null {
+  const root = gitRoot(cwd);
+  if (!root) return null;
+  const dotGit = join(root, ".git");
+  try {
+    if (statSync(dotGit).isDirectory()) return realpathSync(root);
+    const pointer = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, "utf8"))?.[1]?.trim();
+    if (!pointer) return null;
+    const gitDir = resolve(root, pointer);
+    const commonFile = join(gitDir, "commondir");
+    const common = existsSync(commonFile) ? resolve(gitDir, readFileSync(commonFile, "utf8").trim()) : gitDir;
+    return realpathSync(basename(common) === ".git" ? dirname(common) : common);
+  } catch {
+    return null;
   }
 }
 
@@ -139,6 +161,12 @@ export async function buildContext(cwd: string, skills: Skill[], mcpServers: str
         `\n<instructions file="${file === paths.agents ? "~/.clue/AGENTS.md" : relative(cwd, file) || basename(file)}">\n${text}\n</instructions>`,
       );
   }
+  const repo = mainWorktree(cwd);
+  const memories = repo ? dreamMemories(repo) : [];
+  if (memories.length)
+    lines.push(
+      `\n<memories from="clue dream">\nThe user approved these from their past corrections in this repository.\n${memories.map((memory) => `- ${memory}`).join("\n")}\n</memories>`,
+    );
   if (skills.length) {
     lines.push("\nskills (read one with the skill tool when it matches the task):");
     for (const skill of skills) lines.push(`- ${skill.name}: ${skill.description}`);

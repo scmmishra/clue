@@ -6,7 +6,7 @@ import { projectKey } from "../session";
 // A repo's dream lives in two files under ~/.clue/dreams. The JSON file holds everything: the
 // approved memories with their evidence, proposals waiting for review, rejected proposals, and
 // how far each session was read. The Markdown file lists only the approved memories, and clue
-// writes it from the JSON file. Nothing loads either file into a session yet.
+// writes it from the JSON file. A session in the repo loads the Markdown file's list.
 
 // A message that supports a memory, as the review screen shows it, with the end of what the
 // agent said before it. Dreams before the review screen showed it have no `before`.
@@ -42,6 +42,17 @@ export function loadDream(repo: string): Dream {
 export function dreamMarkdown(dream: Dream) {
   const lines = [`# Dream for ${dream.repo}`, "", ...dream.memories.map((memory) => `- ${memory.text}`)];
   return `${lines.join("\n")}\n`;
+}
+
+// The approved memories, as the Markdown file lists them, for a session's context.
+export function dreamMemories(repo: string): string[] {
+  try {
+    return readFileSync(files(repo).markdown, "utf8")
+      .split("\n")
+      .flatMap((line) => (line.startsWith("- ") && line.slice(2).trim() ? [line.slice(2).trim()] : []));
+  } catch {
+    return [];
+  }
 }
 
 export function saveDream(dream: Dream) {

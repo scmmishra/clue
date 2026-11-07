@@ -1,9 +1,10 @@
 import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
 import { sessionFiles } from "../commands/usage";
+import { mainWorktree } from "../agent/context";
 import { isObject } from "../config";
-import { promptText, readRecords, realFolder, steerText } from "../session";
+import { promptText, readRecords, steerText } from "../session";
 
 // A moment is a message the user typed after the first prompt of a session, with the end of
 // what the agent said just before it. Guidance, such as a correction, shows up in these.
@@ -37,25 +38,13 @@ const CC_NOISE =
 
 export const isTrivial = (text: string) => text.trim().length < MIN_CHARS || TRIVIAL.test(text.trim());
 
-// The repository a folder belongs to: the main worktree, so every worktree of a repo shares it.
-export function repoRoot(cwd: string): string | null {
-  const result = Bun.spawnSync(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], {
-    cwd,
-    stdout: "pipe",
-    stderr: "ignore",
-  });
-  if (result.exitCode !== 0) return null;
-  const common = realFolder(result.stdout.toString().trim());
-  return basename(common) === ".git" ? dirname(common) : common;
-}
-
 // Whether a session's folder is in the repo. A folder that no longer exists, such as a removed
 // worktree, counts when it was inside the main worktree.
 function inRepo(root: string, cache: Map<string, boolean>) {
   return (cwd: string) => {
     let known = cache.get(cwd);
     if (known === undefined) {
-      known = existsSync(cwd) ? repoRoot(cwd) === root : cwd === root || cwd.startsWith(`${root}/`);
+      known = existsSync(cwd) ? mainWorktree(cwd) === root : cwd === root || cwd.startsWith(`${root}/`);
       cache.set(cwd, known);
     }
     return known;

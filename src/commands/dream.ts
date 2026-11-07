@@ -1,15 +1,16 @@
 import { DECISION_ALIASES } from "../agent/helpers";
 import { MissingCredentials } from "../agent/provider";
 import { keepGuidance } from "../dream/filter";
-import { collectMoments, repoRoot, type Moment } from "../dream/moments";
+import { mainWorktree } from "../agent/context";
+import { collectMoments, type Moment } from "../dream/moments";
 import { loadDream, saveDream, type Dream } from "../dream/store";
 import { propose, SYNTHESIS_MODEL } from "../dream/synthesize";
 import { homePath, money, style } from "../ui/ansi";
 import { reviewProposals } from "../ui/dream-review";
 
 // `clue dream`: reads this repo's past sessions, keeps the messages where the user guided the
-// agent, and proposes memories for the user to approve one by one. An experiment: nothing
-// loads the approved memories into a session yet.
+// agent, and proposes memories for the user to review. Sessions in the repo load the approved
+// memories into their context.
 
 const FILTER_MODEL = DECISION_ALIASES.jev;
 
@@ -44,7 +45,7 @@ async function review(dream: Dream) {
 }
 
 export async function runDream(cwd: string, { includeClaudeCode }: { includeClaudeCode: boolean }) {
-  const root = repoRoot(cwd);
+  const root = mainWorktree(cwd);
   if (!root) stop("clue dream works inside a git repository.");
   const dream = loadDream(root);
 

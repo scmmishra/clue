@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { paths } from "../src/config";
 import { keepGuidance } from "../src/dream/filter";
-import { collectMoments, repoRoot, type Moment } from "../src/dream/moments";
+import { buildContext, mainWorktree } from "../src/agent/context";
+import { collectMoments, type Moment } from "../src/dream/moments";
 import { loadDream, saveDream, settle, type Dream, type Verdict } from "../src/dream/store";
 import { propose } from "../src/dream/synthesize";
 import { projectKey } from "../src/session";
@@ -51,9 +52,11 @@ beforeEach(() => {
 });
 
 test("a worktree belongs to the repo of its main worktree", () => {
-  expect(repoRoot(worktree)).toBe(repo);
-  expect(repoRoot(join(repo))).toBe(repo);
-  expect(repoRoot(elsewhere)).toBeNull();
+  expect(mainWorktree(worktree)).toBe(repo);
+  expect(mainWorktree(join(repo))).toBe(repo);
+  expect(mainWorktree(elsewhere)).toBeNull();
+  mkdirSync(join(worktree, "src"), { recursive: true });
+  expect(mainWorktree(join(worktree, "src"))).toBe(repo);
 });
 
 test("moments are the follow-up messages of the repo's sessions, without short replies", () => {
@@ -257,4 +260,20 @@ test("proposals carry the evidence they name and replace only approved memories"
     user_said: moments[0].text,
   });
   expect(existsSync(paths.dreams)).toBe(false);
+});
+
+test("a session in any worktree of the repo loads the approved memories, and other folders don't", async () => {
+  saveDream({
+    repo,
+    memories: [{ text: "Skip hooks in worktrees.", evidence: [], approvedAt: 0 }],
+    pending: [{ text: "Not approved yet.", evidence: [], replaces: null }],
+    rejected: ["Keep abstractions clean."],
+    read: {},
+  });
+  const context = await buildContext(worktree, [], [], new Set());
+  expect(context).toContain(
+    `<memories from="clue dream">\nThe user approved these from their past corrections in this repository.\n- Skip hooks in worktrees.\n</memories>`,
+  );
+  expect(context).not.toContain("Not approved yet.");
+  expect(await buildContext(elsewhere, [], [], new Set())).not.toContain("<memories");
 });
