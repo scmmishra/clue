@@ -2,6 +2,10 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## 0.16.0
+
+- Sessions now load the memories you approved with `clue dream`. They go in the context with the first prompt, after the repository's instruction files, in every worktree of the repository. Proposals you haven't reviewed and ones you rejected don't load. clue finds the repository by reading its `.git` files, without running git.
+
 ## 0.15.0
 
 - `clue dream` is an experiment that proposes memories from this repository's past sessions. It reads the messages you typed after each session's first prompt. Jev keeps the ones that guide the agent, such as corrections, and Sonnet turns them into at most 10 proposals, each with your quotes as evidence. You review them in a list: `space` approves, rejects or skips, `e` edits, `s` splits a proposal into one per sentence, and `→` shows the quotes with what the agent said before each one. Approved memories go to `~/.clue/dreams/`. Nothing loads them into a session yet. A later dream reads only new messages, and doesn't propose what you rejected. `--include-cc` also reads Claude Code's transcripts for the repository. It needs `OPENROUTER_API_KEY`.
