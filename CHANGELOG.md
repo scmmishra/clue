@@ -2,7 +2,7 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
-## Unreleased
+## 0.16.1
 
 - Skills now show in the `/` menu after the built-in commands. `/skill-name some task` starts a turn that tells Claude to use that skill. A skill can't replace a built-in command of the same name, and only names made of letters, digits, `_` and `-` show up.
 - Before Claude quotes tool output into an issue, pull request, comment or anything else that leaves your machine, the system prompt tells it to remove API keys, tokens, passwords and your home folder path.
