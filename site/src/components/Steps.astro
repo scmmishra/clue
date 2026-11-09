@@ -1,0 +1,21 @@
+---
+// Numbered steps. A step can show the command it runs.
+type Step = { title: string; text: string; command?: string };
+type Props = { steps: Step[] };
+
+const { steps } = Astro.props;
+---
+
+<ol class="steps">
+	{
+		steps.map(({ title, text, command }) => (
+			<li>
+				<div>
+					<h3>{title}</h3>
+					<p>{text}</p>
+				</div>
+				{command && <code class="step-command">{command}</code>}
+			</li>
+		))
+	}
+</ol>

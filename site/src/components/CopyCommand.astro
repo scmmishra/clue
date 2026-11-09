@@ -1,0 +1,52 @@
+---
+// A shell command that copies itself when clicked. With `shortcut`, pressing that key copies it too.
+type Props = { command: string; shortcut?: string };
+
+const { command, shortcut } = Astro.props;
+---
+
+<!-- The whole line copies the command. -->
+<button class="install" type="button" data-copy={command} data-copy-key={shortcut}>
+	<code data-command><span class="prompt" aria-hidden="true">$</span> {command}</code>
+	<span class="copy">
+		<span aria-live="polite">copy</span>
+		{shortcut && <kbd aria-hidden="true">[{shortcut}]</kbd>}
+	</span>
+</button>
+
+<script>
+	const COPIED_MS = 1500;
+	// A second copy restarts the timer, so the label does not flip back early.
+	const resets = new WeakMap<HTMLButtonElement, number>();
+
+	async function copy(button: HTMLButtonElement) {
+		const label = button.querySelector('.copy span')!;
+		try {
+			await navigator.clipboard.writeText(button.dataset.copy!);
+		} catch {
+			// The browser refused. Select the command so that the reader can copy it by hand.
+			getSelection()?.selectAllChildren(button.querySelector('[data-command]')!);
+			return;
+		}
+		label.textContent = 'copied';
+		button.dataset.copied = '';
+		clearTimeout(resets.get(button));
+		resets.set(
+			button,
+			window.setTimeout(() => {
+				label.textContent = 'copy';
+				delete button.dataset.copied;
+			}, COPIED_MS),
+		);
+	}
+
+	for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy]')) {
+		button.addEventListener('click', () => copy(button));
+	}
+
+	addEventListener('keydown', (event) => {
+		if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+		const button = document.querySelector<HTMLButtonElement>(`[data-copy-key="${CSS.escape(event.key)}"]`);
+		if (button) copy(button);
+	});
+</script>

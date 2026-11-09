@@ -1,5 +1,10 @@
 ---
 import { version } from '../../../package.json';
+import CopyCommand from '../components/CopyCommand.astro';
+import Feature from '../components/Feature.astro';
+import Section from '../components/Section.astro';
+import Stats from '../components/Stats.astro';
+import Steps from '../components/Steps.astro';
 import Base from '../layouts/Base.astro';
 import { HOME } from '../site';
 
@@ -24,53 +29,32 @@ const schema = {
 
 // Medians from benchmarks/README.md.
 const waits = [
-	{ label: 'Start to a ready prompt', time: '7.5 ms' },
-	{ label: 'Resume to your last session', time: '13.8 ms' },
-	{ label: "First token, clue's time", time: '5.4 ms' },
+	{ value: '7.5', unit: 'ms', label: 'Start to a ready prompt' },
+	{ value: '13.8', unit: 'ms', label: 'Resume to your last session' },
+	{ value: '5.4', unit: 'ms', label: "First token, clue's time" },
+];
+
+const steps = [
+	{ title: 'Install', text: 'macOS and Linux, on arm64 and x86_64.', command: install },
+	{ title: 'Sign in', text: 'Save an API key. clue also reads ANTHROPIC_API_KEY from the environment.', command: 'clue login' },
+	{ title: 'Run it', text: 'Start clue in your project and type what you want done.', command: 'clue' },
 ];
 ---
 
 <Base title={title} description={description} schema={schema}>
-			<main>
-				<div class="hero">
-					<h1>A fast, simple coding agent for Claude</h1>
+	<main class="home">
+		<div class="hero">
+			<div class="hero-text">
+				<h1>A fast, simple coding agent for Claude</h1>
+				<p class="lede">
+					clue calls Claude's API through the API SDK, not the Agent SDK, so it bills per token. <code>clue usage</code> shows
+					what it has cost.
+				</p>
+				<CopyCommand command={install} shortcut="c" />
+				<p class="meta">v{version} (<a href="/changelog">notes</a>) · macOS and Linux · actively developed, so things may change</p>
+			</div>
 
-					<!-- The whole line copies the command. -->
-					<button class="install" type="button" data-copy={install}>
-						<code data-command><span class="prompt" aria-hidden="true">$</span> {install}</code>
-						<span class="copy">
-							<span aria-live="polite">copy</span>
-							<kbd aria-hidden="true">[c]</kbd>
-						</span>
-					</button>
-					<div class="meta">
-						<p>v{version} (<a href="/changelog">notes</a>) · macOS and Linux · actively developed, so things may change</p>
-					</div>
-					<p class="note billing">
-						clue calls Claude's API through the API SDK, not the Agent SDK, so it bills per token. <code>clue usage</code> shows
-						what it has cost.
-					</p>
-
-					<section class="waits">
-						<h2>Three waits, measured</h2>
-						<dl>
-							{
-								waits.map(({ label, time }) => (
-									<div>
-										<dt>{label}</dt>
-										<dd>{time}</dd>
-									</div>
-								))
-							}
-						</dl>
-						<p class="note">
-							Medians on one Apple silicon Mac. The first-token figure uses a local stand-in for the API, so it
-							shows only clue's own time. <a href={`${repo}/blob/main/benchmarks/README.md`}>benchmarks</a>
-						</p>
-					</section>
-				</div>
-
-				<figure class="window">
+			<figure class="window">
 					<figcaption class="bar">
 						<span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
 						<span>~/code/app</span>
@@ -103,119 +87,73 @@ const waits = [
 
 <span class="dim">auto · opus 5.5 · medium                               ~/code/app (main)</span></pre>
 				</figure>
+		</div>
 
-				<div class="features">
-					<div class="feature-group">
-						<h2 class="group-title">Fast</h2>
+		<Section label={'Three waits,\nmeasured'}>
+			<Stats items={waits} />
+			<p class="note">
+				Medians on one Apple silicon Mac. The first-token figure uses a local stand-in for the API, so it shows only
+				clue's own time. <a href={`${repo}/blob/main/benchmarks/README.md`}>benchmarks</a>
+			</p>
+		</Section>
 
-						<section>
-							<h2>You can type right away</h2>
-							<p>clue shows the prompt first. The SDK, MCP servers and skills load in the background.</p>
-						</section>
+		<Section label="Fast">
+			<div class="features">
+				<Feature title="You can type right away">
+					clue shows the prompt first. The SDK, MCP servers and skills load in the background.
+				</Feature>
+				<Feature title="Resuming restores your scrollback">
+					<code>clue -c</code> prints the conversation back into your terminal, so you can scroll up through it. When you
+					start typing, clue sends the history to Claude, so its cache is ready when you press enter.
+				</Feature>
+				<Feature title="The same system prompt every time">
+					The system prompt and tool list are identical in every session, so Claude reads them from its cache.
+				</Feature>
+				<Feature title="Long sessions send only what's new">
+					Each request carries the messages since Claude's last reply. Claude's API keeps the rest of the conversation for
+					a few minutes.
+				</Feature>
+				<Feature title="Reads start while Claude is still writing">
+					A read or search runs as soon as Claude finishes writing that call, before the rest of the reply arrives.
+				</Feature>
+			</div>
+		</Section>
 
-						<section>
-							<h2>Resuming shows the last screen</h2>
-							<p>
-								<code>clue -c</code> prints only the last screen of the conversation. While you type, clue sends the
-								history to Claude, so its cache is ready when you press enter.
-							</p>
-						</section>
+		<Section label="Simple">
+			<div class="features">
+				<Feature title="No plan mode">
+					Say what you want. If clue heads the wrong way, type while it works to steer it.
+				</Feature>
+				<Feature title="Output goes to your scrollback">
+					The conversation prints like any other command's output. Each batch of tool calls shows as a short tree, and
+					<code>ctrl+o</code> shows their output, diffs and errors.
+				</Feature>
+				<Feature title="Built for modern terminals">
+					Redraws don't flicker in terminals with synchronized output, such as Ghostty, kitty, WezTerm, iTerm2 and
+					Alacritty. Where the terminal supports it, <code>/copy</code> works over SSH, file paths are clickable, and you
+					can jump between your prompts.
+				</Feature>
+				<Feature title="/copy takes a request">
+					<code>/copy the sql</code> copies only that part of the last reply. A small model picks the part.
+				</Feature>
+				<Feature title="Three permission modes">
+					<code>auto</code> runs routine work and has risky actions reviewed first. <code>ask</code> asks before each
+					action. <code>full-access</code> runs every action without checks.
+				</Feature>
+				<Feature title="A second model for hard steps">
+					Pick a pair in <code>/model</code>, such as <code>sonnet 5.5 + opus</code>. Sonnet does the work, and asks Opus
+					before it plans a change or when it's stuck. Each reply's cost includes both.
+				</Feature>
+				<Feature title="Your existing instructions">
+					clue reads <code>AGENTS.md</code> and <code>CLAUDE.md</code> files, so a project set up for Claude Code works as
+					it is.
+				</Feature>
+			</div>
+		</Section>
 
-						<section>
-							<h2>The same system prompt every time</h2>
-							<p>The system prompt and tool list are identical in every session, so Claude reads them from its cache.</p>
-						</section>
-
-						<section>
-							<h2>Long sessions send only what's new</h2>
-							<p>Each request carries the messages since Claude's last reply. Claude's API keeps the rest of the conversation for a few minutes.</p>
-						</section>
-
-						<section>
-							<h2>Reads start while Claude is still writing</h2>
-							<p>A read or search runs as soon as Claude finishes writing that call, before the rest of the reply arrives.</p>
-						</section>
-					</div>
-
-					<div class="feature-group">
-						<h2 class="group-title">Simple</h2>
-
-						<section>
-							<h2>No plan mode</h2>
-							<p>Say what you want. If clue heads the wrong way, type while it works to steer it.</p>
-						</section>
-
-						<section>
-							<h2>Output goes to your scrollback</h2>
-							<p>
-								The conversation prints like any other command's output. Each batch of tool calls shows as a short tree,
-								and <code>ctrl+o</code> shows their output, diffs and errors.
-							</p>
-						</section>
-
-						<section>
-							<h2>Built for modern terminals</h2>
-							<p>
-								Redraws don't flicker in terminals with synchronized output, such as Ghostty, kitty, WezTerm, iTerm2 and
-								Alacritty. Where the terminal supports it, <code>/copy</code> works over SSH, file paths are clickable, and
-								you can jump between your prompts.
-							</p>
-						</section>
-
-						<section>
-							<h2><code>/copy</code> takes a request</h2>
-							<p><code>/copy the sql</code> copies only that part of the last reply. A small model picks the part.</p>
-						</section>
-
-						<section>
-							<h2>Three permission modes</h2>
-							<p><code>auto</code> runs routine work and has risky actions reviewed first. <code>ask</code> asks before each action. <code>full-access</code> runs every action without checks.</p>
-						</section>
-
-						<section>
-							<h2>A second model for hard steps</h2>
-							<p>
-								Pick a pair in <code>/model</code>, such as <code>sonnet 5.5 + opus</code>. Sonnet does the work, and asks Opus
-								before it plans a change or when it's stuck. Each reply's cost includes both.
-							</p>
-						</section>
-
-						<section>
-							<h2>Your existing instructions</h2>
-							<p>clue reads <code>AGENTS.md</code> and <code>CLAUDE.md</code> files, so a project set up for Claude Code works as it is.</p>
-						</section>
-					</div>
-				</div>
-			</main>
-
-		<script>
-			const COPIED_MS = 1500;
-			const button = document.querySelector<HTMLButtonElement>('[data-copy]')!;
-			const label = button.querySelector('.copy span')!;
-			const command = document.querySelector<HTMLElement>('[data-command]')!;
-			let reset = 0;
-
-			async function copy() {
-				try {
-					await navigator.clipboard.writeText(button.dataset.copy!);
-				} catch {
-					// The browser refused. Select the command so that the reader can copy it by hand.
-					getSelection()?.selectAllChildren(command);
-					return;
-				}
-				label.textContent = 'copied';
-				button.dataset.copied = '';
-				clearTimeout(reset);
-				reset = window.setTimeout(() => {
-					label.textContent = 'copy';
-					delete button.dataset.copied;
-				}, COPIED_MS);
-			}
-
-			button.addEventListener('click', copy);
-			addEventListener('keydown', (event) => {
-				if (event.key !== 'c' || event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
-				copy();
-			});
-		</script>
+		<Section label="Get started">
+			<Steps steps={steps} />
+			<p class="note">The <a href="/docs">quick start</a> covers other ways to sign in, and what to do if something looks wrong.</p>
+		</Section>
+	</main>
 </Base>

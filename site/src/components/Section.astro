@@ -1,0 +1,12 @@
+---
+// A page section. Its label sits in a narrow column on the left and its content on the right. A rule separates it
+// from the section above. A newline in the label breaks the line there.
+type Props = { label: string };
+
+const { label } = Astro.props;
+---
+
+<section class="band">
+	<h2 class="band-label">{label}</h2>
+	<div class="band-body"><slot /></div>
+</section>

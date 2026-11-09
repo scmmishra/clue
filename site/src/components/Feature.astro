@@ -1,0 +1,11 @@
+---
+// One feature: a title and a short description. Put several in a `.features` grid.
+type Props = { title: string };
+
+const { title } = Astro.props;
+---
+
+<div class="feature">
+	<h3>{title}</h3>
+	<p><slot /></p>
+</div>

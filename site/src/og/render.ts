@@ -12,10 +12,10 @@ import { HEIGHT, WIDTH } from './size';
 const SITE_HOST = 'clue.shivam.dev';
 
 // The colours from src/styles/global.css.
-const BG = '#0e0f12';
-const INK = '#ecedf0';
-const INK_SOFT = '#a2a6af';
-const INK_FAINT = '#858a95';
+const BG = '#0b0b0b';
+const INK = '#ededed';
+const INK_SOFT = '#a8a8a8';
+const INK_FAINT = '#8a8a8a';
 const LOGO_GRADIENT = 'linear-gradient(160deg, #d3e2ff, #82aaff 45%, #5787ea)';
 
 // The logo as ASCII, in the same frame the 404 page settles on. Geist Mono is 0.6em wide, so lines 0.6em tall

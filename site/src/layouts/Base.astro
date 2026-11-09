@@ -1,4 +1,5 @@
 ---
+import geistSans from '@fontsource-variable/geist/files/geist-latin-wght-normal.woff2?url';
 import geistMono from '@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?url';
 import { ogImageFor } from '../og/pages';
 import { HEIGHT, WIDTH } from '../og/size';
@@ -29,7 +30,7 @@ const image = new URL(ogImageFor(path), Astro.site).href;
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<meta name="theme-color" content="#0e0f12" />
+		<meta name="theme-color" content="#0b0b0b" />
 		<meta name="generator" content={Astro.generator} />
 		<meta name="color-scheme" content="dark" />
 		<title>{title}</title>
@@ -53,6 +54,7 @@ const image = new URL(ogImageFor(path), Astro.site).href;
 		<meta name="twitter:description" content={description} />
 		<meta name="twitter:image" content={image} />
 
+		<link rel="preload" href={geistSans} as="font" type="font/woff2" crossorigin />
 		<link rel="preload" href={geistMono} as="font" type="font/woff2" crossorigin />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<link rel="sitemap" href="/sitemap-index.xml" />

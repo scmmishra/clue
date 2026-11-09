@@ -1,25 +1,28 @@
+@import '@fontsource-variable/geist/wght.css';
 @import '@fontsource-variable/geist-mono/wght.css';
 
 :root {
 	color-scheme: dark;
 
-	--bg: #0e0f12;
-	--ink: #ecedf0;
-	--ink-soft: #a2a6af;
-	--ink-faint: #858a95;
-	--window: #13151a;
-	--edge: #2a2d34;
+	--bg: #0b0b0b;
+	--ink: #ededed;
+	--ink-soft: #a8a8a8;
+	--ink-faint: #8a8a8a;
+	--window: #151515;
+	--edge: #2b2b2b;
 
 	--blue: #74ade8;
 	--green: #a1c181;
 	--red: #d07277;
 	--yellow: #dec184;
 
+	--sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--mono: 'Geist Mono Variable', ui-monospace, Menlo, monospace;
 
 	--quick: 120ms ease-out;
 
 	--weight-regular: 400;
+	--weight-medium: 500;
 	--weight-semibold: 600;
 	--weight-bold: 700;
 }
@@ -42,8 +45,8 @@ body {
 	margin: 0;
 	background: var(--bg);
 	color: var(--ink-soft);
-	font-family: var(--mono);
-	font-size: 0.875rem;
+	font-family: var(--sans);
+	font-size: 0.9375rem;
 	font-weight: var(--weight-regular);
 	line-height: 1.6;
 	text-wrap: pretty;
@@ -76,10 +79,28 @@ b {
 	font-weight: var(--weight-bold);
 }
 
+/* Mono marks structure: headings, labels, navigation and code. Body text is sans. */
+h1,
+h2,
+h3,
 code,
 pre,
+kbd,
+.top,
+.foot,
+.meta,
+.docs-nav,
+.toc {
+	font-family: var(--mono);
+}
+
+code,
 kbd {
-	font-family: inherit;
+	font-size: 0.9em;
+}
+
+pre,
+pre code {
 	font-size: inherit;
 }
 
@@ -118,34 +139,7 @@ p code {
 }
 
 main {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr);
-	gap: 72px;
 	padding-block-start: clamp(32px, 8vh, 72px);
-}
-
-@media (min-width: 1340px) {
-	main {
-		grid-template-columns: minmax(0, 640px) minmax(0, 1fr);
-		gap: 72px 56px;
-	}
-
-	.hero,
-	.features {
-		grid-column: 1;
-	}
-
-	.window {
-		grid-column: 2;
-		grid-row: 1 / span 2;
-		position: sticky;
-		top: 32px;
-	}
-}
-
-.hero,
-.features {
-	max-width: 640px;
 }
 
 h1 {
@@ -158,6 +152,191 @@ h1 {
 	text-wrap: balance;
 }
 
+/* Home */
+
+.hero {
+	display: grid;
+	gap: 48px;
+	padding-block-end: clamp(32px, 8vh, 72px);
+}
+
+@media (min-width: 1100px) {
+	.hero {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 600px);
+		gap: 64px;
+		align-items: center;
+	}
+}
+
+.hero h1 {
+	font-size: clamp(2rem, 1.25rem + 2.5vw, 3rem);
+	font-weight: var(--weight-medium);
+	line-height: 1.1;
+	letter-spacing: -0.045em;
+}
+
+.lede {
+	max-width: 36em;
+	margin: 20px 0 0;
+	font-size: 1.0625rem;
+}
+
+.lede code {
+	color: var(--ink);
+}
+
+/* A section: the label on the left, the content on the right, a rule above. See src/components/Section.astro. */
+.band {
+	display: grid;
+	gap: 20px 56px;
+	padding-block: 56px;
+	border-block-start: 1px solid var(--edge);
+}
+
+@media (min-width: 800px) {
+	.band {
+		grid-template-columns: 200px minmax(0, 760px);
+	}
+}
+
+.band-label {
+	margin: 0;
+	/* A line break in the label shows. */
+	white-space: pre-line;
+	color: var(--ink);
+	font-size: 0.875rem;
+	font-weight: var(--weight-regular);
+}
+
+.band-body {
+	container-type: inline-size;
+}
+
+.features {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+	gap: 32px 40px;
+}
+
+.feature h3 {
+	margin: 0 0 6px;
+	color: var(--ink);
+	font-size: 0.875rem;
+	font-weight: var(--weight-medium);
+}
+
+.feature p {
+	margin: 0;
+}
+
+.feature code {
+	white-space: nowrap;
+}
+
+/* Large figures with captions. See src/components/Stats.astro. */
+.stats {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 32px 64px;
+	margin: 0;
+}
+
+.stats div {
+	display: flex;
+	flex-direction: column-reverse;
+	gap: 4px;
+}
+
+.stats dt {
+	color: var(--ink-faint);
+	font-size: 0.8125rem;
+}
+
+.stats dd {
+	margin: 0;
+	color: var(--ink);
+	font-family: var(--mono);
+	font-size: 2.75rem;
+	line-height: 1;
+	letter-spacing: -0.04em;
+	font-variant-numeric: tabular-nums;
+}
+
+.unit {
+	margin-inline-start: 0.4em;
+	color: var(--ink-faint);
+	font-size: 1rem;
+	letter-spacing: 0;
+}
+
+/* Numbered steps. See src/components/Steps.astro. */
+.steps {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	counter-reset: step;
+}
+
+.steps li {
+	display: grid;
+	grid-template-columns: 4ch minmax(0, 1fr);
+	gap: 12px 16px;
+	padding-block: 20px;
+	counter-increment: step;
+}
+
+.steps li + li {
+	border-block-start: 1px solid var(--edge);
+}
+
+.steps li:first-child {
+	padding-block-start: 0;
+}
+
+.steps li::before {
+	content: counter(step, decimal-leading-zero);
+	color: var(--ink-faint);
+	font-family: var(--mono);
+	font-size: 0.875rem;
+}
+
+.steps h3 {
+	margin: 0 0 4px;
+	color: var(--ink);
+	font-size: 0.875rem;
+	font-weight: var(--weight-medium);
+}
+
+.steps p {
+	margin: 0;
+}
+
+.step-command {
+	grid-column: 2;
+	justify-self: start;
+	max-width: 100%;
+	padding: 6px 12px;
+	border: 1px solid var(--edge);
+	background: var(--window);
+	color: var(--ink);
+	font-size: 0.8125rem;
+	overflow-wrap: anywhere;
+}
+
+/* With room, the command sits at the end of its step's row. */
+@container (min-width: 680px) {
+	.steps li {
+		grid-template-columns: 4ch minmax(0, 1fr) auto;
+		align-items: start;
+	}
+
+	.step-command {
+		grid-column: 3;
+		justify-self: end;
+		white-space: nowrap;
+	}
+}
+
 /* The install command and its copy hint, as one button across the column. The hint sits at the far end. */
 .install {
 	display: flex;
@@ -165,19 +344,21 @@ h1 {
 	align-items: baseline;
 	gap: 3ch;
 	width: 100%;
-	margin-block-start: 28px;
-	padding: 0;
-	border: 0;
-	background: none;
+	margin-block-start: 32px;
+	padding: 12px 16px;
+	border: 1px solid var(--edge);
+	background: var(--window);
 	color: var(--ink);
 	font: inherit;
+	font-family: var(--mono);
+	transition: border-color var(--quick);
 	text-align: start;
 	cursor: pointer;
 }
 
 .install code {
 	min-width: 0;
-	font-size: 0.75rem;
+	font-size: 0.8125rem;
 	/* So the command can be selected by hand if the clipboard is refused. */
 	user-select: text;
 	/* On a narrow screen the command wraps, so all of it shows. */
@@ -195,6 +376,10 @@ h1 {
 	color: var(--ink-soft);
 	font-size: 0.75rem;
 	transition: color var(--quick);
+}
+
+.install:hover {
+	border-color: var(--ink-faint);
 }
 
 .install:hover .copy {
@@ -216,41 +401,9 @@ h1 {
 }
 
 .meta {
-	display: flex;
-	flex-wrap: wrap;
-	justify-content: space-between;
-	align-items: baseline;
-	gap: 4px 16px;
-	margin-block-start: 8px;
+	margin: 12px 0 0;
 	color: var(--ink-faint);
 	font-size: 0.75rem;
-}
-
-.meta p {
-	margin: 0;
-}
-
-section {
-	margin-block-start: 40px;
-}
-
-.feature-group + .feature-group {
-	margin-block-start: 56px;
-}
-
-.group-title {
-	margin: 0;
-	color: var(--ink-faint);
-	font-size: 0.75rem;
-	font-weight: var(--weight-regular);
-}
-
-.group-title + section {
-	margin-block-start: 16px;
-}
-
-.note.billing {
-	margin-block-start: 12px;
 }
 
 .prose {
@@ -280,6 +433,7 @@ section {
 
 .prose pre {
 	padding: 12px 16px;
+	font-size: 0.8125rem;
 	overflow-x: auto;
 	border: 1px solid var(--edge);
 	background: var(--window) !important;
@@ -340,31 +494,10 @@ h2 {
 	font-weight: var(--weight-semibold);
 }
 
-section p {
-	margin: 0;
-}
-
-.waits dl {
-	margin: 0;
-}
-
-.waits dl div {
-	display: flex;
-	justify-content: space-between;
-	gap: 16px;
-}
-
-.waits dd {
-	flex: none;
-	margin: 0;
-	color: var(--ink);
-	font-variant-numeric: tabular-nums;
-}
-
 .note {
-	margin-block-start: 8px;
+	margin: 24px 0 0;
 	color: var(--ink-faint);
-	font-size: 0.75rem;
+	font-size: 0.8125rem;
 }
 
 .window {
@@ -450,7 +583,17 @@ section p {
 
 /* Not found */
 
+/* The 404 page fills the screen, with its content in the middle. */
+.page:has(.notfound) {
+	display: flex;
+	flex-direction: column;
+	min-height: 100dvh;
+}
+
 .notfound {
+	flex: 1;
+	display: grid;
+	align-content: center;
 	grid-template-columns: minmax(0, 1fr);
 	justify-items: center;
 	gap: 32px;
@@ -490,6 +633,7 @@ section p {
 
 @media (prefers-reduced-motion: reduce) {
 	a,
+	.install,
 	.copy {
 		transition: none;
 	}
@@ -653,6 +797,7 @@ section p {
 	background: none;
 	color: var(--ink-faint);
 	font: inherit;
+	font-family: var(--mono);
 	font-size: 0.75rem;
 	cursor: pointer;
 	transition: color var(--quick);
@@ -680,6 +825,7 @@ section p {
 	background: none;
 	color: var(--ink-faint);
 	font: inherit;
+	font-family: var(--mono);
 	font-size: 0.75rem;
 	cursor: pointer;
 	transition: color var(--quick);

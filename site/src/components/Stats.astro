@@ -1,0 +1,21 @@
+---
+// Figures shown large, each with a caption under it.
+type Stat = { value: string; unit?: string; label: string };
+type Props = { items: Stat[] };
+
+const { items } = Astro.props;
+---
+
+<dl class="stats">
+	{
+		items.map(({ value, unit, label }) => (
+			<div>
+				<dt>{label}</dt>
+				<dd>
+					{value}
+					{unit && <span class="unit">{unit}</span>}
+				</dd>
+			</div>
+		))
+	}
+</dl>
