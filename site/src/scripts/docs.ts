@@ -111,6 +111,9 @@ const dialog = document.querySelector<HTMLDialogElement>('dialog.search')!;
 const input = dialog.querySelector('input')!;
 const list = dialog.querySelector('ul')!;
 const empty = dialog.querySelector<HTMLElement>('.search-empty')!;
+const ask = empty.querySelector<HTMLButtonElement>('[data-copy]')!;
+const chats = [...empty.querySelectorAll<HTMLAnchorElement>('[data-ask]')];
+const docsUrl = new URL(empty.dataset.docsUrl!);
 let index: Promise<MiniSearch<Section> | undefined> | undefined;
 let results: HTMLAnchorElement[] = [];
 let selected = 0;
@@ -164,6 +167,19 @@ function snippet(text: string, words: string[]) {
 	return `…${text.slice(start, end)}${end < text.length ? '…' : ''}`;
 }
 
+// Inside double quotes the shell still reads \, ", $ and `, so each gets a backslash.
+const shellQuote = (text: string) => `"${text.replace(/[\\"$`]/g, '\\$&')}"`;
+
+// Asks clue, ChatGPT or Claude about the query, with the whole docs as one file. Each `data-ask` link is a chat
+// address that takes the prompt as its last query parameter.
+function setAsk(query: string) {
+	const command = `clue ${shellQuote(`read ${docsUrl.host}${docsUrl.pathname} and tell me about ${query}`)}`;
+	ask.dataset.copy = command;
+	ask.querySelector('[data-command-text]')!.textContent = command;
+	const prompt = `Read ${docsUrl.href} and tell me about ${query}`;
+	for (const chat of chats) chat.href = chat.dataset.ask + encodeURIComponent(prompt);
+}
+
 function select(next: number) {
 	results[selected]?.removeAttribute('aria-selected');
 	selected = (next + results.length) % results.length;
@@ -185,6 +201,7 @@ async function search() {
 
 	const hits = engine?.search(query, QUERY_OPTIONS).slice(0, MAX_RESULTS) ?? [];
 	empty.hidden = hits.length > 0;
+	if (!hits.length) setAsk(query);
 	for (const hit of hits) {
 		const entry = hit as unknown as Section;
 		// The words of the index that matched, so a typo highlights the word it matched. Longest first, so a
@@ -222,7 +239,9 @@ input.addEventListener('keydown', (event) => {
 		if (results.length) select(selected + (event.key === 'ArrowDown' ? 1 : -1));
 	} else if (event.key === 'Enter') {
 		event.preventDefault();
-		results[selected]?.click();
+		// With no results, enter copies the command that asks clue.
+		if (results.length) results[selected].click();
+		else if (!empty.hidden) ask.click();
 	} else if (event.key === 'Escape') {
 		// A search field clears itself on the first esc. Close search instead, as the esc button says.
 		event.preventDefault();

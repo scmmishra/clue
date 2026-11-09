@@ -1,6 +1,7 @@
 ---
 import { docsDescription, markdownPath } from '../../docs/markdown';
 import { NAV } from '../../docs/nav';
+import CopyCommand from '../../components/CopyCommand.astro';
 import Base from '../../layouts/Base.astro';
 
 export function getStaticPaths() {
@@ -39,6 +40,9 @@ const schema = {
 		...(current ? [{ '@type': 'ListItem', position: 2, name: title, item: new URL(href(current), Astro.site).href }] : []),
 	],
 };
+
+// When search finds nothing, it offers to ask clue, ChatGPT or Claude about the docs instead.
+const llmsFull = new URL('/llms-full.txt', Astro.site);
 
 const toc = file.getHeadings().filter(({ depth }) => depth === 2 || depth === 3);
 ---
@@ -126,7 +130,15 @@ const toc = file.getHeadings().filter(({ depth }) => depth === 2 || depth === 3)
 			<button type="submit" class="search-close">esc</button>
 		</form>
 		<ul role="listbox" aria-label="Results"></ul>
-		<p class="search-empty" hidden>No results.</p>
+		<div class="search-empty" data-docs-url={llmsFull.href} hidden>
+			<p>No results. Ask clue instead:</p>
+			<CopyCommand command="" />
+			<p class="search-ask">
+				or ask
+				<a data-ask="https://chatgpt.com/?q=" target="_blank" rel="noopener">ChatGPT ↗</a>
+				<a data-ask="https://claude.ai/new?q=" target="_blank" rel="noopener">Claude ↗</a>
+			</p>
+		</div>
 	</dialog>
 
 	<script>

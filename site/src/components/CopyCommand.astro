@@ -1,5 +1,6 @@
 ---
-// A shell command that copies itself when clicked. With `shortcut`, pressing that key copies it too.
+// A shell command that copies itself when clicked. With `shortcut`, pressing that key copies it too. A page script
+// can change the command: set the button's `data-copy` and the text of its `[data-command-text]`.
 type Props = { command: string; shortcut?: string };
 
 const { command, shortcut } = Astro.props;
@@ -7,7 +8,7 @@ const { command, shortcut } = Astro.props;
 
 <!-- The whole line copies the command. -->
 <button class="install" type="button" data-copy={command} data-copy-key={shortcut}>
-	<code data-command><span class="prompt" aria-hidden="true">$</span> {command}</code>
+	<code data-command><span class="prompt" aria-hidden="true">$</span> <span data-command-text>{command}</span></code>
 	<span class="copy">
 		<span aria-live="polite">copy</span>
 		{shortcut && <kbd aria-hidden="true">[{shortcut}]</kbd>}

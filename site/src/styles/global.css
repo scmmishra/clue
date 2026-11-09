@@ -1245,9 +1245,40 @@ h2 {
 }
 
 .search-empty {
-	margin: 0;
-	padding: 12px 16px;
+	padding: 12px 16px 16px;
 	color: var(--ink-faint);
+}
+
+.search-empty p {
+	margin: 0;
+}
+
+.search-empty .install {
+	margin-block-start: 10px;
+	background: var(--bg);
+}
+
+.search-empty .search-ask {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-block-start: 12px;
+	font-size: 0.8125rem;
+}
+
+.search-ask a {
+	padding: 3px 10px;
+	border: 1px solid var(--edge);
+	color: var(--ink-soft);
+	font-family: var(--mono);
+	font-size: 0.75rem;
+	text-decoration: none;
+	transition: color var(--quick), border-color var(--quick);
+}
+
+.search-ask a:hover {
+	border-color: var(--ink-faint);
+	color: var(--ink);
 }
 
 @media (prefers-reduced-motion: reduce) {
