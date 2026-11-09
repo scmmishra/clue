@@ -5,9 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commandIsRoutine, Permissions, ruleFor } from "../src/permissions";
 import { Session } from "../src/session";
-import { chmodSync, mkdirSync, symlinkSync } from "node:fs";
 import { UndoStack } from "../src/agent/undo";
-import { editFile, encodeImage, globFiles, grepFiles, readFile, writeFile } from "../src/tools/files";
+import { editFile, encodeImage, readFile, writeFile } from "../src/tools/files";
 import { shell, stopAllProcesses } from "../src/tools/shell";
 import { subagent } from "../src/tools/misc";
 import type { ToolContext } from "../src/tools/types";
@@ -249,104 +248,6 @@ test("a finished command leaves no timer behind", async () => {
   expect(process.listenerCount("exit")).toBe(before);
 });
 
-test("grep_files stops at 400 lines and says so, instead of reading every match", async () => {
-  const folder = join(dir, "many");
-  mkdirSync(folder, { recursive: true });
-  for (let file = 0; file < 12; file++) writeFileSync(join(folder, `f${file}.txt`), "needle line\n".repeat(100));
-  const result = await grepFiles.run({ pattern: "needle", path: "many" }, context());
-  expect(
-    String(result.content)
-      .split("\n")
-      .filter((line) => line.includes("needle line")).length,
-  ).toBe(400);
-  expect(result.content).toContain("Narrow the search");
-  expect(result.note).toContain("400+ matches");
-});
-
-test("grep_files keeps its matches when ripgrep hits an unreadable file", async () => {
-  const folder = join(dir, "mixed");
-  mkdirSync(folder, { recursive: true });
-  writeFileSync(join(folder, "ok.txt"), "unique-token here\n");
-  writeFileSync(join(folder, "locked.txt"), "unique-token hidden\n");
-  chmodSync(join(folder, "locked.txt"), 0o000);
-  const result = await grepFiles.run({ pattern: "unique-token", path: "mixed" }, context());
-  chmodSync(join(folder, "locked.txt"), 0o644);
-  expect(result.isError).toBeFalsy();
-  expect(result.content).toContain("ok.txt:1:unique-token here");
-});
-
-test("grep_files reports no matches plainly", async () => {
-  const result = await grepFiles.run({ pattern: "zzz-not-anywhere-zzz", path: "mixed" }, context());
-  expect(result.content).toBe("No matches.");
-});
-
-// The old implementation: Bun.Glob.scan over everything, then drop ignored folders.
-async function referenceGlob(root: string, pattern: string) {
-  const ignored = ["node_modules", ".git", "dist", "build", ".next", "target", "vendor", ".venv", "__pycache__"];
-  const found: string[] = [];
-  for await (const file of new Bun.Glob(pattern).scan({ cwd: root, onlyFiles: true, dot: false })) {
-    if (!ignored.some((name) => file.split("/").includes(name))) found.push(file);
-  }
-  return found.sort();
-}
-
-test("glob_files returns what a full scan would, without walking ignored folders", async () => {
-  const tree = join(dir, "tree");
-  const files = [
-    "a.ts",
-    "b.md",
-    "c.json",
-    "src/x.ts",
-    "src/y.md",
-    "src/deep/z.ts",
-    "src/deep/er/w.ts",
-    "docs/a.md",
-    "docs/sub/b.md",
-    "node_modules/pkg/i.ts",
-    "src/node_modules/inner/j.ts",
-    ".hidden/h.ts",
-    "dist/o.ts",
-    "src/.dot.ts",
-  ];
-  for (const file of files) {
-    mkdirSync(join(tree, file, ".."), { recursive: true });
-    writeFileSync(join(tree, file), "x");
-  }
-  const ctx = { ...context(), cwd: tree };
-  for (const pattern of [
-    "**/*.ts",
-    "src/**/*.ts",
-    "*.md",
-    "*.ts",
-    "docs/*.md",
-    "docs/**/*.md",
-    "**/*.{ts,md}",
-    "src/*.ts",
-    "src/deep/*.ts",
-    "**/b.md",
-    "nothing/**",
-  ]) {
-    const result = await globFiles.run({ pattern }, ctx);
-    const got = result.content === "No files match." ? [] : String(result.content).split("\n");
-    expect({ pattern, got }).toEqual({ pattern, got: await referenceGlob(tree, pattern) });
-  }
-  // With a path, results are shown relative to the project folder.
-  const scoped = await globFiles.run({ pattern: "**/*.ts", path: "src" }, ctx);
-  expect(String(scoped.content).split("\n")).toEqual(["src/deep/er/w.ts", "src/deep/z.ts", "src/x.ts"]);
-});
-
-test("glob_files caps the list deterministically: the first 400 in sorted order, plus the total", async () => {
-  const folder = join(dir, "wide");
-  mkdirSync(folder, { recursive: true });
-  for (let file = 0; file < 650; file++) writeFileSync(join(folder, `f${String(file).padStart(4, "0")}.txt`), "x");
-  const result = await globFiles.run({ pattern: "wide/*.txt" }, context());
-  const lines = String(result.content).split("\n");
-  expect(lines[0]).toBe("wide/f0000.txt");
-  expect(lines[399]).toBe("wide/f0399.txt");
-  expect(lines[400]).toContain("650 files match");
-  expect(result.note).toBe("400 of 650 files");
-});
-
 test("read_file reads only the top of a big file, with the same numbering as a full read", async () => {
   const big = join(dir, "big.log");
   const row = (n: number) => `line ${n} ${"x".repeat(80)}`;
@@ -380,7 +281,7 @@ test("read_file says plainly when a path is missing or is a folder", async () =>
   expect((await readFile.run({ path: "no-such-file.txt" }, context())).content).toContain(
     "No file at no-such-file.txt",
   );
-  expect((await readFile.run({ path: "tree" }, context())).content).toContain("is a folder");
+  expect((await readFile.run({ path: "." }, context())).content).toContain("is a folder");
 });
 
 test("an image's type comes from its bytes, not its extension", async () => {
@@ -389,68 +290,6 @@ test("an image's type comes from its bytes, not its extension", async () => {
   writeFileSync(file, Buffer.from(png, "base64"));
   const { block } = await encodeImage(file, 70);
   expect(block.source.media_type).toBe("image/png");
-});
-
-function grepProject() {
-  const dir = mkdtempSync(join(tmpdir(), "clue-grep-"));
-  writeFileSync(join(dir, "a.ts"), "const alpha = 1;\nconst beta = 2;\nopen(file);\ncall(one)\nfoo|bar\n");
-  const run = (input: Parameters<typeof grepFiles.run>[0]) => grepFiles.run(input, { ...context(), cwd: dir });
-  return { run };
-}
-
-test("grep_files reads a pattern as a regular expression by default", async () => {
-  const { content } = await grepProject().run({ pattern: "alpha|beta" });
-  expect(content).toContain("const alpha");
-  expect(content).toContain("const beta");
-});
-
-test("grep_files falls back to literal text when the pattern isn't a valid expression", async () => {
-  const result = await grepProject().run({ pattern: "open(" });
-  expect(result.isError).toBeFalsy();
-  expect(result.content).toContain("open(file);");
-});
-
-test("grep_files falls back to literal text when the expression finds nothing", async () => {
-  const { content } = await grepProject().run({ pattern: "call(one)" });
-  expect(content).toContain("call(one)");
-});
-
-test("grep_files keeps an explicit choice", async () => {
-  const { run } = grepProject();
-  const literal = await run({ pattern: "foo|bar", regex: false });
-  expect(literal.content).toContain("foo|bar");
-  expect(literal.content).not.toContain("alpha");
-  expect((await run({ pattern: "alpha|beta", regex: false })).content).toBe("No matches.");
-  expect((await run({ pattern: "call(one)", regex: true })).content).toBe("No matches.");
-  expect((await run({ pattern: "open(", regex: true })).isError).toBe(true);
-});
-
-test("grep_files without ripgrep skips ignored folders and binary files", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "clue-grep-fallback-"));
-  for (const folder of ["src", "node_modules/pkg", ".git"]) mkdirSync(join(dir, folder), { recursive: true });
-  writeFileSync(join(dir, "src", "a.ts"), "fallback-token\n");
-  writeFileSync(join(dir, "node_modules", "pkg", "b.js"), "fallback-token\n");
-  writeFileSync(join(dir, ".git", "c"), "fallback-token\n");
-  writeFileSync(join(dir, "blob.bin"), Buffer.from("\0\0fallback-token\0"));
-  // A PATH that has grep but not rg.
-  const bin = mkdtempSync(join(tmpdir(), "clue-grep-bin-"));
-  symlinkSync(Bun.which("grep")!, join(bin, "grep"));
-  const path = process.env.PATH;
-  process.env.PATH = bin;
-  try {
-    expect(Bun.which("rg", { PATH: bin })).toBeNull();
-    const { content } = await grepFiles.run({ pattern: "fallback-token" }, { ...context(), cwd: dir });
-    expect(content).toContain("a.ts:1:fallback-token");
-    expect(content).not.toContain("node_modules");
-    expect(content).not.toContain(".git");
-    expect(content).not.toContain("blob.bin");
-  } finally {
-    process.env.PATH = path;
-  }
-});
-
-test("grep_files reports no matches for text that isn't there", async () => {
-  expect((await grepProject().run({ pattern: "missing|absent" })).content).toBe("No matches.");
 });
 
 test("a subagent takes a single model by short name, and an effort clue knows", () => {

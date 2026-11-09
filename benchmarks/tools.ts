@@ -13,7 +13,7 @@ const root = realpathSync(mkdtempSync(join(tmpdir(), "clue-tools-bench-")));
 process.env.CLUE_HOME = join(root, ".clue-home");
 
 const { Session } = await import("../src/session");
-const { editFile, globFiles, grepFiles, readFile, writeFile } = await import("../src/tools/files");
+const { editFile, readFile, writeFile } = await import("../src/tools/files");
 const { shell, stopAllProcesses, warmShellEnv } = await import("../src/tools/shell");
 const { capabilitySearch } = await import("../src/tools/mcp");
 const { skillTool, discoverSkills } = await import("../src/tools/skills");
@@ -180,55 +180,6 @@ await compare("read_file", [
   [
     "100 lines from the middle of the 20 MB log",
     async () => readFile.run({ path: "big.log", offset: 150_000, limit: 100 }, context()),
-  ],
-]);
-
-await compare("glob_files", [
-  [
-    '"src/**/*.ts" (1,500 matches, node_modules present)',
-    async () => globFiles.run({ pattern: "src/**/*.ts" }, context()),
-  ],
-  ['"**/*.ts" over the whole repo', async () => globFiles.run({ pattern: "**/*.ts" }, context())],
-  ['"**/*.md"', async () => globFiles.run({ pattern: "**/*.md" }, context())],
-  [
-    "  baseline: rg --files -g '**/*.ts'",
-    async () => Bun.spawn(["rg", "--files", "-g", "**/*.ts"], { cwd: repo, stdout: "pipe" }).stdout.text(),
-    true,
-  ],
-]);
-
-await compare("grep_files", [
-  ["literal, 30 matches across the repo", async () => grepFiles.run({ pattern: NEEDLE }, context())],
-  [
-    "  baseline: rg (same flags, spawned)",
-    async () => {
-      const proc = Bun.spawn(
-        [
-          "rg",
-          "--line-number",
-          "--no-heading",
-          "--color",
-          "never",
-          "--max-columns",
-          "400",
-          "--max-count",
-          "50",
-          "--fixed-strings",
-          "--",
-          NEEDLE,
-          ".",
-        ],
-        { cwd: repo, stdout: "pipe" },
-      );
-      await proc.stdout.text();
-      await proc.exited;
-    },
-    true,
-  ],
-  ["common word, hits in every file (400-line cap)", async () => grepFiles.run({ pattern: "handler" }, context())],
-  [
-    "regex with glob filter",
-    async () => grepFiles.run({ pattern: "handler\\d+_7\\(", regex: true, glob: "*.ts" }, context()),
   ],
 ]);
 

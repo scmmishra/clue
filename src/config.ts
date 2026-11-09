@@ -41,8 +41,6 @@ export const isRuleValue = (value: unknown): value is RuleValue => RULE_VALUES.i
 // which can't be imported here: the tools import this file.
 const RULE_TOOLS = [
   "*",
-  "glob_files",
-  "grep_files",
   "read_file",
   "write_file",
   "edit_file",

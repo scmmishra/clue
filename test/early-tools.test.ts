@@ -135,7 +135,7 @@ test("read-only calls start while the reply is still streaming", async () => {
       start(),
       ...call(0, "a", "read_file", { path: "a.ts" }),
       PAUSE,
-      ...call(1, "b", "grep_files", { pattern: "export" }),
+      ...call(1, "b", "read_file", { path: "b.ts" }),
       PAUSE,
       ...call(2, "c", "read_file", { path: "c.ts" }),
       PAUSE,

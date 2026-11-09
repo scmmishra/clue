@@ -81,11 +81,6 @@ The job summary shows the table, and each run's samples stay as an artifact for 
 | `read_file`, first 50 lines of the 20 MB log      | 7.77 ms | **94 µs**   | 26 µs, reading the first 16 KB   |
 | `read_file`, 100 lines from the middle of the log | 7.71 ms | 7.67 ms     | needs to count 150,000 lines     |
 | `read_file`, a 200-line source file               | 102 µs  | 96 µs       | 24 µs, `Bun.file().text()`       |
-| `glob_files`, `**/*.ts` over the repo             | 17.5 ms | **5.4 ms**  | 10.6 ms, `rg --files`            |
-| `glob_files`, `src/**/*.ts`                       | 4.64 ms | 5.06 ms     |                                  |
-| `grep_files`, a rare literal                      | 29.7 ms | 29.1 ms     | 29.2 ms, a bare `rg` spawn       |
-| `grep_files`, a common word                       | 61.2 ms | **4.3 ms**  |                                  |
-| `grep_files`, regex with a glob filter            | 45.5 ms | **16.2 ms** |                                  |
 | `edit_file`, one change in a 200-line file        | 211 µs  | 226 µs      | 110 µs, read, replace, write     |
 | `write_file`, a new 5 KB file                     | 171 µs  | 193 µs      | 129 µs, `Bun.write`              |
 | `capability_search` over 500 MCP tools            | 161 µs  | 156 µs      |                                  |
@@ -96,14 +91,11 @@ What changed:
 
 - **`shell`** passes Bun a `Terminal` object instead of the inline `terminal: { … }` option, which makes every spawn wait about 16 ms for the PTY to close. It also dropped a fixed 20 ms sleep after each exit, which it replaced with a drain that returns once output stops growing, usually in 1 ms.
 - **`read_file`** reads only the bytes a window near the top of a large file needs.
-- **`glob_files`** walks the tree itself. It skips `node_modules` and other ignored folders without entering them, starts at the pattern's fixed prefix and stops at the pattern's depth.
-- **`grep_files`** stops ripgrep once 400 lines are in.
 - **`buildContext`** gets git status from a run started at launch, or at `/new`.
 
 What is at its floor:
 
-- **A rare-literal search** takes the same time as running `rg` directly. No ripgrep flag helps: one thread is 1.5× slower, and mmap and ignore options change nothing.
 - **Small file edits and writes** cost about 100 µs more than a raw write: they check that the file is unchanged and build the diff. That is far below anything a person or a model can notice.
 - **A read deep inside a huge file** has to count every line before it. Both ways of doing it land near 8 ms.
 
-Two behaviors changed while measuring. `stop` and exit now end a command's child processes, which used to survive and keep running. `glob_files` returns the first 400 files in sorted order and the real total, where it used to return whichever 400 it found first.
+Two behaviors changed while measuring. `stop` and exit now end a command's child processes, which used to survive and keep running.

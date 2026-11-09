@@ -2,15 +2,12 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { nestedInstructions } from "../agent/context";
 import { snapshotFile } from "../agent/undo";
-import { walk } from "../walk";
 import { checkFields, fieldOf, type Tool, type ToolContext } from "./types";
 
 const DEFAULT_READ_LINES = 2000;
 const MAX_LINE_CHARS = 2000;
-const MAX_GLOB_RESULTS = 400;
 const MAX_IMAGE_EDGE = 1568;
 export const MAX_IMAGE_BYTES = 3_500_000;
-const MAX_GREP_LINES = 400;
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
 const MEDIA_TYPES: Partial<Record<Bun.Image.Format, "image/png" | "image/jpeg" | "image/gif" | "image/webp">> = {
   png: "image/png",
@@ -18,19 +15,6 @@ const MEDIA_TYPES: Partial<Record<Bun.Image.Format, "image/png" | "image/jpeg" |
   gif: "image/gif",
   webp: "image/webp",
 };
-const IGNORED_DIRS = new Set([
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  ".next",
-  "target",
-  "vendor",
-  ".venv",
-  "__pycache__",
-]);
-// Stops collecting matches here. Past this, the answer is "narrow the pattern" either way.
-const MAX_WALK_FILES = 20_000;
 
 export const absolute = (cwd: string, path: string) => (isAbsolute(path) ? path : resolve(cwd, path));
 export const display = (cwd: string, path: string) => {
@@ -122,7 +106,7 @@ export const readFile: Tool<{ path: string; offset?: number; limit?: number }> =
     // One stat answers "does it exist", "is it a folder" and "how big".
     const stat = statSync(file, { throwIfNoEntry: false });
     if (!stat) return { content: `No file at ${input.path}.`, isError: true };
-    if (stat.isDirectory()) return { content: `${input.path} is a folder. Use glob_files to list it.`, isError: true };
+    if (stat.isDirectory()) return { content: `${input.path} is a folder. Use shell to list it.`, isError: true };
     const isImage = IMAGE_EXTENSIONS.has(extname(file).toLowerCase());
     if (isImage) {
       context.readStamps.set(file, stat.mtimeMs);
@@ -162,217 +146,6 @@ export const readFile: Tool<{ path: string; offset?: number; limit?: number }> =
     };
   },
 };
-
-export const globFiles: Tool<{ pattern: string; path?: string }> = {
-  name: "glob_files",
-  description: 'Find files by glob pattern, such as "src/**/*.ts". Skips node_modules, .git and build folders.',
-  schema: {
-    type: "object",
-    properties: {
-      pattern: { type: "string", description: "Glob pattern." },
-      path: { type: "string", description: "Folder to search in. Defaults to the project folder." },
-    },
-    required: ["pattern"],
-    additionalProperties: false,
-  },
-  kind: "search",
-  readOnly: true,
-  label: (input, done) => `${done ? "Found" : "Finding"} ${input.pattern}`,
-  validate: (input) => checkFields(input, { pattern: "string", path: "string?" }),
-  async run(input, context) {
-    const root = absolute(context.cwd, input.path ?? ".");
-    const { files, capped } = await walkGlob(root, input.pattern, context.signal);
-    files.sort();
-    const shown = files.slice(0, MAX_GLOB_RESULTS);
-    const prefix = input.path ? `${display(context.cwd, root)}/` : "";
-    const body = shown.map((file) => prefix + file).join("\n");
-    const total = `${files.length}${capped ? "+" : ""}`;
-    const more =
-      files.length > MAX_GLOB_RESULTS
-        ? `\n[${total} files match. Showing the first ${MAX_GLOB_RESULTS}. Narrow the pattern.]`
-        : "";
-    return {
-      content: body ? body + more : "No files match.",
-      note: `${files.length > MAX_GLOB_RESULTS ? `${MAX_GLOB_RESULTS} of ${total}` : total} files`,
-    };
-  },
-};
-
-// The leading folders of a pattern that have no wildcards: "src/a" for "src/a/**/*.ts".
-function fixedPrefix(pattern: string) {
-  const fixed: string[] = [];
-  for (const part of pattern.split("/").slice(0, -1)) {
-    if (/[*?[\]{}()!]/.test(part)) break;
-    fixed.push(part);
-  }
-  return fixed.join("/");
-}
-
-// Walks a folder and matches files against a glob. It skips ignored and hidden
-// folders without entering them, starts at the pattern's fixed prefix, and stops
-// at the depth the pattern can reach. Bun.Glob.scan would walk node_modules too.
-async function walkGlob(root: string, pattern: string, signal: AbortSignal) {
-  const glob = new Bun.Glob(pattern);
-  const files: string[] = [];
-  const reachesAnywhere = pattern.includes("**") || pattern.includes("{");
-  const maxDepth = reachesAnywhere ? Infinity : pattern.split("/").length - 1;
-  // Patterns that climb out of the folder, or are absolute, are left to Bun.Glob.
-  if (pattern.startsWith("/") || pattern.split("/").includes("..")) {
-    for await (const file of glob.scan({ cwd: root, onlyFiles: true })) {
-      files.push(file);
-      if (files.length >= MAX_WALK_FILES) return { files, capped: true };
-    }
-    return { files, capped: false };
-  }
-  const start = fixedPrefix(pattern);
-  let capped = false;
-  await walk(
-    root,
-    (path, entry, depth) => {
-      if (entry.name.startsWith(".")) return;
-      if (entry.isDirectory()) return !IGNORED_DIRS.has(entry.name) && depth < maxDepth ? "enter" : undefined;
-      if (!entry.isFile() || !glob.match(path)) return;
-      files.push(path);
-      if (files.length < MAX_WALK_FILES) return;
-      capped = true;
-      return "stop";
-    },
-    { start, depth: start ? start.split("/").length : 0, signal },
-  );
-  return { files, capped };
-}
-
-export const grepFiles: Tool<{
-  pattern: string;
-  path?: string;
-  glob?: string;
-  regex?: boolean;
-  ignore_case?: boolean;
-  context?: number;
-}> = {
-  name: "grep_files",
-  description:
-    "Search file contents. The pattern is a regular expression. If it is invalid or finds nothing, clue searches for the same text literally. Set regex to true or false to use only that mode. Returns file:line:text. Respects .gitignore.",
-  schema: {
-    type: "object",
-    properties: {
-      pattern: { type: "string", description: "Regular expression or text to find." },
-      path: { type: "string", description: "File or folder to search. Defaults to the project folder." },
-      glob: { type: "string", description: 'Only search files matching this glob, such as "*.ts".' },
-      regex: { type: "boolean", description: "true: only a regular expression. false: only literal text." },
-      ignore_case: { type: "boolean" },
-      context: { type: "number", description: "Lines of context around each match." },
-    },
-    required: ["pattern"],
-    additionalProperties: false,
-  },
-  kind: "search",
-  readOnly: true,
-  label: (input, done) => `${done ? "Searched" : "Searching"} "${input.pattern}"`,
-  validate: (input) =>
-    checkFields(input, {
-      pattern: "string",
-      path: "string?",
-      glob: "string?",
-      regex: "boolean?",
-      ignore_case: "boolean?",
-      context: "number?",
-    }),
-  async run(input, context) {
-    const first = await search(input, context, input.regex === false);
-    // Claude writes both `a|b` and `call(x)`, and only the regex field says which, so an
-    // unset field tries the expression first and then the same text literally.
-    const retry = input.regex === undefined && first.lines.length === 0 && REGEX_CHARS.test(input.pattern);
-    const { lines, truncated, failure } = retry ? await search(input, context, true) : first;
-    if (failure) return { content: failure, isError: true };
-    const files = new Set(lines.map((line) => line.split(":")[0]));
-    const body = lines.join("\n");
-    const more = truncated ? `\n[More matches than ${MAX_GREP_LINES} lines. Narrow the search.]` : "";
-    return {
-      content: body ? body + more : "No matches.",
-      note: lines.length
-        ? `${lines.length}${truncated ? "+" : ""} matches in ${files.size}${truncated ? "+" : ""} files`
-        : "no matches",
-    };
-  },
-};
-
-type GrepInput = { pattern: string; path?: string; glob?: string; ignore_case?: boolean; context?: number };
-
-const REGEX_CHARS = /[\\^$.|?*+()[\]{}]/;
-
-async function search(input: GrepInput, context: ToolContext, literal: boolean) {
-  const rg = Bun.which("rg", { PATH: process.env.PATH ?? "" });
-  const target = input.path ? absolute(context.cwd, input.path) : ".";
-  let args: string[];
-  if (rg) {
-    args = [
-      rg,
-      "--no-config",
-      "--line-number",
-      "--no-heading",
-      "--color",
-      "never",
-      "--max-columns",
-      "400",
-      "--max-count",
-      "50",
-    ];
-    if (literal) args.push("--fixed-strings");
-    if (input.ignore_case) args.push("--ignore-case");
-    if (input.context) args.push("--context", String(Math.min(input.context, 10)));
-    if (input.glob) args.push("--glob", input.glob);
-    args.push("--", input.pattern, target);
-  } else {
-    // Without ripgrep there is no .gitignore, so skip the folders glob_files skips, and binary files.
-    args = [
-      "grep",
-      "-rnI",
-      literal ? "-F" : "-E",
-      ...(input.ignore_case ? ["-i"] : []),
-      ...[...IGNORED_DIRS].map((name) => `--exclude-dir=${name}`),
-      "--",
-      input.pattern,
-      target,
-    ];
-  }
-  const proc = Bun.spawn(args, { cwd: context.cwd, stdout: "pipe", stderr: "pipe", signal: context.signal });
-  const { lines, truncated } = await readLines(proc.stdout, MAX_GREP_LINES, () => proc.kill());
-  const code = truncated ? 0 : await proc.exited;
-  // ripgrep exits 2 when it hit an unreadable file, even if it found matches. Only no output is a failure.
-  const failed = code === 2 && lines.length === 0;
-  const failure = failed ? (await new Response(proc.stderr).text()).trim() || "Search failed." : null;
-  return { lines, truncated, failure };
-}
-
-// Reads a process's output until `max` complete lines are in, then stops the process.
-// A common word can match hundreds of thousands of lines, and reading them all
-// costs far more than the search that found them.
-async function readLines(stream: ReadableStream<Uint8Array>, max: number, onEnough?: () => void) {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let text = "";
-  let newlines = 0;
-  let scanned = 0;
-  let truncated = false;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    text += decoder.decode(value, { stream: true });
-    for (let at = text.indexOf("\n", scanned); at !== -1; at = text.indexOf("\n", scanned)) {
-      newlines += 1;
-      scanned = at + 1;
-    }
-    if (newlines > max) {
-      truncated = true;
-      onEnough?.();
-      await reader.cancel().catch(() => {});
-      break;
-    }
-  }
-  const all = text.length ? text.replace(/\n$/, "").split("\n") : [];
-  return { lines: truncated ? all.slice(0, max) : all, truncated };
-}
 
 // A unified-style diff of one replacement, with a little context.
 // One replacement as a hunk. Line numbers come from the text around it in each version.

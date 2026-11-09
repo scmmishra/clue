@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { modelInfo } from "../agent/models";
-import { editFile, globFiles, grepFiles, readFile, writeFile } from "./files";
+import { editFile, readFile, writeFile } from "./files";
 import { capabilitySearch, mcpCall } from "./mcp";
 import { askUser, readToolResult, subagent } from "./misc";
 import { shell } from "./shell";
@@ -9,8 +9,6 @@ import type { Tool } from "./types";
 
 // Fixed order: the tool list is part of the cached request prefix.
 export const TOOLS: Tool[] = [
-  globFiles,
-  grepFiles,
   readFile,
   writeFile,
   editFile,
