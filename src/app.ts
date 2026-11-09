@@ -99,7 +99,7 @@ export class App {
   private screen = new Screen();
   private keyboard = new Keyboard();
   private editor = new Editor(
-    COMMANDS,
+    () => this.slashCommands(),
     () => listPaths(this.cwd),
     () => this.screen.refresh(),
     () => recentPaths(this.cwd),
@@ -681,10 +681,29 @@ export class App {
     this.screen.refresh();
   }
 
+  // Skills whose names can be typed as a slash command.
+  private skillCommands(): Command[] {
+    this.skillCache ??= discoverSkills(this.cwd);
+    return this.skillCache
+      .filter((skill) => /^[\w-]+$/.test(skill.name))
+      .map((skill) => ({ name: skill.name, description: `skill: ${skill.description}` }));
+  }
+
+  // Built-in commands first. A skill never hides one.
+  private slashCommands(): Command[] {
+    const taken = new Set(COMMANDS.map((command) => command.name));
+    return [...COMMANDS, ...this.skillCommands().filter((command) => !taken.has(command.name))];
+  }
+
   // Every prompt and command starts here, typed or queued, so each runs in its own mode.
   private async submit(text: string, images: PromptImage[] = []) {
     const trimmed = text.trim();
     if (SLASH_COMMAND.test(trimmed) && !trimmed.includes("\n")) {
+      const [name, ...rest] = trimmed.slice(1).split(/\s+/);
+      if (!COMMANDS.some((command) => command.name === name) && this.skillCommands().some((s) => s.name === name)) {
+        const task = rest.join(" ");
+        return this.runTurn(`Use the ${name} skill.${task ? ` ${task}` : ""}`, images);
+      }
       // Before the first await: keys typed from here on wait for the command.
       this.enter("command");
       this.print([...markPrompt([`${style.brand(BAR)}${style.muted(trimmed)}`]), ""]);

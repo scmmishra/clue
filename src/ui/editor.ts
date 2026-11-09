@@ -43,13 +43,15 @@ export class Editor {
   private attached = new Map<number, PromptImage>();
   private nextImage = 1;
   private picker: FilePicker;
+  private commands: () => Command[];
 
   constructor(
-    private commands: Command[],
+    commands: Command[] | (() => Command[]),
     readPaths: () => Promise<string[]> = async () => [],
     onPathsRead: () => void = () => {},
     readRecent?: () => Promise<RecentPaths>,
   ) {
+    this.commands = typeof commands === "function" ? commands : () => commands;
     this.picker = new FilePicker(readPaths, onPathsRead, readRecent);
     try {
       if (existsSync(paths.history)) {
@@ -175,7 +177,7 @@ export class Editor {
 
   private matches(): Command[] {
     if (!this.text.startsWith("/") || this.text.includes(" ") || this.text.includes("\n")) return [];
-    return this.commands.filter((command) => command.name.startsWith(this.text.slice(1)));
+    return this.commands().filter((command) => command.name.startsWith(this.text.slice(1)));
   }
 
   private wordLeft() {
@@ -227,7 +229,7 @@ export class Editor {
           return "handled";
         }
         const matches = this.matches();
-        const exact = this.commands.some((command) => command.name === this.text.slice(1));
+        const exact = this.commands().some((command) => command.name === this.text.slice(1));
         if (matches.length && (!exact || this.completionIndex > 0)) {
           this.text = `/${matches[this.completionIndex % matches.length].name}`;
           this.cursor = this.text.length;
