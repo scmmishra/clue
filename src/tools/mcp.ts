@@ -17,6 +17,7 @@ export const capabilitySearch: Tool<{ query: string }> = {
       query: { type: "string", description: 'Keywords, such as "slack post message" or "database query".' },
     },
     required: ["query"],
+    additionalProperties: false,
   },
   kind: "search",
   readOnly: true,
@@ -72,6 +73,8 @@ export const mcpCall: Tool<{ server: string; tool: string; arguments?: Record<st
     },
     required: ["server", "tool"],
   },
+  // `arguments` follows the MCP tool's own schema, which strict sampling can't express.
+  strict: false,
   kind: "mcp",
   label: (input) => `${input.server}.${input.tool}`,
   validate: (input) => checkFields(input, { server: "string", tool: "string", arguments: "object?" }),

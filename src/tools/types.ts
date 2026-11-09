@@ -51,7 +51,11 @@ export type ToolKind =
 export type Tool<Input = unknown> = {
   name: string;
   description: string;
+  // Every object in it sets `additionalProperties: false`, which strict sampling requires.
   schema: Anthropic.Beta.Messages.BetaTool.InputSchema;
+  // Strict sampling keeps the input valid against `schema`, so Claude can't write broken JSON.
+  // Default true. A tool sets it to false when its schema can't be strict.
+  strict?: boolean;
   kind: ToolKind;
   // Runs without permission checks in every mode.
   readOnly?: boolean;

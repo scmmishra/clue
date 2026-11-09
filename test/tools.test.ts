@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type Anthropic from "@anthropic-ai/sdk";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -474,4 +475,40 @@ test("a subagent's model reaches the loop as a full id", async () => {
   };
   await subagent.run({ task: "t", description: "d", model: "haiku" }, ctx);
   expect(picked).toEqual({ model: "claude-haiku-5-5", effort: undefined });
+});
+
+// Limits the API sets on strict tools across one request. Going over them fails every request
+// with a 400, so a new tool or optional field must fit.
+const STRICT_OPTIONAL_LIMIT = 24;
+const STRICT_UNION_LIMIT = 16;
+const STRICT_UNSUPPORTED = ["minimum", "maximum", "multipleOf", "minLength", "maxLength", "maxItems", "pattern"];
+
+test("strict tool schemas fit what the API can compile", async () => {
+  const { toolDefinitions } = await import("../src/tools");
+  const strict = toolDefinitions("claude-sonnet-5-5").filter(
+    (tool): tool is Anthropic.Beta.Messages.BetaTool => "strict" in tool && tool.strict === true,
+  );
+  expect(strict.length).toBeGreaterThan(0);
+  expect(strict.map((tool) => tool.name)).not.toContain("mcp_call");
+  let optional = 0;
+  let unions = 0;
+  const problems: string[] = [];
+  const walk = (schema: Record<string, unknown>, path: string) => {
+    if (schema.anyOf || Array.isArray(schema.type)) unions += 1;
+    for (const key of STRICT_UNSUPPORTED) if (key in schema) problems.push(`${path} uses ${key}`);
+    if ("minItems" in schema && Number(schema.minItems) > 1) problems.push(`${path} uses minItems above 1`);
+    if (schema.type === "object") {
+      if (schema.additionalProperties !== false) problems.push(`${path} allows additional properties`);
+      const required = new Set((schema.required as string[] | undefined) ?? []);
+      for (const [key, value] of Object.entries((schema.properties as Record<string, Record<string, unknown>>) ?? {})) {
+        if (!required.has(key)) optional += 1;
+        walk(value, `${path}.${key}`);
+      }
+    }
+    if (schema.items) walk(schema.items as Record<string, unknown>, `${path}[]`);
+  };
+  for (const tool of strict) walk(tool.input_schema as Record<string, unknown>, tool.name);
+  expect(problems).toEqual([]);
+  expect(optional).toBeLessThanOrEqual(STRICT_OPTIONAL_LIMIT);
+  expect(unions).toBeLessThanOrEqual(STRICT_UNION_LIMIT);
 });

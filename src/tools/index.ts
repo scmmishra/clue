@@ -42,6 +42,7 @@ export function toolDefinitions(
     input_schema: tool.schema,
     // Large inputs, such as file contents, stream as they are generated.
     eager_input_streaming: true,
+    strict: tool.strict ?? true,
   }));
   const dynamic = modelInfo(model)?.dynamicWebTools ?? false;
   const server = (

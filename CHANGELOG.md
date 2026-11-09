@@ -2,6 +2,10 @@
 
 All notable changes to clue are listed here. The release workflow publishes the section for the version in `package.json` as that release's notes.
 
+## Unreleased
+
+- clue marks its tools as strict, so the API only lets Claude write tool input that matches each tool's schema. Before, Claude could write a call that wasn't valid JSON, and the same broken call came back on every retry. `mcp_call` isn't strict, because its arguments follow each MCP tool's own schema. The first request after a schema changes can take about 20 seconds while the API compiles the schemas. The API keeps a compiled schema for 24 hours after its last use.
+
 ## 0.16.0
 
 - Sessions now load the memories you approved with `clue dream`. They go in the context with the first prompt, after the repository's instruction files, in every worktree of the repository. Proposals you haven't reviewed and ones you rejected don't load. clue finds the repository by reading its `.git` files, without running git.

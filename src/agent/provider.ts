@@ -136,8 +136,9 @@ export function dropRejectedFeature(error: unknown) {
 // user chose this one and the status line shows it, so the loop turns the setting off instead.
 export const fastRejected = (error: unknown) => /\bspeed\b|fast.mode/i.test(String((error as Error)?.message ?? ""));
 
-// A tool input that isn't valid JSON, such as one with a raw tab inside a string. The SDK parses
-// each input when its block ends, and wraps the SyntaxError in an error that only names it in text.
+// A tool input that isn't valid JSON, such as one with a raw tab inside a string. Strict tools
+// should not produce one, but `mcp_call` isn't strict. The SDK parses each input when its block
+// ends, and wraps the SyntaxError in an error that only names it in text.
 export const toolInputBroken = (error: unknown) =>
   String((error as Error)?.message ?? "").startsWith("Unable to parse tool parameter JSON");
 

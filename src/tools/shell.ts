@@ -360,6 +360,7 @@ export const shell: Tool<ShellInput> = {
       input: { type: "string", description: 'Text to write to stdin, for "interact". Include "\\n" to press Enter.' },
       wait_ms: { type: "number", description: "How long to wait for output, in milliseconds." },
     },
+    additionalProperties: false,
   },
   kind: "command",
   label: (input, done) => {
