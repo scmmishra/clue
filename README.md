@@ -1,4 +1,4 @@
-<img src="site/public/logo.svg" width="96" height="96" alt="The clue logo: a blue pixel prompt bar and dot on a dark screen, inside a blue bevelled icon.">
+<img src="assets/logo.svg" width="96" height="96" alt="The clue logo: a blue pixel prompt bar and dot on a dark screen, inside a blue bevelled icon.">
 
 # clue
 
