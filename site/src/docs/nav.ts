@@ -1,4 +1,5 @@
-// The sidebar, in order. Each slug is a file in this folder. An empty slug is /docs.
+// The sidebar, in order. Each slug is a file in this folder. An empty slug is /docs. Every page in an
+// `experimental` group shows EXPERIMENT_NOTICE.
 export const NAV = [
 	{
 		group: 'getting started',
@@ -39,4 +40,16 @@ export const NAV = [
 			{ title: 'Tools', slug: 'tools' },
 		],
 	},
+	{
+		group: 'experiments',
+		experimental: true,
+		pages: [
+			{ title: 'Dream', slug: 'dream' },
+		],
+	},
 ];
+
+export const EXPERIMENT_NOTICE = 'How it works will keep changing, and it may be removed.';
+
+export const isExperiment = (slug: string) =>
+	NAV.some((group) => group.experimental && group.pages.some((page) => page.slug === slug));

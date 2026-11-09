@@ -1,4 +1,4 @@
-import { NAV } from './nav';
+import { EXPERIMENT_NOTICE, isExperiment, NAV } from './nav';
 
 const PAGES = NAV.flatMap(({ pages }) => pages);
 const sources = import.meta.glob<string>('./*.md', { eager: true, query: '?raw', import: 'default' });
@@ -6,11 +6,13 @@ const sources = import.meta.glob<string>('./*.md', { eager: true, query: '?raw',
 // The Markdown URL of a page, which is its address plus .md.
 export const markdownPath = (slug: string) => (slug ? `/docs/${slug}.md` : '/docs.md');
 
-// A docs page as plain Markdown: its title, then the file without the frontmatter.
+// A docs page as plain Markdown: its title, the experiment notice if it has one, then the file without the
+// frontmatter.
 export function pageMarkdown(slug: string) {
 	const { title } = PAGES.find((page) => page.slug === slug)!;
 	const body = sources[`./${slug || 'quick-start'}.md`].replace(/^---\n[\s\S]*?\n---\n/, '').trim();
-	return `# ${title}\n\n${body}\n`;
+	const notice = isExperiment(slug) ? `> **Experiment.** ${EXPERIMENT_NOTICE}\n\n` : '';
+	return `# ${title}\n\n${notice}${body}\n`;
 }
 
 export const markdownResponse = (slug: string) =>

@@ -453,8 +453,8 @@ h1 {
 	margin-block-start: 12px;
 }
 
-.prose > :not(h2, h3) + :is(.code, table, .callout),
-.prose > :is(.code, table, .callout) + :not(h2, h3) {
+.prose > :not(h2, h3) + :is(.code, table, .callout, .experiment),
+.prose > :is(.code, table, .callout, .experiment) + :not(h2, h3) {
 	margin-block-start: 24px;
 }
 
@@ -1070,6 +1070,32 @@ h2 {
 	border-radius: 4px;
 	background: var(--window);
 	color: var(--ink);
+}
+
+/* The notice at the top of an experimental page. Its dashed border sets it apart from callouts. */
+
+.experiment {
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+	padding: 10px 14px;
+	border: 1px dashed rgb(222 193 132 / 0.5);
+	background: rgb(222 193 132 / 0.06);
+}
+
+.experiment span {
+	flex: none;
+	color: var(--yellow);
+	font-family: var(--mono);
+	font-size: var(--text-xs);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.experiment p {
+	margin: 0;
+	color: var(--ink);
+	font-size: var(--text-sm);
 }
 
 /* Last updated */

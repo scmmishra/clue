@@ -1,6 +1,6 @@
 ---
 import { docsDescription, markdownPath } from '../../docs/markdown';
-import { NAV } from '../../docs/nav';
+import { EXPERIMENT_NOTICE, isExperiment, NAV } from '../../docs/nav';
 import CopyCommand from '../../components/CopyCommand.astro';
 import Base from '../../layouts/Base.astro';
 
@@ -75,6 +75,14 @@ const toc = file.getHeadings().filter(({ depth }) => depth === 2 || depth === 3)
 				<h1>{title}</h1>
 				<button type="button" data-markdown-link={markdownPath(current)}>copy markdown link</button>
 			</div>
+			{
+				isExperiment(current) && (
+					<aside class="experiment" aria-label="Experiment">
+						<span>experiment</span>
+						<p>{EXPERIMENT_NOTICE}</p>
+					</aside>
+				)
+			}
 			<Content />
 
 			{
