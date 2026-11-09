@@ -46,9 +46,6 @@ const toc = file.getHeadings().filter(({ depth }) => depth === 2 || depth === 3)
 <Base title={`${title}, clue docs`} description={description} type="article" modified={updated} schema={schema}>
 	<main class="docs">
 		<div class="docs-side">
-			<button type="button" class="docs-search-open" data-search-open>
-				<span>search</span><kbd>/</kbd>
-			</button>
 			<button type="button" class="docs-menu" aria-expanded="false" aria-controls="docs-nav" hidden>
 				<span aria-hidden="true">≡</span>
 				{title}
@@ -104,18 +101,23 @@ const toc = file.getHeadings().filter(({ depth }) => depth === 2 || depth === 3)
 			</nav>
 		</article>
 
-		{
-			toc.length > 0 && (
-				<nav class="toc" aria-label="On this page">
-					<p>on this page</p>
-					{toc.map(({ depth, slug, text }) => (
-						<a href={`#${slug}`} data-depth={depth}>
-							{text}
-						</a>
-					))}
-				</nav>
-			)
-		}
+		<aside class="docs-aside">
+			<button type="button" class="docs-search-open" data-search-open>
+				<span>search</span><kbd>/</kbd>
+			</button>
+			{
+				toc.length > 0 && (
+					<nav class="toc" aria-label="On this page">
+						<p>on this page</p>
+						{toc.map(({ depth, slug, text }) => (
+							<a href={`#${slug}`} data-depth={depth}>
+								{text}
+							</a>
+						))}
+					</nav>
+				)
+			}
+		</aside>
 	</main>
 
 	<dialog class="search" aria-label="Search the docs">

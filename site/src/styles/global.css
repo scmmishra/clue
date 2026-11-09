@@ -1,5 +1,14 @@
-@import '@fontsource-variable/geist/wght.css';
 @import '@fontsource-variable/geist-mono/wght.css';
+
+/* Timeless Sans. One variable file holds every weight and the italic, and src/fonts/timeless/LICENSE.pdf covers
+   it. Its `ital` axis runs from 0 to 100, so italics set the axis instead of relying on font-style. */
+@font-face {
+	font-family: 'Timeless Sans';
+	src: url('../fonts/timeless/TimelessSansVF.woff2') format('woff2');
+	font-weight: 300 800;
+	font-style: normal;
+	font-display: swap;
+}
 
 :root {
 	color-scheme: dark;
@@ -16,7 +25,7 @@
 	--red: #d07277;
 	--yellow: #dec184;
 
-	--sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+	--sans: 'Timeless Sans', ui-sans-serif, system-ui, sans-serif;
 	--mono: 'Geist Mono Variable', ui-monospace, Menlo, monospace;
 
 	--quick: 120ms ease-out;
@@ -72,6 +81,12 @@ a:hover {
 	border-radius: 2px;
 }
 
+em,
+i {
+	font-style: normal;
+	font-variation-settings: 'ital' 100;
+}
+
 /* Table headers and <strong> are bold by default. */
 th,
 strong,
@@ -108,9 +123,12 @@ p code {
 	color: var(--ink);
 }
 
+/* Centred, with the same gutter on both sides. The content is at most 1280px wide, plus the gutters. */
 .page {
-	max-width: 1280px;
-	margin-inline: clamp(20px, 5vw, 72px) 20px;
+	--gutter: clamp(20px, 5vw, 72px);
+	max-width: calc(1280px + 2 * var(--gutter));
+	margin-inline: auto;
+	padding-inline: var(--gutter);
 }
 
 .top {
@@ -145,10 +163,10 @@ main {
 h1 {
 	margin: 0;
 	color: var(--ink);
-	font-size: 1.375rem;
-	font-weight: var(--weight-semibold);
-	line-height: 1.3;
-	letter-spacing: -0.02em;
+	font-size: 2rem;
+	font-weight: var(--weight-regular);
+	line-height: 1.2;
+	letter-spacing: -0.03em;
 	text-wrap: balance;
 }
 
@@ -409,57 +427,148 @@ h1 {
 .prose {
 	display: block;
 	max-width: 640px;
+	line-height: 1.65;
 }
 
-.prose h2 {
+/* Vertical rhythm. Every block starts 12px below the one before it. Code blocks, tables and callouts get 24px on
+   both sides, so they read as separate from the text. A heading gets more room above than below, so it sits with
+   the text it introduces. */
+.prose > * {
+	margin-block: 0;
+}
+
+.prose > * + * {
+	margin-block-start: 12px;
+}
+
+.prose > :not(h2, h3) + :is(.code, table, .callout),
+.prose > :is(.code, table, .callout) + :not(h2, h3) {
+	margin-block-start: 24px;
+}
+
+.prose > * + h2 {
 	margin-block-start: 40px;
 }
 
+.prose > * + h3 {
+	margin-block-start: 32px;
+}
+
+.prose > :is(h2, h3) + * {
+	margin-block-start: 12px;
+}
+
+.prose > .docs-title + * {
+	margin-block-start: 20px;
+}
+
+.prose h2 {
+	font-size: 1.0625rem;
+	font-weight: var(--weight-regular);
+	line-height: 1.4;
+}
+
+/* A rule separates each major section from the one above it. */
+.prose h2 ~ h2 {
+	padding-block-start: 32px;
+	border-block-start: 1px solid var(--edge);
+}
+
 .prose h3 {
-	margin: 24px 0 4px;
 	color: var(--ink);
-	font-size: inherit;
+	font-size: 0.9375rem;
+	font-weight: var(--weight-medium);
+	line-height: 1.4;
+}
+
+.prose strong {
+	color: var(--ink);
 	font-weight: var(--weight-semibold);
 }
 
-.prose pre,
-.prose ol {
-	margin-block: 8px 0;
-}
-
-.prose p {
-	margin-block: 10px 0;
-}
-
 .prose pre {
-	padding: 12px 16px;
-	font-size: 0.8125rem;
+	padding: 14px 16px;
 	overflow-x: auto;
 	border: 1px solid var(--edge);
 	background: var(--window) !important;
+	font-size: 0.8125rem;
+	line-height: 1.65;
 }
 
 .prose code {
 	color: var(--ink);
 }
 
+/* Inline code sits on a faint fill. Code in a block, a table's first column or a heading stays plain. */
+:is(.prose p, .prose li, .prose td:not(:first-child), .feature p, .lede) > code {
+	padding: 0.15em 0.35em;
+	border-radius: 4px;
+	background: rgb(255 255 255 / 0.07);
+	font-size: 0.85em;
+	/* Code that wraps keeps its fill on each line. */
+	-webkit-box-decoration-break: clone;
+	box-decoration-break: clone;
+}
+
+/* Lists */
+
+.prose :is(ul, ol) {
+	padding-inline-start: 1.25em;
+}
+
+.prose li {
+	padding-inline-start: 0.25em;
+}
+
+.prose li + li {
+	margin-block-start: 4px;
+}
+
+.prose li::marker {
+	color: var(--ink-faint);
+}
+
+.prose li > :is(ul, ol) {
+	margin-block-start: 4px;
+}
+
+/* Tables have rules between rows and no side borders. */
+
 .prose table {
 	display: block;
-	margin-block-start: 8px;
 	overflow-x: auto;
 	border-collapse: collapse;
+	font-size: 0.875rem;
+	line-height: 1.6;
 }
 
 .prose th,
 .prose td {
-	padding: 6px 12px;
-	border: 1px solid var(--edge);
+	padding: 10px 24px 10px 0;
+	border-block-end: 1px solid var(--edge);
 	text-align: start;
 	vertical-align: top;
 }
 
+.prose :is(th, td):last-child {
+	padding-inline-end: 0;
+}
+
 .prose th {
-	background: var(--window);
+	padding-block-start: 0;
+	color: var(--ink-faint);
+	font-size: 0.75rem;
+	font-weight: var(--weight-regular);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+/* Header cells hold plain words, even when the markdown wraps them in backticks. */
+.prose th code {
+	color: inherit;
+	font-family: var(--sans);
+	font-size: inherit;
 }
 
 /* A command or key such as `/undo force` stays on one line in the first column. Code in other columns wraps, so a
@@ -478,13 +587,11 @@ h1 {
 	min-width: calc(16ch + 24px);
 }
 
-.prose ul {
-	margin: 8px 0 0;
-	padding-inline-start: 2ch;
-}
-
-.prose li + li {
-	margin-block-start: 8px;
+/* On a narrow screen, columns keep a readable width and the table scrolls sideways. */
+@media (max-width: 640px) {
+	.prose :is(th, td):not(:first-child) {
+		min-width: 10rem;
+	}
 }
 
 h2 {
@@ -639,15 +746,33 @@ h2 {
 	}
 }
 
+/* Three areas: the sidebar, the page, and an aside with search and the page's contents. On a phone, search sits
+   beside the menu button. From 800px the sidebar is a column and search sits above it. From 1200px the aside is
+   its own column on the right. */
 .docs {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr);
-	gap: 40px;
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-areas:
+		'side aside'
+		'page page';
+	gap: 24px 8px;
 }
 
 .docs-side {
+	grid-area: side;
 	display: grid;
 	gap: 16px;
+	align-content: start;
+}
+
+.docs > .prose {
+	grid-area: page;
+}
+
+.docs-aside {
+	grid-area: aside;
+	display: grid;
+	gap: 24px;
 	align-content: start;
 }
 
@@ -657,9 +782,13 @@ h2 {
 	margin-block-start: 24px;
 }
 
-.docs-nav p {
-	margin: 0 0 4px;
+.docs-nav p,
+.toc p {
+	margin: 0 0 6px;
 	color: var(--ink-faint);
+	font-size: 0.6875rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
 }
 
 .docs-nav a {
@@ -680,7 +809,6 @@ h2 {
 	width: 100%;
 	padding: 6px 10px;
 	border: 1px solid var(--edge);
-	border-radius: 4px;
 	background: var(--window);
 	color: var(--ink-faint);
 	font: inherit;
@@ -719,27 +847,8 @@ h2 {
 
 /* With JavaScript, the sidebar collapses on narrow screens until the menu opens it. */
 @media (max-width: 799px) {
-	.docs {
-		gap: 24px;
-	}
-
 	.docs-side:has(.docs-menu:not([hidden])) {
-		grid-template-columns: minmax(0, 1fr) auto;
 		gap: 8px;
-	}
-
-	.docs-search-open {
-		grid-column: 2;
-		grid-row: 1;
-	}
-
-	.docs-menu {
-		grid-column: 1;
-		grid-row: 1;
-	}
-
-	.docs-nav {
-		grid-column: 1 / -1;
 	}
 
 	.docs-menu[aria-expanded='false'] + .docs-nav {
@@ -754,7 +863,11 @@ h2 {
 @media (min-width: 800px) {
 	.docs {
 		grid-template-columns: 200px minmax(0, 640px);
-		gap: 56px;
+		grid-template-rows: auto 1fr;
+		grid-template-areas:
+			'aside page'
+			'side page';
+		gap: 24px 56px;
 	}
 
 	.docs-side {
@@ -772,10 +885,6 @@ h2 {
 }
 
 /* Title */
-
-.prose h2 {
-	font-size: inherit;
-}
 
 .docs-title {
 	display: flex;
@@ -872,7 +981,6 @@ h2 {
 
 .code {
 	position: relative;
-	margin-block: 8px 0;
 }
 
 .code pre {
@@ -881,48 +989,31 @@ h2 {
 
 .code-copy {
 	position: absolute;
-	inset-block-start: 8px;
+	inset-block-start: 3px;
 	inset-inline-end: 10px;
 	padding: 2px 6px;
-	border-radius: 4px;
-	background: var(--window);
-	opacity: 0;
 }
 
-.code:hover .code-copy,
-.code-copy:focus-visible,
-.code-copy[data-copied] {
-	opacity: 1;
-}
-
-@media (hover: none) {
-	.code-copy {
-		opacity: 1;
-	}
-}
-
-/* A block's title or language sits in a strip above the code. The copy button moves into the strip. */
-.code[data-label]::before {
+/* Every block has a strip above the code. It shows the block's title or language, and holds the copy button. */
+.code::before {
 	content: attr(data-label);
 	display: block;
+	min-height: calc(0.75rem * 1.6 + 8px);
 	padding: 4px 16px;
 	border: 1px solid var(--edge);
 	border-block-end: 0;
 	background: var(--window);
 	color: var(--ink-faint);
+	font-family: var(--mono);
 	font-size: 0.75rem;
 }
 
-.code[data-label] .code-copy {
-	inset-block-start: 3px;
-}
 
 /* Callouts, from > [!NOTE] and the like. See src/markdown/plugins.ts. */
 
 .callout {
 	--callout: var(--blue);
-	margin: 16px 0 0;
-	padding: 8px 16px;
+	padding: 12px 16px;
 	border-inline-start: 2px solid var(--callout);
 	background: var(--window);
 }
@@ -934,8 +1025,12 @@ h2 {
 	font-size: 0.75rem;
 }
 
+.callout > * {
+	margin-block: 8px 0;
+}
+
 .callout > :first-child {
-	margin-block-start: 0;
+	margin-block-start: 4px;
 }
 
 .callout[data-kind='tip'] {
@@ -957,13 +1052,13 @@ h2 {
 }
 
 .prose kbd {
-	padding: 0 5px;
+	padding: 0.1em 0.4em;
 	border: 1px solid var(--edge);
 	border-block-end-width: 2px;
 	border-radius: 4px;
 	background: var(--window);
 	color: var(--ink);
-	font-size: 0.85em;
+	font-size: 0.8em;
 }
 
 /* Last updated */
@@ -1013,26 +1108,27 @@ h2 {
 
 @media (min-width: 1200px) {
 	.docs {
-		grid-template-columns: 200px minmax(0, 640px) minmax(0, 200px);
+		grid-template-columns: 200px minmax(0, 640px) minmax(0, 240px);
+		grid-template-rows: auto;
+		grid-template-areas: 'side page aside';
 		justify-content: space-between;
 	}
 
-	.toc {
+	.docs-aside {
 		position: sticky;
 		top: 32px;
 		align-self: start;
-		display: block;
 		max-height: calc(100vh - 64px);
 		overflow-y: auto;
-		font-size: 0.75rem;
 		scrollbar-width: none;
+	}
+
+	.toc {
+		display: block;
+		font-size: 0.75rem;
 	}
 }
 
-.toc p {
-	margin: 0 0 4px;
-	color: var(--ink-faint);
-}
 
 .toc a {
 	display: block;
@@ -1060,7 +1156,6 @@ h2 {
 	padding: 0;
 	overflow: hidden;
 	border: 1px solid var(--edge);
-	border-radius: 8px;
 	background: var(--window);
 	color: var(--ink-soft);
 }
@@ -1079,7 +1174,6 @@ h2 {
 	align-items: center;
 	gap: 8px;
 	padding: 12px 16px;
-	border-block-end: 1px solid var(--edge);
 }
 
 .search input {
@@ -1106,6 +1200,12 @@ h2 {
 	font: inherit;
 	font-size: 0.75rem;
 	cursor: pointer;
+}
+
+/* The rule under the input belongs to the results, so an empty dialog has no line above its bottom border. */
+.search ul,
+.search-empty {
+	border-block-start: 1px solid var(--edge);
 }
 
 .search ul {
