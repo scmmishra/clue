@@ -1,6 +1,6 @@
 ---
 import timelessSans from '../fonts/timeless/TimelessSansVF.woff2?url';
-import geistMono from '@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?url';
+import commitMono from '@fontsource/commit-mono/files/commit-mono-latin-400-normal.woff2?url';
 import { ogImageFor } from '../og/pages';
 import { HEIGHT, WIDTH } from '../og/size';
 import { SITE_NAME } from '../site';
@@ -55,7 +55,7 @@ const image = new URL(ogImageFor(path), Astro.site).href;
 		<meta name="twitter:image" content={image} />
 
 		<link rel="preload" href={timelessSans} as="font" type="font/woff2" crossorigin />
-		<link rel="preload" href={geistMono} as="font" type="font/woff2" crossorigin />
+		<link rel="preload" href={commitMono} as="font" type="font/woff2" crossorigin />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<link rel="sitemap" href="/sitemap-index.xml" />
 		<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
